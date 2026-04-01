@@ -250,6 +250,10 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             } else {
                 messages = messages[len(messages)-keep:]
             }
+            // 截断后清理可能产生的孤立 tool 消息和非法序列
+            messages = removeOrphanedToolMessages(messages)
+            messages = removeOrphanedToolCalls(messages)
+            messages = mergeConsecutiveSameRole(messages)
             log.Printf("[AgentLoop] History truncated to %d messages", len(messages))
         }
         // ===============================================

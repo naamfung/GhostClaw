@@ -532,15 +532,175 @@ func validateAndCleanMessages(messages []Message) []Message {
         cleaned = append(cleaned, cleanedMsg)
     }
 
-    // 最终检查：确保消息序列以 user 或 tool 开头（不能以 assistant 开头）
-    if len(cleaned) > 0 && cleaned[0].Role == "assistant" {
-        if IsDebug {
-            log.Printf("Warning: messages start with assistant, this may cause API errors")
-        }
-        // 可以插入一个虚拟的 user 消息，但更好的做法是记录并希望模型不会这样
+    // ==================== 最终检查与修复 ====================
+
+    // 1. 移除孤立 tool 消息：tool result 没有前置的 assistant+tool_calls
+    cleaned = removeOrphanedToolMessages(cleaned)
+
+    // 2. 移除孤立 tool_calls：assistant 有 tool_calls 但后续没有 tool result
+    cleaned = removeOrphanedToolCalls(cleaned)
+
+    // 3. 合并连续同角色消息（compressMessages 可能产生）
+    cleaned = mergeConsecutiveSameRole(cleaned)
+
+    // 4. 确保消息序列以 user 开头（不能以 assistant/tool 开头）
+    if len(cleaned) > 0 && cleaned[0].Role != "user" && cleaned[0].Role != "system" {
+        log.Printf("[validateAndCleanMessages] Fixing: inserting synthetic user message before %s-first sequence", cleaned[0].Role)
+        cleaned = append([]Message{{
+            Role:    "user",
+            Content: "continue",
+        }}, cleaned...)
     }
 
-    return cleaned
+    // 5. 移除空的 user/assistant 消息（content 为 nil 或空字符串且无 tool_calls）
+    finalCleaned := make([]Message, 0, len(cleaned))
+    for _, msg := range cleaned {
+        if msg.Role == "user" || msg.Role == "assistant" {
+            contentStr, _ := msg.Content.(string)
+            if contentStr == "" && msg.ToolCalls == nil {
+                if IsDebug {
+                    log.Printf("Warning: removing empty %s message (no content, no tool_calls)", msg.Role)
+                }
+                continue
+            }
+        }
+        finalCleaned = append(finalCleaned, msg)
+    }
+
+    return finalCleaned
+}
+
+// removeOrphanedToolMessages 移除孤立的 tool 消息（没有前置 assistant+tool_calls）
+func removeOrphanedToolMessages(messages []Message) []Message {
+    if len(messages) == 0 {
+        return messages
+    }
+    result := make([]Message, 0, len(messages))
+    for i, msg := range messages {
+        if msg.Role == "tool" {
+            // 查找前面是否有 assistant 消息带有匹配的 tool_calls
+            hasMatchingAssistant := false
+            for j := i - 1; j >= 0; j-- {
+                prevMsg := messages[j]
+                if prevMsg.Role == "assistant" && prevMsg.ToolCalls != nil {
+                    hasMatchingAssistant = true
+                    break
+                }
+                // 如果遇到 user 或 system 消息，停止向前搜索
+                if prevMsg.Role == "user" || prevMsg.Role == "system" {
+                    break
+                }
+            }
+            if !hasMatchingAssistant {
+                if IsDebug {
+                    log.Printf("Warning: removing orphaned tool message at index %d (tool_call_id: %s)", i, msg.ToolCallID)
+                }
+                continue
+            }
+        }
+        result = append(result, msg)
+    }
+    return result
+}
+
+// removeOrphanedToolCalls 移除孤立的 tool_calls（assistant 有 tool_calls 但后续没有 tool result）
+func removeOrphanedToolCalls(messages []Message) []Message {
+    if len(messages) == 0 {
+        return messages
+    }
+    // 首先收集所有存在的 tool_call_id（来自 tool 消息）
+    existingToolResults := make(map[string]bool)
+    for _, msg := range messages {
+        if msg.Role == "tool" && msg.ToolCallID != "" {
+            existingToolResults[msg.ToolCallID] = true
+        }
+    }
+
+    result := make([]Message, 0, len(messages))
+    for i, msg := range messages {
+        if msg.Role == "assistant" && msg.ToolCalls != nil {
+            // 检查是否所有 tool_calls 都有对应的 tool result
+            hasAnyResult := false
+            remainingToolCalls := filterToolCallsWithResults(msg.ToolCalls, existingToolResults, &hasAnyResult)
+
+            if !hasAnyResult {
+                // 所有 tool_calls 都是孤立的，移除 tool_calls，保留 content
+                if IsDebug {
+                    log.Printf("Warning: removing all orphaned tool_calls from assistant message at index %d", i)
+                }
+                newMsg := msg
+                newMsg.ToolCalls = nil
+                if newMsg.Content == nil {
+                    newMsg.Content = ""
+                }
+                result = append(result, newMsg)
+                continue
+            } else if len(remainingToolCalls) > 0 {
+                // 部分有结果，只保留有结果的 tool_calls
+                newMsg := msg
+                newMsg.ToolCalls = remainingToolCalls
+                result = append(result, newMsg)
+                continue
+            }
+        }
+        result = append(result, msg)
+    }
+    return result
+}
+
+// filterToolCallsWithResults 过滤出有对应 tool result 的 tool_calls
+func filterToolCallsWithResults(toolCalls interface{}, existingResults map[string]bool, hasAnyResult *bool) []interface{} {
+    var remaining []interface{}
+    switch v := toolCalls.(type) {
+    case []interface{}:
+        for _, tc := range v {
+            if tcMap, ok := tc.(map[string]interface{}); ok {
+                if id, ok := tcMap["id"].(string); ok && existingResults[id] {
+                    remaining = append(remaining, tc)
+                    *hasAnyResult = true
+                }
+            }
+        }
+    case []map[string]interface{}:
+        for _, tc := range v {
+            if id, ok := tc["id"].(string); ok && existingResults[id] {
+                remaining = append(remaining, tc)
+                *hasAnyResult = true
+            }
+        }
+    }
+    return remaining
+}
+
+// mergeConsecutiveSameRole 合并连续同角色的消息（排除 tool 消息和带 tool_calls 的 assistant）
+func mergeConsecutiveSameRole(messages []Message) []Message {
+    if len(messages) <= 1 {
+        return messages
+    }
+    result := make([]Message, 0, len(messages))
+    for _, msg := range messages {
+        if len(result) > 0 {
+            lastMsg := result[len(result)-1]
+            if lastMsg.Role == msg.Role && msg.Role != "tool" {
+                // 不合并有 tool_calls 的 assistant
+                if msg.Role == "assistant" && (lastMsg.ToolCalls != nil || msg.ToolCalls != nil) {
+                    result = append(result, msg)
+                    continue
+                }
+                // 合并 content
+                lastContent, _ := lastMsg.Content.(string)
+                thisContent, _ := msg.Content.(string)
+                if lastContent != "" && thisContent != "" {
+                    result[len(result)-1].Content = lastContent + "\n" + thisContent
+                } else if thisContent != "" {
+                    result[len(result)-1].Content = thisContent
+                }
+                continue
+            }
+        }
+        result = append(result, msg)
+    }
+    return result
 }
 
 // 准备请求数据
@@ -627,11 +787,19 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
                         "temperature": temperature,
                         "stream":      stream,
                 }
-                // DeepSeek 思考模式：thinking 参数放在请求体顶层
-                // 参考：https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+                // 思考模式：根据提供商支持情况发送对应格式
+                // DeepSeek → "thinking": true
+                // GLM/智谱、Qwen/通义 → "thinking": {"type":"enabled"}
+                // Anthropic 由上方 anthropic 分支单独处理
                 if thinking {
-                        data["thinking"] = map[string]interface{}{
-                                "type": "enabled",
+                        if supported, format := isThinkingSupported(baseURL); supported {
+                                if format == "bool" {
+                                        data["thinking"] = true
+                                } else {
+                                        data["thinking"] = map[string]interface{}{
+                                                "type": "enabled",
+                                        }
+                                }
                         }
                 }
                 endpoint = "/chat/completions"
@@ -641,6 +809,30 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         }
 
         return data, baseURL + endpoint, nil
+}
+
+// isThinkingSupported 判断该 OpenAI 兼容提供商是否支持 thinking 模式及对应格式
+// 返回值：
+//   - supported: 是否支持 thinking 模式
+//   - format: "bool" 表示发送布尔值 true，"object" 表示发送 {"type":"enabled"}
+// 已知支持：
+//   - DeepSeek  → bool:   "thinking": true
+//   - GLM/智谱  → object: "thinking": {"type":"enabled"}
+//   - Qwen/通义  → object: "thinking": {"type":"enabled"}
+// 注意：Anthropic 的 thinking 由 prepareRequestData 的 anthropic 分支单独处理
+func isThinkingSupported(baseURL string) (supported bool, format string) {
+        lower := strings.ToLower(baseURL)
+        // DeepSeek 使用布尔值格式
+        if strings.Contains(lower, "deepseek.com") || strings.Contains(lower, "deepseek") {
+                return true, "bool"
+        }
+        // GLM/智谱、Qwen/通义 使用对象格式
+        if strings.Contains(lower, "bigmodel.cn") ||
+                strings.Contains(lower, "dashscope.aliyuncs.com") ||
+                strings.Contains(lower, "aliyuncs.com") {
+                return true, "object"
+        }
+        return false, ""
 }
 
 // 发送请求（支持 Context）
@@ -944,141 +1136,151 @@ func handleNonStreamResponse(resp *http.Response, apiType string) (Response, err
 // compressMessages 根据级别压缩消息列表
 // level: 0-简化工具消息（提取原始命令+后200字符），1-移除所有工具消息，2-保留最近20条
 func compressMessages(messages []Message, level int) []Message {
-	if level < 0 {
-		level = 0
-	}
-	if level > 2 {
-		level = 2
-	}
+        if level < 0 {
+                level = 0
+        }
+        if level > 2 {
+                level = 2
+        }
 
-	// 复制一份，避免修改原切片
-	newMsgs := make([]Message, len(messages))
-	copy(newMsgs, messages)
+        // 复制一份，避免修改原切片
+        newMsgs := make([]Message, len(messages))
+        copy(newMsgs, messages)
 
-	switch level {
-	case 0:
-		// 构建从 tool_call_id 到 (命令, 工具名) 的映射
-		cmdMap := make(map[string]struct {
-			cmd  string
-			tool string
-		})
-		for _, msg := range newMsgs {
-			if msg.Role == "assistant" && msg.ToolCalls != nil {
-				// 遍历 tool_calls
-				if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
-					for _, tc := range tcSlice {
-						if tcMap, ok := tc.(map[string]interface{}); ok {
-							if id, ok := tcMap["id"].(string); ok && id != "" {
-								// 提取工具名称和命令
-								toolName := ""
-								command := ""
-								if function, ok := tcMap["function"].(map[string]interface{}); ok {
-									if name, ok := function["name"].(string); ok {
-										toolName = name
-									}
-									if args, ok := function["arguments"]; ok {
-										var argsMap map[string]interface{}
-										switch v := args.(type) {
-										case string:
-											json.Unmarshal([]byte(v), &argsMap)
-										case map[string]interface{}:
-											argsMap = v
-										}
-										if argsMap != nil {
-											if cmd, ok := argsMap["command"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["script"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["expression"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["query"].(string); ok {
-												command = cmd
-											}
-										}
-									}
-								}
-								cmdMap[id] = struct {
-									cmd  string
-									tool string
-								}{cmd: command, tool: toolName}
-							}
-						}
-					}
-				}
-			}
-		}
+        switch level {
+        case 0:
+                // 构建从 tool_call_id 到 (命令, 工具名) 的映射
+                cmdMap := make(map[string]struct {
+                        cmd  string
+                        tool string
+                })
+                for _, msg := range newMsgs {
+                        if msg.Role == "assistant" && msg.ToolCalls != nil {
+                                // 遍历 tool_calls
+                                if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
+                                        for _, tc := range tcSlice {
+                                                if tcMap, ok := tc.(map[string]interface{}); ok {
+                                                        if id, ok := tcMap["id"].(string); ok && id != "" {
+                                                                // 提取工具名称和命令
+                                                                toolName := ""
+                                                                command := ""
+                                                                if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                                                        if name, ok := function["name"].(string); ok {
+                                                                                toolName = name
+                                                                        }
+                                                                        if args, ok := function["arguments"]; ok {
+                                                                                var argsMap map[string]interface{}
+                                                                                switch v := args.(type) {
+                                                                                case string:
+                                                                                        json.Unmarshal([]byte(v), &argsMap)
+                                                                                case map[string]interface{}:
+                                                                                        argsMap = v
+                                                                                }
+                                                                                if argsMap != nil {
+                                                                                        if cmd, ok := argsMap["command"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["script"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["expression"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["query"].(string); ok {
+                                                                                                command = cmd
+                                                                                        }
+                                                                                }
+                                                                        }
+                                                                }
+                                                                cmdMap[id] = struct {
+                                                                        cmd  string
+                                                                        tool string
+                                                                }{cmd: command, tool: toolName}
+                                                        }
+                                                }
+                                        }
+                                }
+                        }
+                }
 
-		// 简化 tool 消息的内容
-		for i, msg := range newMsgs {
-			if msg.Role == "tool" {
-				contentStr, ok := msg.Content.(string)
-				if !ok {
-					contentStr = fmt.Sprintf("%v", msg.Content)
-				}
-				// 获取命令信息
-				cmdInfo := cmdMap[msg.ToolCallID]
-				command := cmdInfo.cmd
-				toolName := cmdInfo.tool
-				// 判断是否失败
-				isError := strings.HasPrefix(contentStr, "Error:") || strings.HasPrefix(contentStr, "error:")
-				status := "成功"
-				if isError {
-					status = "失败"
-				}
-				// 取后200字符作为摘要
-				runes := []rune(contentStr)
-				tail := contentStr
-				if len(runes) > 200 {
-					tail = string(runes[len(runes)-200:])
-				}
-				var prefix string
-				if command != "" {
-					prefix = fmt.Sprintf("[%s: %s] [%s] ", toolName, command, status)
-				} else {
-					prefix = fmt.Sprintf("[工具执行%s] ", status)
-				}
-				newMsgs[i].Content = prefix + tail
-			}
-		}
-	case 1:
-		// 移除所有 tool 消息，并清除 assistant 中的 tool_calls
-		filtered := make([]Message, 0, len(newMsgs))
-		for _, msg := range newMsgs {
-			if msg.Role == "tool" {
-				continue
-			}
-			if msg.Role == "assistant" && msg.ToolCalls != nil {
-				// 创建新消息，移除 tool_calls
-				newMsg := msg
-				newMsg.ToolCalls = nil
-				if msg.Content == nil {
-					newMsg.Content = ""
-				}
-				filtered = append(filtered, newMsg)
-			} else {
-				filtered = append(filtered, msg)
-			}
-		}
-		newMsgs = filtered
-	case 2:
-		// 保留最近20条消息，但保留系统消息（如果有）
-		const keepRecent = 20
-		if len(newMsgs) <= keepRecent {
-			break
-		}
-		var systemMsg *Message
-		if len(newMsgs) > 0 && newMsgs[0].Role == "system" {
-			systemMsg = &newMsgs[0]
-			newMsgs = newMsgs[1:]
-		}
-		if len(newMsgs) > keepRecent {
-			newMsgs = newMsgs[len(newMsgs)-keepRecent:]
-		}
-		if systemMsg != nil {
-			newMsgs = append([]Message{*systemMsg}, newMsgs...)
-		}
-	}
-	return newMsgs
+                // 简化 tool 消息的内容
+                for i, msg := range newMsgs {
+                        if msg.Role == "tool" {
+                                contentStr, ok := msg.Content.(string)
+                                if !ok {
+                                        contentStr = fmt.Sprintf("%v", msg.Content)
+                                }
+                                // 获取命令信息
+                                cmdInfo := cmdMap[msg.ToolCallID]
+                                command := cmdInfo.cmd
+                                toolName := cmdInfo.tool
+                                // 判断是否失败
+                                isError := strings.HasPrefix(contentStr, "Error:") || strings.HasPrefix(contentStr, "error:")
+                                status := "成功"
+                                if isError {
+                                        status = "失败"
+                                }
+                                // 取后200字符作为摘要
+                                runes := []rune(contentStr)
+                                tail := contentStr
+                                if len(runes) > 200 {
+                                        tail = string(runes[len(runes)-200:])
+                                }
+                                var prefix string
+                                if command != "" {
+                                        prefix = fmt.Sprintf("[%s: %s] [%s] ", toolName, command, status)
+                                } else {
+                                        prefix = fmt.Sprintf("[工具执行%s] ", status)
+                                }
+                                newMsgs[i].Content = prefix + tail
+                        }
+                }
+        case 1:
+                // 移除所有 tool 消息，并清除 assistant 中的 tool_calls
+                filtered := make([]Message, 0, len(newMsgs))
+                for _, msg := range newMsgs {
+                        if msg.Role == "tool" {
+                                continue
+                        }
+                        if msg.Role == "assistant" && msg.ToolCalls != nil {
+                                // 创建新消息，移除 tool_calls
+                                newMsg := msg
+                                newMsg.ToolCalls = nil
+                                if msg.Content == nil {
+                                        newMsg.Content = ""
+                                }
+                                // 只有 content 非空时才保留，避免产生空 assistant 消息
+                                if contentStr, ok := newMsg.Content.(string); ok && contentStr == "" {
+                                        continue
+                                }
+                                filtered = append(filtered, newMsg)
+                        } else {
+                                filtered = append(filtered, msg)
+                        }
+                }
+                newMsgs = filtered
+                // 合并连续同角色消息（移除 tool 消息后可能产生连续 assistant）
+                newMsgs = mergeConsecutiveSameRole(newMsgs)
+        case 2:
+                // 保留最近20条消息，但保留系统消息（如果有）
+                const keepRecent = 20
+                if len(newMsgs) <= keepRecent {
+                        break
+                }
+                var systemMsg *Message
+                if len(newMsgs) > 0 && newMsgs[0].Role == "system" {
+                        systemMsg = &newMsgs[0]
+                        newMsgs = newMsgs[1:]
+                }
+                if len(newMsgs) > keepRecent {
+                        newMsgs = newMsgs[len(newMsgs)-keepRecent:]
+                }
+                if systemMsg != nil {
+                        newMsgs = append([]Message{*systemMsg}, newMsgs...)
+                }
+                // 截断后可能产生孤立 tool 消息或非法序列，进行清理
+                newMsgs = removeOrphanedToolMessages(newMsgs)
+                newMsgs = removeOrphanedToolCalls(newMsgs)
+                newMsgs = mergeConsecutiveSameRole(newMsgs)
+        }
+        return newMsgs
 }
 
 // sendRequestAndGetChunks 发送请求并返回流式数据块通道
@@ -1156,55 +1358,55 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, e
 // CallModel 调用 LLM API，返回流式数据块通道
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
-	temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
+        temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
 
-	if apiType == "" {
-		apiType = DEFAULT_API_TYPE
-	}
-	if modelID == "" {
-		modelID = DEFAULT_MODEL_ID
-	}
+        if apiType == "" {
+                apiType = DEFAULT_API_TYPE
+        }
+        if modelID == "" {
+                modelID = DEFAULT_MODEL_ID
+        }
 
-	// 准备请求数据（初始尝试）
-	data, endpoint, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
-	if err != nil {
-		return nil, err
-	}
+        // 准备请求数据（初始尝试）
+        data, endpoint, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+        if err != nil {
+                return nil, err
+        }
 
-	// 检查请求体大小
-	reqBody, _ := json.Marshal(data)
-	maxSize := globalAPIConfig.MaxRequestSizeBytes
-	if len(reqBody) <= maxSize || IsDebug {
-		// 大小合适或调试模式，直接发送
-		return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
-	}
+        // 检查请求体大小
+        reqBody, _ := json.Marshal(data)
+        maxSize := globalAPIConfig.MaxRequestSizeBytes
+        if len(reqBody) <= maxSize || IsDebug {
+                // 大小合适或调试模式，直接发送
+                return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+        }
 
-	// 压缩重试
-	compressLevels := []int{0, 1, 2}
-	for _, level := range compressLevels {
-		compressedMsgs := compressMessages(messages, level)
-		data, endpoint, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
-		if err != nil {
-			continue
-		}
-		reqBody, _ = json.Marshal(data)
-		if len(reqBody) <= maxSize {
-			return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
-		}
-	}
+        // 压缩重试
+        compressLevels := []int{0, 1, 2}
+        for _, level := range compressLevels {
+                compressedMsgs := compressMessages(messages, level)
+                data, endpoint, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+                if err != nil {
+                        continue
+                }
+                reqBody, _ = json.Marshal(data)
+                if len(reqBody) <= maxSize {
+                        return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+                }
+        }
 
-	// 所有压缩都失败
-	errMsg := fmt.Sprintf("🚫 请求体过大（%d bytes），超过配置限制（%d bytes）。即使经过压缩过滤仍然无法满足大小限制。请考虑：\n"+
-		"• 使用 /new 开始新对话\n"+
-		"• 减少不必要的工具调用\n"+
-		"• 调整配置中的 MaxRequestSizeBytes 值\n"+
-		"任务已停止。", len(reqBody), maxSize)
-	log.Printf("[CallModel] Request size still too large after compression: %d > %d", len(reqBody), maxSize)
+        // 所有压缩都失败
+        errMsg := fmt.Sprintf("🚫 请求体过大（%d bytes），超过配置限制（%d bytes）。即使经过压缩过滤仍然无法满足大小限制。请考虑：\n"+
+                "• 使用 /new 开始新对话\n"+
+                "• 减少不必要的工具调用\n"+
+                "• 调整配置中的 MaxRequestSizeBytes 值\n"+
+                "任务已停止。", len(reqBody), maxSize)
+        log.Printf("[CallModel] Request size still too large after compression: %d > %d", len(reqBody), maxSize)
 
-	errChan := make(chan StreamChunk, 1)
-	errChan <- StreamChunk{Error: errMsg, Done: true}
-	close(errChan)
-	return errChan, nil
+        errChan := make(chan StreamChunk, 1)
+        errChan <- StreamChunk{Error: errMsg, Done: true}
+        close(errChan)
+        return errChan, nil
 }
 
 // CallModelSync 同步调用 LLM API，返回完整响应（用于子代理）
