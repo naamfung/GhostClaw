@@ -15,6 +15,7 @@ require (
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
 	github.com/yuin/gopher-lua v1.1.1
 	golang.org/x/crypto v0.49.0
+	golang.org/x/term v0.41.0
 	gopkg.in/telebot.v3 v3.3.8
 	gorm.io/gorm v1.31.1
 )

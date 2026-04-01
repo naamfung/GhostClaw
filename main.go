@@ -15,6 +15,7 @@ import (
         "syscall"
 
         "github.com/chzyer/readline"
+        "golang.org/x/term"
 )
 
 // 全局配置变量
@@ -99,7 +100,7 @@ func (w *cliLogWriter) Write(p []byte) (n int, err error) {
 func runCMDMode(ctx context.Context, session *GlobalSession) {
         cmdModeActive = true
         fmt.Println("╔══════════════════════════════════════╗")
-        fmt.Println("║  GhostClaw CMD 模式                   ║")
+        fmt.Println("║  GhostClaw REPL 模式                  ║")
         fmt.Println("║  输入消息与模型对话                     ║")
         fmt.Println("║  /logs → 切回 Log 模式（释放终端）      ║")
         fmt.Println("║  /exit → 退出程序                      ║")
@@ -197,13 +198,13 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 }
 
 // runLogMode Log 模式（默认）：程序正常运行，终端只显示日志
-// 后台 goroutine 监听 stdin，输入 / 后回车切换到 CMD 模式
+// 后台 goroutine 监听 stdin，按 / 键即刻切换到 REPL 模式（无需回车）
 // 如果 stdin 不是终端（如后台运行/管道），则仅阻塞等待 ctx 取消
 func runLogMode(ctx context.Context, session *GlobalSession) {
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("║  GhostClaw Log 模式（默认）            ║")
         fmt.Println("║  终端仅显示程序日志                     ║")
-        fmt.Println("║  输入 / 回车进入 CMD 模式              ║")
+        fmt.Println("║  按 / 键 或启动时加 --repl 进入对话    ║")
         fmt.Println("║  Ctrl+C 退出程序                       ║")
         fmt.Println("╚══════════════════════════════════════╝")
 
@@ -214,29 +215,56 @@ func runLogMode(ctx context.Context, session *GlobalSession) {
                 return
         }
 
-        // 交互终端：后台 goroutine 用行读取监听 stdin（不使用 raw mode，100% 可移植）
+        // 交互终端：后台 goroutine 用 raw mode 捕获单字符按键
         switchToCMD := make(chan struct{})
         go func() {
-                reader := bufio.NewReader(os.Stdin)
+                fd := int(os.Stdin.Fd())
+                oldState, err := term.MakeRaw(fd)
+                if err != nil {
+                        // raw mode 失败，回退到行读取（输入 / 后回车触发）
+                        reader := bufio.NewReader(os.Stdin)
+                        for {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                default:
+                                }
+                                line, err := reader.ReadString('\n')
+                                if err != nil {
+                                        return
+                                }
+                                line = strings.TrimSpace(line)
+                                if line == "/" {
+                                        select {
+                                        case switchToCMD <- struct{}{}:
+                                        default:
+                                        }
+                                        return
+                                }
+                        }
+                }
+                defer term.Restore(fd, oldState)
+
+                buf := make([]byte, 1)
                 for {
                         select {
                         case <-ctx.Done():
                                 return
                         default:
                         }
-                        line, err := reader.ReadString('\n')
-                        if err != nil {
+                        n, err := os.Stdin.Read(buf)
+                        if err != nil || n == 0 {
                                 return
                         }
-                        line = strings.TrimSpace(line)
-                        if line == "/" {
+                        if buf[0] == '/' {
+                                fmt.Print("/")
                                 select {
                                 case switchToCMD <- struct{}{}:
                                 default:
                                 }
                                 return
                         }
-                        // 其他输入忽略
+                        // 其他按键忽略（不回显，日志照常输出）
                 }
         }()
 
@@ -244,7 +272,7 @@ func runLogMode(ctx context.Context, session *GlobalSession) {
         case <-ctx.Done():
                 return
         case <-switchToCMD:
-                // 切换到 CMD 模式
+                // 切换到 REPL 模式
                 runCMDMode(ctx, session)
         }
 }

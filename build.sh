@@ -261,8 +261,8 @@ cd ..
 # 2. 编译后端
 printf "\n\033[0;34m[2/2] 编译后端...\033[0m\n"
 
-# 获取版本号（从 VERSION.md 提取）
-VERSION=$(grep -m1 '^## v' VERSION.md 2>/dev/null | sed 's/## //' | tr -d ' ')
+# 获取版本号（从 version.go 提取，兼容 BSD/Linux sed）
+VERSION=$(sed -n 's/.*Version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' version.go 2>/dev/null)
 if [ -z "$VERSION" ]; then
     VERSION="dev"
 fi
