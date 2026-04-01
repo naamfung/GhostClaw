@@ -104,6 +104,11 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     // 工具调用配额计数器
     toolCallCount := 0
 
+    // 每轮 AgentLoop（用户发新消息）重置循环检测器
+    if globalLoopDetector != nil {
+        globalLoopDetector.Clear()
+    }
+
     // 注入记忆上下文
     if globalUnifiedMemory != nil {
         taskDesc := getCurrentTaskDescriptionFromMessages(messages)
