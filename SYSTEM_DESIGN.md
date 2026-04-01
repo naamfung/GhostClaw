@@ -1,0 +1,1151 @@
+# GhostClaw 系统设计说明
+
+## 一、系统架构概述
+
+GhostClaw 是 GarClaw 的架构重构版本，使用 Go 语言编写的 AI Agent 框架，采用模块化设计，支持多角色、多模型协作。系统的核心设计理念是"角色即服务"——每个角色（Role）都有独立的能力边界与行为约束，可以在不同模型间灵活切换。与 GarClaw 最大的区别在于：GhostClaw 采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，所有渠道共享同一个对话上下文。
+
+### 1.1 核心架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             GhostClaw 系统                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────┐     │
+│  │                    输入层 (12 渠道)                                │     │
+│  │ CLI │ WS │ HTTP │ Email │ Telegram │ Discord │ Slack │ Feishu     │     │
+│  │ IRC │ Webhook │ XMPP │ Matrix                                      │     │
+│  └─────────────────────────┬────────────────────────────────────────┘     │
+│                            │                                                │
+│                   ┌────────▼────────┐                                      │
+│                   │  GlobalSession  │ ◀── 全局单会话，所有渠道共享            │
+│                   │  (全局会话单例)   │                                      │
+│                   └────────┬────────┘                                      │
+│                            │                                                │
+│  ┌─────────────────────────▼────────────────────────────────────────┐     │
+│  │                        控制层                                      │     │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐             │     │
+│  │  │  AgentLoop  │    │ processInput│    │  HandleCmd  │             │     │
+│  │  │  (核心循环)  │    │  (输入处理)   │    │  (命令路由)   │             │     │
+│  │  └──────┬──────┘    └─────────────┘    └─────────────┘             │     │
+│  └─────────┼────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                     角色系统 (Role System)                        │     │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐      │     │
+│  │  │  Stage   │──▶│  Actor   │──▶│   Role   │   │ModelCfg  │      │     │
+│  │  │ (场景管理) │   │ (演员实例) │   │ (角色模板) │   │ (模型配置) │      │     │
+│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘      │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                        核心服务层                                   │     │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │     │
+│  │  │  GORM    │ │TaskTrack │ │ Plugins  │ │  Cron    │            │     │
+│  │  │  /SQLite │ │(任务追踪) │ │ (插件系统)│ │(定时任务) │            │     │
+│  │  │ (记忆存储)│ └──────────┘ └──────────┘ └──────────┘            │     │
+│  │  └──────────┘ ┌──────────┐ ┌──────────┐ ┌──────────┐            │     │
+│  │               │  Tools   │ │ MCP S/C  │ │ Session  │            │     │
+│  │               │ (工具集)  │ │(MCP服务) │ │ Persist  │            │     │
+│  │               └──────────┘ └──────────┘ └──────────┘            │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                        外部服务层                                   │     │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐                     │     │
+│  │  │  LLM API │   │Web Search│   │  Shell   │                     │     │
+│  │  │(大模型接口)│   │(网络搜索) │   │(命令执行) │                     │     │
+│  │  └──────────┘   └──────────┘   └──────────┘                     │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.2 设计原则
+
+GhostClaw 的设计遵循以下核心原则：
+
+**分层解耦**：系统采用清晰的分层架构，输入输出层、控制层、服务层、外部接口层各司其职，层与层之间通过定义良好的接口通信，降低了组件间的耦合度。这种设计使得各层可以独立演进，例如可以轻松添加新的输入通道（如 Slack 集成）而不影响核心逻辑。
+
+**角色隔离**：每个角色都有独立的能力边界与工具权限配置，确保角色只能访问其职责范围内的功能。例如，小说家角色无法执行 Shell 命令，程序员角色则拥有完整的系统访问权限。这种隔离机制既保证了安全性，又使得角色行为更加可预测。
+
+**状态追踪**：系统对消息状态、任务进度、工具调用结果进行全面追踪，每条工具调用结果都标记成功/失败状态，便于调试与问题定位。任务追踪器还能智能判断何时需要提醒模型更新任务清单。
+
+**可扩展性**：通过插件系统，用户可以使用 Lua 脚本扩展系统功能，无需修改核心代码。插件可以注册自定义工具，调用系统内置工具，实现高度定制化的功能扩展。
+
+---
+
+## 二、核心组件详解
+
+### 2.1 角色/演员系统
+
+角色系统是 GarClaw 最具特色的设计，采用三层架构实现角色的灵活配置与多模型协作。
+
+#### 2.1.1 三层架构
+
+```
+Stage（舞台/场景）—— 当前对话环境
+    │
+    ├── Role（角色模板）—— 性格、风格、能力（可复用）
+    │       │
+    │       └── Actor（演员实例）—— Role + Model + 角色名
+    │               │
+    │               └── ModelConfig（模型配置）—— API信息（可复用）
+```
+
+**Role（角色模板）**：定义角色的"灵魂"，包括身份定位、性格特质、说话风格、专业领域、行为准则、禁止事项、工具权限等。角色模板是可复用的，一个模板可以创建多个演员实例。例如，"主角"模板可以创建"林风"、"赵雨"等多个具体角色。
+
+**Actor（演员实例）**：是 Role 的具体化，绑定具体的模型配置与角色名。演员实例定义了"谁来演"（哪个模型）与"演什么角色"（角色名、背景）。在小说创作场景中，每个故事角色对应一个 Actor。
+
+**ModelConfig（模型配置）**：定义模型的 API 接入信息，包括 API 类型、Base URL、API Key、模型 ID、温度参数等。支持环境变量引用（如 `${DEEPSEEK_API_KEY}`），便于保护敏感信息。
+
+**Stage（场景）**：管理当前对话环境，包括当前发言的演员、在场演员列表、场景设定（世界、时代、地点等）、自动切换配置等。场景状态可以通过 `SessionManager` 持久化存储，支持会话保存与恢复。
+
+**SessionManager（会话管理器）**：负责会话状态的持久化管理，包括场景状态（Stage）、对话历史（Messages）的保存与恢复。支持自动保存、手动保存、会话列表、加载会话等功能，确保用户的对话进度不会丢失。
+
+#### 2.1.2 工具权限控制
+
+每个角色可以定义独立的工具权限策略，支持三种模式：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `all` | 允许所有工具 | 程序员、管理员等需要完整能力的角色 |
+| `allowlist` | 仅允许白名单工具 | 小说家、教师等需要限制能力的角色 |
+| `denylist` | 禁止黑名单工具 | 需要排除特定工具的角色 |
+
+```go
+// 工具权限配置示例
+ToolPermission: ToolPermission{
+    Mode: ToolPermissionAllowlist,
+    AllowedTools: []string{"search", "visit", "memory_save", "memory_recall"},
+}
+```
+
+#### 2.1.3 系统提示构建
+
+当 Actor 被激活时，系统会自动构建包含角色信息的系统提示：
+
+```
+## 当前身份
+
+**角色名**：林风
+
+**角色背景**：
+三年前家族被灭门，独自修炼复仇...
+
+## 性格特质
+勇敢、坚韧、内心有挣扎...
+
+## 说话风格
+直接、有情感、符合武侠身份...
+
+## 行为准则
+- 以第一人称视角思考与行动
+- 展现角色的内心活动与情感
+...
+```
+
+### 2.2 技能系统
+
+技能系统是角色系统的补充，提供轻量级的能力模板定义。与角色不同，技能更侧重于"如何做"而非"我是谁"。
+
+#### 2.2.1 技能与角色的区别
+
+| 特性 | 角色 (Role) | 技能 (Skill) |
+|------|---------------|-------------|
+| 定义内容 | 身份、性格、风格、权限 | 具体能力的提示词模板 |
+| 格式 | `.md` (Markdown) 或 `.toon` | `.md` (Markdown) |
+| 持久性 | 持续整个对话 | 可动态激活/取消 |
+| 组合性 | 单一角色 | 可多个技能叠加 |
+| 权限控制 | 有工具权限配置 | 无独立权限 |
+
+#### 2.2.2 技能文件结构
+
+```markdown
+# 代码审查
+
+## 描述
+专业的代码审查能力...
+
+## 触发关键词
+- 审查代码
+- code review
+
+## 系统提示
+在进行代码审查时，请遵循以下原则：
+1. 安全性检查
+2. 性能考量
+...
+
+## 输出格式
+| 严重程度 | 类型 | 描述 | 建议 |
+|---------|------|------|------|
+
+## 标签
+- 编程
+- 安全
+```
+
+#### 2.2.3 技能激活机制
+
+技能支持两种激活方式：
+
+**手动激活**：用户通过 `/skill <技能名>` 命令显式激活。激活后，技能的系统提示会注入到当前对话上下文中。
+
+**自动触发**：当用户输入包含技能定义的触发关键词时，系统自动激活对应技能。这需要用户输入匹配 `TriggerWords` 列表中的词汇。
+
+#### 2.2.4 技能管理命令
+
+| 命令 | 说明 |
+|------|------|
+| `/skill` | 列出所有可用技能 |
+| `/skill <名称>` | 激活指定技能 |
+| `/skill show <名称>` | 显示技能详情 |
+| `/skill create <名称>` | 创建新技能模板 |
+| `/skill delete <名称>` | 删除技能 |
+| `/skill reload` | 重新加载所有技能 |
+| `/skill search <关键词>` | 搜索技能 |
+| `/skill tag <标签>` | 按标签查找技能 |
+
+### 2.3 多模型协作机制
+
+GarClaw 支持多模型协作，可以在对话过程中动态切换不同的模型与角色。
+
+#### 2.3.1 自动切换模式
+
+系统支持三种自动切换模式：
+
+**导演模式（director）**：由叙事者角色决定下一个发言的演员。叙事者在回复末尾使用特殊标记指定切换目标。这是小说创作的核心模式，叙事者掌控全局视角与角色切换节奏。
+
+```
+叙事者输出：
+月色如水，断崖之上，狂风呼啸。
+林风与魔尊对峙，剑拔弩张...
+
+[GARCLAW:NEXT:hero_lin]
+```
+
+**轮转模式（round-robin）**：按照预设的顺序依次轮转每个在场演员。适用于多方对话、会议模拟等场景。可以自定义轮转顺序，也可以使用在场演员列表自动轮转。
+
+**智能模式（smart）**：让模型自己判断何时需要切换、切换到哪个角色。模型会在回复中标注切换意图，系统自动解析执行。适用于需要灵活切换的复杂场景。
+
+#### 2.3.2 切换标记
+
+为避免与小说内容混淆，使用特殊格式的切换标记：
+
+```
+[GARCLAW:NEXT:actor_name]  → 切换到指定演员
+[GARCLAW:END]              → 场景结束，等待用户输入
+```
+
+系统会自动识别这些标记，执行切换操作，并从输出内容中移除标记，保证输出的干净。
+
+#### 2.3.3 切换流程
+
+```
+1. 模型输出包含 [GARCLAW:NEXT:hero_lin]
+         │
+         ▼
+2. AgentLoop 检测到切换标记
+         │
+         ▼
+3. 验证目标演员存在
+         │
+         ▼
+4. 移除切换标记，更新消息内容
+         │
+         ▼
+5. Stage.SetCurrentActor("hero_lin")
+         │
+         ▼
+6. 增加自动切换计数
+         │
+         ▼
+7. 重新构建系统提示（基于新演员）
+         │
+         ▼
+8. 继续循环，调用新演员对应的模型
+```
+
+### 2.4 GORM/SQLite 记忆系统
+
+GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的记忆系统，替代了旧版 GarClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。所有记忆数据统一存储在 `ghostclaw.db` 文件中，通过 GORM 提供的类型安全的数据库操作接口进行管理。
+
+#### 2.4.1 数据库架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     GhostClaw 记忆系统                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                  GORM / SQLite (ghostclaw.db)                │   │
+│  │  ┌───────────────────┐  ┌───────────────────┐              │   │
+│  │  │    Memories       │  │    Sessions       │              │   │
+│  │  │  • Category       │  │  • SessionKey     │              │   │
+│  │  │  • Scope          │  │  • StartTime      │              │   │
+│  │  │  • Key/Value      │  │  • Summary        │              │   │
+│  │  │  • Score          │  │  • Channel        │              │   │
+│  │  │  • Tags (JSON)    │  │  • Tags (JSON)    │              │   │
+│  │  │  • AccessCnt      │  └───────────────────┘              │   │
+│  │  └───────────────────┘                                      │   │
+│  │  ┌───────────────────┐                                      │   │
+│  │  │   Experiences     │                                      │   │
+│  │  │  • TaskDesc       │                                      │   │
+│  │  │  • Actions (JSON) │                                      │   │
+│  │  │  • Result/Score   │                                      │   │
+│  │  │  • UsedCount      │                                      │   │
+│  │  └───────────────────┘                                      │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 2.4.2 Memories 表（结构化记忆）
+
+| 特性 | 说明 |
+|------|------|
+| **存储位置** | `ghostclaw.db`（SQLite） |
+| **ORM** | GORM（`gorm.io/gorm`） |
+| **核心功能** | Key-Value 键值对存储，支持评分排序 |
+| **使用方式** | 通过工具调用主动操作 |
+
+**记忆分类**：
+
+| 类型 | 标识 | 说明 | 示例 |
+|------|------|------|------|
+| 偏好 | `preference` | 用户偏好设置 | 编程语言偏好、UI 风格 |
+| 事实 | `fact` | 客观事实信息 | 用户姓名、工作单位 |
+| 项目 | `project` | 项目相关信息 | 当前项目名称、技术栈 |
+| 技能 | `skill` | 技能/能力信息 | 已掌握的技能 |
+| 上下文 | `context` | 临时上下文信息 | 当前任务背景 |
+
+**记忆工具**：
+
+- `memory_save`：保存新记忆
+- `memory_recall`：按关键词检索记忆
+- `memory_forget`：删除指定记忆
+- `memory_list`：列出所有记忆
+
+#### 2.4.3 Experiences 表（经验学习）
+
+| 特性 | 说明 |
+|------|------|
+| **核心功能** | 记录任务执行过程中的经验，供未来参考 |
+| **评分机制** | `Score` 字段（0.0~1.0）评估经验有效性 |
+| **使用计数** | `UsedCount` 追踪经验被引用的次数 |
+| **数据结构** | `Actions` 以 JSON 数组存储执行步骤 |
+
+#### 2.4.4 记忆整合器（MemoryConsolidator）
+
+负责在对话过程中自动整合记忆：
+
+**触发条件**：
+
+```go
+type MemoryConsolidatorConfig struct {
+    ContextWindowTokens     int     // 上下文窗口大小 (默认 128k)
+    ConsolidationRatio      float64 // 整合触发比例 (默认 0.7 = 70%)
+    MinMessagesToConsolidate int    // 最小整合消息数 (默认 10)
+}
+```
+
+**整合流程**：
+
+1. 监控当前对话的 token 使用量
+2. 当达到预算的 70% 时触发整合
+3. 调用 LLM 分析对话内容
+4. 提取重要信息写入 GORM 数据库（Memories 表）
+5. 生成摘要写入 Sessions 表
+
+#### 2.4.5 上下文注入
+
+每次对话开始时，系统会自动从 GORM 数据库检索相关记忆并注入到系统提示中：
+
+```
+## 关于用户的记忆
+
+## 用户偏好
+- 编程语言: TypeScript
+- UI框架: Next.js + shadcn/ui
+
+## 基本事实
+- 姓名: 张三
+```
+
+### 2.5 任务追踪器
+
+任务追踪器（TaskTracker）替代传统的简单轮数计数器，实现智能的进度管理。
+
+#### 2.5.1 核心功能
+
+**任务生命周期管理**：追踪每个任务的开始、进行中、完成状态。
+
+**工具调用记录**：记录每次工具调用的名称、状态、输入输出摘要。
+
+**智能提醒**：根据工具调用成功率、距上次任务清单更新的轮数，智能判断是否需要提醒模型更新任务清单。
+
+#### 2.5.2 提醒策略
+
+```
+条件：
+1. 距离上次任务清单更新已超过 N 轮
+2. 且有工具调用失败
+3. 或完成了重要任务节点
+
+提醒内容：
+"距离上次任务清单更新已超过5轮。如果任务列表有变化，请调用 todo 工具更新。"
+```
+
+### 2.6 消息状态管理
+
+消息系统（message.go）实现了增强的消息结构，支持工具调用结果的状态标记。
+
+#### 2.6.1 EnrichedMessage 结构
+
+```go
+type EnrichedMessage struct {
+    Role    string      `json:"role"`
+    Content interface{} `json:"content"`
+    Meta    MessageMeta `json:"meta,omitempty"`
+}
+
+type MessageMeta struct {
+    ToolName  string      `json:"tool_name,omitempty"`
+    Status    TaskStatus  `json:"status,omitempty"`    // success/failed/cancelled
+    Duration  int64       `json:"duration,omitempty"`  // 执行时长(ms)
+    Timestamp int64       `json:"timestamp,omitempty"`
+}
+```
+
+#### 2.6.2 状态标记的好处
+
+- **调试友好**：一目了然看到哪些工具调用失败
+- **模型感知**：模型可以根据失败状态调整策略
+- **日志分析**：便于统计工具调用的成功率
+
+### 2.7 全局会话（GlobalSession）
+
+GhostClaw 使用全局单会话模型替代了旧版的多会话管理器。GlobalSession 是一个线程安全的单例对象（`sync.Once`），所有渠道共享同一份对话历史和任务状态。
+
+#### 2.7.1 核心功能
+
+**全局对话历史**：所有渠道的消息统一写入同一个 `History []Message` 切片，确保无论从哪个渠道发来消息，模型看到的都是完整的对话上下文。
+
+**任务并发控制**：通过 `TryStartTask()` / `SetTaskRunning()` 实现互斥的任务调度，确保同一时间只有一个 AgentLoop 在运行，避免并发冲突。
+
+**流式输出分发**：`OutputQueue chan StreamChunk` 提供 500 容量的缓冲通道，将 AgentLoop 的流式输出桥接到 WebSocket 等消费端。
+
+**自动持久化**：每次消息更新后，通过 `autoSaveHistory()` 异步将会话保存到 `SessionPersistManager`，支持断电恢复。
+
+#### 2.7.2 GlobalSession 结构
+
+```go
+type GlobalSession struct {
+    ID          string           // 会话标识
+    History     []Message        // 全局共享的对话历史
+    CreatedAt   time.Time
+    LastSeen    time.Time
+
+    TaskRunning   bool           // 任务并发控制
+    currentTaskID string
+    TaskCtx       context.Context  // 当前任务上下文
+    TaskCancel    context.CancelFunc
+
+    OutputQueue chan StreamChunk // 流式输出队列（供 WebSocket）
+
+    Connected bool              // WebSocket 连接状态
+    mu sync.RWMutex             // 读写锁
+}
+```
+
+#### 2.7.3 渠道消息处理
+
+各渠道（Telegram、Discord、Slack 等）内置 `processUserInput` 方法，直接管理任务生命周期：
+
+```
+渠道收到消息
+    │
+    ▼
+HandleSlashCommandWithDefaults() ─── 斜杠命令？──▶ 处理命令
+    │
+    ▼ (普通消息)
+session.TryStartTask() ─── 有任务运行？──▶ 排队等待
+    │
+    ▼ (获取任务锁)
+AgentLoop(taskCtx, ...)
+    │
+    ▼ (循环结束)
+session.SetTaskRunning(false, taskID)
+```
+
+#### 2.7.4 会话管理命令
+
+| 命令 | 说明 |
+|------|------|
+| `/save [描述]` | 保存当前会话 |
+| `/load [会话ID]` | 加载会话 |
+| `/session` | 显示当前会话信息 |
+| `/session list` | 列出所有保存的会话 |
+| `/new` | 创建新会话 |
+
+#### 2.7.4 持久化流程
+
+```
+用户输入 /save
+         │
+         ▼
+┌─────────────────────────────┐
+│  SessionManager.Save()      │
+│  - 更新 UpdatedAt 时间戳    │
+│  - 序列化 SessionState      │
+│  - 写入 .session.toon 文件  │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  文件存储                    │
+│  sessions/                   │
+│  └── 20240315_143022.session.toon
+└─────────────────────────────┘
+
+用户输入 /load <session_id>
+         │
+         ▼
+┌─────────────────────────────┐
+│  SessionManager.Load()      │
+│  - 读取 .session.toon 文件  │
+│  - 反序列化 SessionState    │
+│  - 恢复 Messages 与 Stage   │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  Stage.RestoreFromState()   │
+│  - 恢复当前演员             │
+│  - 恢复在场演员列表         │
+│  - 恢复场景设定             │
+│  - 恢复自动切换配置         │
+└─────────────────────────────┘
+```
+
+### 2.8 插件系统
+
+插件系统允许用户使用 Lua 脚本扩展系统功能。
+
+#### 2.8.1 插件能力
+
+- 注册自定义工具
+- 调用系统内置工具
+- 访问文件系统
+- 执行 Shell 命令（受权限控制）
+
+#### 2.8.2 插件示例
+
+```lua
+-- plugins/weather/weather.lua
+name = "weather"
+version = "1.0"
+
+function get_weather(args)
+    local city = args.city
+    -- 调用系统工具
+    local result = call_tool("shell", {
+        command = "curl -s 'wttr.in/" .. city .. "?format=3'"
+    })
+    return result
+end
+
+tools = {
+    {
+        name = "get_weather",
+        description = "获取指定城市的天气",
+        parameters = {
+            type = "object",
+            properties = {
+                city = {
+                    type = "string",
+                    description = "城市名称"
+                }
+            },
+            required = {"city"}
+        },
+        handler = "get_weather"
+    }
+}
+```
+
+### 2.9 定时任务系统
+
+定时任务系统（Cron）允许用户配置周期性执行的任务。
+
+#### 2.9.1 任务配置
+
+```toon
+tasks:
+  - name: "daily_report"
+    schedule: "0 9 * * *"  # 每天 9:00
+    action:
+      type: "prompt"
+      content: "生成每日工作报告"
+    enabled: true
+```
+
+#### 2.9.2 任务类型
+
+- `prompt`：向模型发送预设提示
+- `shell`：执行 Shell 命令
+- `plugin`：调用插件方法
+
+---
+
+## 三、数据流程
+
+### 3.1 主循环流程
+
+```
+用户输入
+    │
+    ▼
+┌─────────────────┐
+│  Channel 接收   │
+│ (CLI/WS/HTTP)   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  构建系统提示   │ ◀─── Role + Actor + Stage + Memory
+│                 │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  调用 LLM API   │ ◀─── ModelConfig
+│  (流式响应)     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  解析响应       │
+│  - 文本内容     │
+│  - 工具调用     │
+│  - 切换标记     │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+ 文本输出   工具调用
+    │         │
+    │         ▼
+    │   ┌─────────────────┐
+    │   │  执行工具       │
+    │   │  - shell        │
+    │   │  - search       │
+    │   │  - memory_*     │
+    │   │  - plugin_*     │
+    │   └────────┬────────┘
+    │            │
+    │            ▼
+    │   ┌─────────────────┐
+    │   │  记录结果       │
+    │   │  - 状态标记     │
+    │   │  - 任务追踪     │
+    │   └────────┬────────┘
+    │            │
+    └─────┬──────┘
+          │
+          ▼
+┌─────────────────┐
+│  检查切换标记   │
+│  [GARCLAW:NEXT] │
+│  [GARCLAW:END]  │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+  切换      结束
+  演员      循环
+    │         │
+    │         ▼
+    │   ┌─────────────────┐
+    │   │  等待用户输入   │
+    │   └─────────────────┘
+    │
+    └───▶ 重新构建系统提示，继续循环
+```
+
+### 3.2 角色切换流程
+
+```
+检测到 [GARCLAW:NEXT:actor_name]
+         │
+         ▼
+┌─────────────────────────────┐
+│  1. 验证目标演员存在        │
+│     ActorManager.GetActor() │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  2. 更新消息内容            │
+│     移除切换标记            │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  3. 更新场景状态            │
+│     Stage.SetCurrentActor() │
+│     IncrementAutoTurns()    │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  4. 重建消息历史            │
+│     - 移除旧的系统消息      │
+│     - 构建新的系统提示      │
+│     - 注入记忆上下文        │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  5. 继续调用模型            │
+│     使用新演员的模型配置    │
+└─────────────────────────────┘
+```
+
+---
+
+## 四、文件组织
+
+### 4.1 源码结构
+
+```
+ghostclaw/
+├── main.go              # 程序入口，初始化各组件
+├── AgentLoop.go         # 核心对话循环
+├── CallModel.go         # 模型 API 调用（含消息压缩）
+├── const.go             # 常量定义，基础系统提示
+├── types.go             # Message/ToolUse/Response 类型定义
+│
+├── session.go           # GlobalSession 全局单会话
+├── session_channel.go   # SessionChannel 输出桥接
+├── session_persist.go   # 会话持久化管理
+├── command.go           # 统一斜杠命令处理
+├── db.go                # GORM/SQLite 数据库层
+│
+├── role.go              # 角色模板管理
+├── role_presets.go      # 预置角色定义
+├── actor.go             # 演员实例管理
+├── stage.go             # 场景管理
+├── role_tools.go        # 角色相关工具
+│
+├── skill.go             # 技能管理器
+├── skill_tools.go       # 技能相关命令处理
+│
+├── unified_memory.go    # 统一记忆系统（GORM）
+├── memory_consolidator.go # 记忆整合器
+├── memory_tools.go      # 记忆相关工具
+├── task_tracker.go      # 任务追踪器
+├── task_manager.go      # 后台任务管理
+├── message.go           # 消息状态管理
+│
+├── channel.go           # Channel 接口定义
+├── cmd_channel.go       # 命令行通道
+├── ws_channel.go        # WebSocket 通道
+├── http_server.go       # HTTP 服务器
+├── telegram_channel.go  # Telegram 通道（可选编译）
+├── discord_channel.go   # Discord 通道（可选编译）
+├── slack_channel.go     # Slack 通道（可选编译）
+├── feishu_channel.go    # 飞书通道（可选编译）
+├── irc_channel.go       # IRC 通道（可选编译）
+├── webhook_channel.go   # Webhook 通道（可选编译）
+├── xmpp_channel.go      # XMPP 通道（可选编译）
+├── matrix_channel.go    # Matrix 通道（可选编译）
+├── email_channel.go     # Email 通道
+│
+├── plugin.go            # 插件管理器
+├── plugin_tools.go      # 插件相关工具
+├── cron.go              # 定时任务管理
+├── cron_executor.go     # 任务执行器
+├── cron_tools.go        # 定时任务工具
+│
+├── mcp_server.go        # MCP 服务器
+├── mcp_client.go        # MCP 客户端
+├── mcp_tools.go         # MCP 工具注册
+├── mcp_types.go         # MCP 类型定义
+│
+├── getTools.go          # 工具定义
+├── shell.go             # Shell 执行
+├── file.go              # 文件操作
+├── helper.go            # 辅助函数
+├── config.go            # 配置加载（TOON 格式）
+├── services.go          # 外部服务（搜索、访问）
+├── security.go          # 安全策略（SSRF 防护）
+├── auth.go              # 认证管理
+├── version.go           # 版本信息与启动横幅
+├── tools_alias.go       # 工具别名
+├── profile_loader.go    # Profile 热加载
+├── messagebus.go        # 消息总线
+├── hooks.go             # Hook 管理
+├── heartbeat.go         # 心跳服务
+├── subagent.go          # 子代理管理
+├── embed.go             # 嵌入资源
+└── streamchunk.go       # 流式块定义
+```
+
+### 4.2 数据文件
+
+```
+ghostclaw/
+├── config.toon          # 主配置文件
+├── role.toon            # 自定义角色配置（可选）
+├── actor.toon           # 演员与模型配置（可选）
+├── cron.toon            # 定时任务配置
+├── tools.toon           # 工具别名配置
+├── ghostclaw.db         # SQLite 数据库（记忆+会话+经验）
+├── skills/              # 技能定义目录
+│   ├── code_review.md
+│   ├── translation.md
+│   └── custom/          # 自定义技能
+├── plugins/             # 插件目录
+│   ├── weather/weather.lua
+│   └── exchange/exchange.lua
+├── roles/               # 角色定义目录
+│   ├── coder.md
+│   ├── novelist.md
+│   └── custom/          # 自定义角色
+├── profiles/            # 系统提示 Profile
+│   ├── SOUL.md
+│   ├── TOOLS.md
+│   ├── AGENT.md
+│   └── USER.md
+└── webui/               # SvelteKit 前端
+```
+
+### 4.3 角色目录结构
+
+```
+garclaw/
+└── roles/                    # 角色模板目录
+    ├── coder.md                 # 程序员
+    ├── novelist.md              # 小说家
+    ├── translator.md            # 翻译官
+    ├── teacher.md               # 教师
+    ├── narrator.md              # 叙事者（小说专用）
+    ├── protagonist.md           # 主角模板
+    ├── antagonist.md            # 反派模板
+    │
+    └── custom/                  # 自定义角色（可自由修改）
+        ├── my_assistant.md
+        ├── psychologist.md      # 心理咨询师
+        ├── chef.md              # 美食顾问
+        └── fitness_coach.md      # 健身教练
+```
+
+系统同时支持 `.md` (Markdown) 与 `.toon` 两种格式，推荐使用 Markdown 格式，更易读易写。
+
+---
+
+## 五、命令系统
+
+### 5.1 斜杠命令
+
+| 命令 | 说明 |
+|------|------|
+| `/role [name]` | 切换角色（独立模式） |
+| `/role list` | 列出所有角色 |
+| `/actor [name]` | 切换演员（协作模式） |
+| `/actor list` | 列出所有演员 |
+| `/stage auto on/off` | 开启/关闭自动切换 |
+| `/stage pause/resume` | 暂停/恢复自动切换 |
+| `/stage setting` | 设置场景信息 |
+| `/next` | 手动触发下一角色 |
+| `/skill` | 列出所有技能 |
+| `/skill <名称>` | 激活技能 |
+| `/skill create <名称>` | 创建新技能 |
+| `/save [描述]` | 保存当前会话 |
+| `/load [会话ID]` | 加载会话 |
+| `/session` | 显示会话信息 |
+| `/new` | 创建新会话 |
+| `/memory` | 查看记忆列表 |
+| `/cron` | 查看定时任务 |
+| `/plugin` | 管理插件 |
+| `/exit` | 退出程序 |
+
+### 5.2 命令处理流程
+
+```go
+// role_tools.go
+func ProcessSlashCommand(line string, pm *RoleManager, am *ActorManager, stage *Stage) (handled bool, response string) {
+    parts := strings.Fields(line)
+    if len(parts) == 0 {
+        return false, ""
+    }
+
+    switch parts[0] {
+    case "/role":
+        return handleRoleCommand(parts[1:], pm, stage)
+    case "/actor":
+        return handleActorCommand(parts[1:], am, stage)
+    case "/stage":
+        return handleStageCommand(parts[1:], stage, am)
+    // ...
+    }
+    return false, ""
+}
+```
+
+---
+
+## 六、扩展指南
+
+### 6.1 添加新角色
+
+1. 在 `roles/` 目录下创建 `.md` 文件
+2. 文件名即为角色标识符（如 `my_role.md`）
+3. 填写角色定义（Markdown 格式）：
+
+```markdown
+# 我的角色
+
+角色的一句话描述
+
+## 基本信息
+
+- **图标**: 🎭
+- **预设**: false
+
+## 身份
+
+你是...
+（详细描述角色的身份与职责）
+
+## 性格特质
+
+性格特点描述
+
+## 说话风格
+
+说话方式描述
+
+## 专业领域
+
+- 技能1
+- 技能2
+- 技能3
+
+## 行为准则
+
+- 准则1
+- 准则2
+
+## 禁止事项
+
+- 禁止事项1
+- 禁止事项2
+
+## 工具权限
+
+- 模式: allowlist
+- search
+- memory_save
+- memory_recall
+
+## 示例对话
+
+**用户**: 示例问题
+
+**助手**: 示例回答
+
+## 标签
+
+- 自定义
+- 示例
+```
+
+### Markdown 格式字段说明
+
+| 字段 | 说明 |
+|------|------|
+| 标题（#） | 角色显示名称 |
+| 基本信息 | 图标、是否预设 |
+| 身份 | 角色的身份定位与职责 |
+| 性格特质 | 角色的性格特点 |
+| 说话风格 | 角色的说话方式 |
+| 专业领域 | 角色的专业技能列表 |
+| 行为准则 | 角色应遵循的规则 |
+| 禁止事项 | 角色禁止的行为 |
+| 工具权限 | 模式（all/allowlist/denylist）与工具列表 |
+| 示例对话 | 用户与助手的对话示例 |
+| 标签 | 角色标签列表 |
+
+### 6.2 添加新工具
+
+1. 在 `getTools.go` 中定义工具 schema
+2. 在 `AgentLoop.go` 的 `executeTool` 函数中添加处理逻辑
+3. 如需要，添加对应的工具处理函数
+
+### 6.3 添加新通道
+
+1. 实现 `Channel` 接口：
+
+```go
+type Channel interface {
+    WriteChunk(chunk StreamChunk) error
+    ReadCommand() (string, error)
+    Close() error
+}
+```
+
+2. 在 `main.go` 中初始化新通道
+3. 根据需要启动对应的监听协程
+
+---
+
+## 七、最佳实践
+
+### 7.1 角色设计建议
+
+**身份明确**：角色的身份定位应该清晰明确，避免模糊不清的职责范围。一个好的角色应该让用户一眼就能知道它适合做什么、不适合做什么。
+
+**权限最小化**：只赋予角色必要的工具权限，避免过度授权带来的安全风险。例如，小说创作角色通常不需要执行 Shell 命令的权限。
+
+**示例丰富**：提供多个高质量的示例对话，帮助模型理解角色的说话风格与行为模式。示例应该覆盖典型的使用场景。
+
+### 7.2 多模型协作建议
+
+**导演掌控**：在小说创作场景中，让叙事者（Narrator）角色掌控全局，负责场景描写与角色切换。叙事者应该是全知视角，知道所有角色的过去与未来。
+
+**角色独立**：每个故事角色应该有独立的 Actor 配置，包括独特的性格、背景与说话风格。角色的内心活动与对话应该真实可信。
+
+**切换适度**：自动切换的最大轮数应该设置合理，避免无限循环。通常 10-20 轮是比较合适的范围。
+
+### 7.3 记忆系统建议
+
+**分类存储**：使用正确的记忆类型（fact/event/preference/context），便于后续检索与管理。
+
+**关键词准确**：保存记忆时提供准确的关键词，便于后续检索。
+
+**定期清理**：定期使用 `memory_list` 查看记忆列表，删除过时或不再相关的记忆。
+
+---
+
+## 八、Shell 工具系统
+
+### 8.1 双轨设计
+
+GarClaw 采用双轨 Shell 工具设计，根据命令特性智能选择执行方式：
+
+#### shell - 同步执行
+
+适用于快速命令，有超时保护：
+
+```go
+// 默认超时 60 秒，可通过配置调整
+func runShell(ctx context.Context, command string) CmdResult {
+    if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+        timeout := time.Duration(globalTimeoutConfig.Shell) * time.Second
+        ctx, cancel = context.WithTimeout(ctx, timeout)
+        defer cancel()
+    }
+    // ... 执行命令
+}
+```
+
+**特点**：
+- 同步阻塞执行
+- 默认 60 秒超时
+- 超时后返回错误
+- 适合快速操作
+
+**适用命令**：`ls`, `cat`, `mkdir`, `grep`, `find`, `echo`, `pwd`, `git status`
+
+#### shell_delayed - 后台执行
+
+适用于长时间任务，无超时限制：
+
+```go
+func (tm *TaskManager) StartTask(command, description string, wakeAfterMinutes int) *BackgroundTask {
+    task := &BackgroundTask{
+        ID:          generateTaskID(),
+        Command:     command,
+        Description: description,
+        Status:      TaskStatusRunning,
+        StartTime:   time.Now(),
+        WakeAfter:   time.Now().Add(time.Duration(wakeAfterMinutes) * time.Minute),
+    }
+    // 后台启动命令
+    cmd := exec.CommandContext(tm.ctx, "sh", "-c", command)
+    cmd.Start()
+    // ...
+}
+```
+
+**特点**：
+- 异步后台执行
+- 无超时限制
+- 可随时检查状态
+- 可主动终止
+
+**适用命令**：`ssh`, `scp`, `rsync`, `apt install`, `make`, `docker build`
+
+### 8.2 后台任务管理
+
+| 工具 | 功能 |
+|------|------|
+| `shell_delayed` | 启动后台任务 |
+| `shell_delayed_check` | 检查任务状态和输出 |
+| `shell_delayed_terminate` | 终止任务（SIGTERM/SIGKILL） |
+| `shell_delayed_list` | 列出所有后台任务 |
+| `shell_delayed_wait` | 延长唤醒等待时间 |
+| `shell_delayed_remove` | 移除已完成任务记录 |
+
+### 8.3 超时配置
+
+在 `config.toon` 中配置：
+
+```toml
+timeout = {
+    shell = 60     # Shell 命令超时
+    http = 120     # HTTP 请求超时
+    plugin = 30    # 插件调用超时
+    browser = 30   # 浏览器操作超时
+}
+```
+
+配置结构：
+
+```go
+type TimeoutConfig struct {
+    Shell   int `json:"shell"`    // Shell 命令超时
+    HTTP    int `json:"http"`     // HTTP 请求超时
+    Plugin  int `json:"plugin"`   // 插件 HTTP 超时
+    Browser int `json:"browser"`  // 浏览器操作超时
+}
+```
+
+---
+
+## 九、故障排查
+
+### 9.1 常见问题
+
+**角色切换不生效**：检查目标演员是否存在于 `actor.toon` 中，检查切换标记格式是否正确。
+
+**工具调用失败**：查看错误日志，检查工具参数是否正确。使用 `/debug on` 开启调试模式查看详细信息。
+
+**模型输出异常**：检查系统提示是否正确构建，检查记忆上下文是否干扰了模型输出。
+
+### 9.2 调试技巧
+
+开启调试模式后，系统会输出详细的执行信息：
+
+- API 请求参数
+- 工具调用详情
+- 消息历史长度
+- 切换标记检测结果
+
+---
+
+*文档版本：2.0*
+*最后更新：2026年3月*

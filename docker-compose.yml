@@ -1,0 +1,175 @@
+# GarClaw Docker Compose 配置
+# 用法: docker compose build [target]
+# 目标: linux-amd64, linux-arm64, alpine-amd64, alpine-arm64, loong64, darwin-amd64, darwin-arm64, windows-amd64, freebsd-amd64, ghostbsd-amd64
+
+services:
+  # Linux AMD64 (glibc)
+  linux-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-linux-amd64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # Linux ARM64 (glibc)
+  linux-arm64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: linux
+        TARGETARCH: arm64
+        BINARY_NAME: garclaw-linux-arm64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # Alpine Linux AMD64 (musl, 静态链接)
+  alpine-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-alpine-amd64
+        STATIC_LINK: true
+    volumes:
+      - ./dist:/app/dist
+
+  # Alpine Linux ARM64 (musl, 静态链接)
+  alpine-arm64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: linux
+        TARGETARCH: arm64
+        BINARY_NAME: garclaw-alpine-arm64
+        STATIC_LINK: true
+    volumes:
+      - ./dist:/app/dist
+
+  # LoongArch 64位 (龙芯处理器)
+  loong64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: linux
+        TARGETARCH: loong64
+        BINARY_NAME: garclaw-linux-loong64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # macOS Intel (x86_64)
+  darwin-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: darwin
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-darwin-amd64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # macOS Apple Silicon (M1/M2/M3)
+  darwin-arm64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: darwin
+        TARGETARCH: arm64
+        BINARY_NAME: garclaw-darwin-arm64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # Windows AMD64
+  windows-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: windows
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-windows-amd64.exe
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # FreeBSD AMD64
+  freebsd-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: freebsd
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-freebsd-amd64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # GhostBSD AMD64 (基于 FreeBSD)
+  ghostbsd-amd64:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+      args:
+        TARGETOS: freebsd
+        TARGETARCH: amd64
+        BINARY_NAME: garclaw-ghostbsd-amd64
+        STATIC_LINK: false
+    volumes:
+      - ./dist:/app/dist
+
+  # 全部构建
+  all:
+    extends:
+      service: linux-amd64
+    depends_on:
+      - linux-amd64
+      - linux-arm64
+      - alpine-amd64
+      - alpine-arm64
+      - loong64
+      - darwin-amd64
+      - darwin-arm64
+      - windows-amd64
+      - freebsd-amd64
+      - ghostbsd-amd64
+
+  # 运行时镜像 (仅 Linux AMD64)
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    ports:
+      - "10086:10086"
+    volumes:
+      - ./roles:/app/roles
+      - ./skills:/app/skills
+      - ./plugins:/app/plugins
+      - ./uploads:/app/uploads
+    restart: unless-stopped
