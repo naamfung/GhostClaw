@@ -1,6 +1,6 @@
-# GarClaw 多渠道配置指南
+# GhostClaw 多渠道配置指南
 
-本文档详细介绍如何配置 GarClaw 连接各种聊天平台。
+本文档详细介绍如何配置 GhostClaw 连接各种聊天平台。GhostClaw 支持 12 种交互渠道，所有渠道共享全局会话（GlobalSession）。
 
 ---
 
@@ -366,7 +366,7 @@ ENABLE_ALL_CHANNELS=1 ./build.sh
 设置环境变量启用调试：
 
 ```bash
-DEBUG=1 ./garclaw
+DEBUG=1 ./ghostclaw
 ```
 
 ---
@@ -381,4 +381,4 @@ DEBUG=1 ./garclaw
 
 ---
 
-*GarClaw 多渠道配置指南 - 让 AI 助手无处不在*
+*GhostClaw 多渠道配置指南 - 让 AI 助手无处不在*

@@ -1,77 +1,69 @@
-# GarClaw 系统设计说明
+# GhostClaw 系统设计说明
 
 ## 一、系统架构概述
 
-GarClaw 是一个用 Go 语言编写的 AI Agent 框架，采用模块化设计，支持多角色、多模型协作。系统的核心设计理念是"角色即服务"——每个角色（Role）都有独立的能力边界与行为约束，可以在不同模型间灵活切换。
+GhostClaw 是 GarClaw 的架构重构版本，使用 Go 语言编写的 AI Agent 框架，采用模块化设计，支持多角色、多模型协作。系统的核心设计理念是"角色即服务"——每个角色（Role）都有独立的能力边界与行为约束，可以在不同模型间灵活切换。与 GarClaw 最大的区别在于：GhostClaw 采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，所有渠道共享同一个对话上下文。
 
 ### 1.1 核心架构图
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              GarClaw 系统                                    │
+│                             GhostClaw 系统                                   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                     │
-│  │   输入层    │    │   控制层    │    │   输出层    │                     │
-│  │  Channels   │───▶│  AgentLoop  │───▶│  Channels   │                     │
-│  │ (CLI/WS/HTTP)│    │             │    │             │                     │
-│  └─────────────┘    └──────┬──────┘    └─────────────┘                     │
+│  ┌──────────────────────────────────────────────────────────────────┐     │
+│  │                    输入层 (12 渠道)                                │     │
+│  │ CLI │ WS │ HTTP │ Email │ Telegram │ Discord │ Slack │ Feishu     │     │
+│  │ IRC │ Webhook │ XMPP │ Matrix                                      │     │
+│  └─────────────────────────┬────────────────────────────────────────┘     │
 │                            │                                                │
-│                            ▼                                                │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        角色系统 (Role System)                      │   │
-│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │   │
-│  │  │   Stage     │───▶│   Actor     │───▶│   Role   │              │   │
-│  │  │  (场景管理)  │    │  (演员实例)  │    │  (角色模板)  │              │   │
-│  │  └──────┬──────┘    └──────┬──────┘    └─────────────┘              │   │
-│  │         │                  │                                         │   │
-│  │         │                  ▼                                         │   │
-│  │         │          ┌─────────────┐                                   │   │
-│  │         │          │ ModelConfig │                                   │   │
-│  │         │          │  (模型配置)  │                                   │   │
-│  │         │          └─────────────┘                                   │   │
-│  │         │                                                            │   │
-│  │         ▼                                                            │   │
-│  │  ┌─────────────┐    ┌─────────────┐                                 │   │
-│  │  │  Session    │    │   Session   │                                 │   │
-│  │  │  Manager    │◀──▶│   State     │                                 │   │
-│  │  │ (会话管理)   │    │  (会话状态)  │                                 │   │
-│  │  └─────────────┘    └─────────────┘                                 │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
+│                   ┌────────▼────────┐                                      │
+│                   │  GlobalSession  │ ◀── 全局单会话，所有渠道共享            │
+│                   │  (全局会话单例)   │                                      │
+│                   └────────┬────────┘                                      │
 │                            │                                                │
-│                            ▼                                                │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        核心服务层                                     │   │
-│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │   │
-│  │  │   Memory    │    │ TaskTracker │    │   Plugins   │              │   │
-│  │  │  (记忆系统)  │    │ (任务追踪)   │    │  (插件系统)  │              │   │
-│  │  └─────────────┘    └─────────────┘    └─────────────┘              │   │
-│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │   │
-│  │  │    Cron     │    │   Tools     │    │   Config    │              │   │
-│  │  │ (定时任务)   │    │  (工具集)    │    │  (配置管理)  │              │   │
-│  │  └─────────────┘    └─────────────┘    └─────────────┘              │   │
-│  │  ┌─────────────┐                                                      │   │
-│  │  │  Session    │                                                      │   │
-│  │  │  Manager    │                                                      │   │
-│  │  │ (会话持久化) │                                                      │   │
-│  │  └─────────────┘                                                      │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                            │                                                │
-│                            ▼                                                │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        外部服务层                                     │   │
-│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │   │
-│  │  │   LLM API   │    │  Web Search │    │   Shell     │              │   │
-│  │  │ (大模型接口) │    │ (网络搜索)   │    │ (命令执行)   │              │   │
-│  │  └─────────────┘    └─────────────┘    └─────────────┘              │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────▼────────────────────────────────────────┐     │
+│  │                        控制层                                      │     │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐             │     │
+│  │  │  AgentLoop  │    │ processInput│    │  HandleCmd  │             │     │
+│  │  │  (核心循环)  │    │  (输入处理)   │    │  (命令路由)   │             │     │
+│  │  └──────┬──────┘    └─────────────┘    └─────────────┘             │     │
+│  └─────────┼────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                     角色系统 (Role System)                        │     │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐      │     │
+│  │  │  Stage   │──▶│  Actor   │──▶│   Role   │   │ModelCfg  │      │     │
+│  │  │ (场景管理) │   │ (演员实例) │   │ (角色模板) │   │ (模型配置) │      │     │
+│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘      │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                        核心服务层                                   │     │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │     │
+│  │  │  GORM    │ │TaskTrack │ │ Plugins  │ │  Cron    │            │     │
+│  │  │  /SQLite │ │(任务追踪) │ │ (插件系统)│ │(定时任务) │            │     │
+│  │  │ (记忆存储)│ └──────────┘ └──────────┘ └──────────┘            │     │
+│  │  └──────────┘ ┌──────────┐ ┌──────────┐ ┌──────────┐            │     │
+│  │               │  Tools   │ │ MCP S/C  │ │ Session  │            │     │
+│  │               │ (工具集)  │ │(MCP服务) │ │ Persist  │            │     │
+│  │               └──────────┘ └──────────┘ └──────────┘            │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
+│            │                                                                │
+│  ┌─────────▼────────────────────────────────────────────────────────┐     │
+│  │                        外部服务层                                   │     │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐                     │     │
+│  │  │  LLM API │   │Web Search│   │  Shell   │                     │     │
+│  │  │(大模型接口)│   │(网络搜索) │   │(命令执行) │                     │     │
+│  │  └──────────┘   └──────────┘   └──────────┘                     │     │
+│  └──────────────────────────────────────────────────────────────────┘     │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 设计原则
 
-GarClaw 的设计遵循以下核心原则：
+GhostClaw 的设计遵循以下核心原则：
 
 **分层解耦**：系统采用清晰的分层架构，输入输出层、控制层、服务层、外部接口层各司其职，层与层之间通过定义良好的接口通信，降低了组件间的耦合度。这种设计使得各层可以独立演进，例如可以轻松添加新的输入通道（如 Slack 集成）而不影响核心逻辑。
 
@@ -275,48 +267,47 @@ GarClaw 支持多模型协作，可以在对话过程中动态切换不同的模
 8. 继续循环，调用新演员对应的模型
 ```
 
-### 2.4 双轨记忆系统
+### 2.4 GORM/SQLite 记忆系统
 
-GarClaw 采用创新的双轨记忆系统设计，两套系统相互协作，共同提供完整的记忆能力。
+GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的记忆系统，替代了旧版 GarClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。所有记忆数据统一存储在 `ghostclaw.db` 文件中，通过 GORM 提供的类型安全的数据库操作接口进行管理。
 
-#### 2.4.1 系统架构
+#### 2.4.1 数据库架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        GarClaw 记忆系统                              │
+│                     GhostClaw 记忆系统                                │
 ├─────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    memory/ 目录                               │   │
-│  │  ┌───────────────────┐    ┌───────────────────┐              │   │
-│  │  │   memory.toon     │    │    MEMORY.md      │              │   │
-│  │  │  结构化键值存储    │    │   长期记忆        │              │   │
-│  │  │  • 精确查询        │    │   • 用户偏好      │              │   │
-│  │  │  • 主动存储        │    │   • 事实信息      │              │   │
-│  │  │  (工具调用操作)    │    │   (自动整合)      │              │   │
-│  │  └───────────────────┘    └─────────┬─────────┘              │   │
-│  │                                      │                        │   │
-│  │                                      ▼                        │   │
-│  │                            ┌───────────────────┐              │   │
-│  │                            │    HISTORY.md     │              │   │
-│  │                            │   会话历史摘要    │              │   │
-│  │                            └───────────────────┘              │   │
-│  └─────────────────────────────────────────────────────────────┘   │
 │                                                                      │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    sessions/ 目录                             │   │
-│  │  • 完整会话快照 (*.session.toon)                              │   │
-│  │  • 支持会话恢复/加载                                          │   │
+│  │                  GORM / SQLite (ghostclaw.db)                │   │
+│  │  ┌───────────────────┐  ┌───────────────────┐              │   │
+│  │  │    Memories       │  │    Sessions       │              │   │
+│  │  │  • Category       │  │  • SessionKey     │              │   │
+│  │  │  • Scope          │  │  • StartTime      │              │   │
+│  │  │  • Key/Value      │  │  • Summary        │              │   │
+│  │  │  • Score          │  │  • Channel        │              │   │
+│  │  │  • Tags (JSON)    │  │  • Tags (JSON)    │              │   │
+│  │  │  • AccessCnt      │  └───────────────────┘              │   │
+│  │  └───────────────────┘                                      │   │
+│  │  ┌───────────────────┐                                      │   │
+│  │  │   Experiences     │                                      │   │
+│  │  │  • TaskDesc       │                                      │   │
+│  │  │  • Actions (JSON) │                                      │   │
+│  │  │  • Result/Score   │                                      │   │
+│  │  │  • UsedCount      │                                      │   │
+│  │  └───────────────────┘                                      │   │
 │  └─────────────────────────────────────────────────────────────┘   │
+│                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 2.4.2 系统一：MemoryManager（结构化记忆）
+#### 2.4.2 Memories 表（结构化记忆）
 
 | 特性 | 说明 |
 |------|------|
-| **存储位置** | `memory/memory.toon` |
-| **数据格式** | TOON 结构化格式 |
-| **核心功能** | Key-Value 键值对存储 |
+| **存储位置** | `ghostclaw.db`（SQLite） |
+| **ORM** | GORM（`gorm.io/gorm`） |
+| **核心功能** | Key-Value 键值对存储，支持评分排序 |
 | **使用方式** | 通过工具调用主动操作 |
 
 **记忆分类**：
@@ -336,43 +327,14 @@ GarClaw 采用创新的双轨记忆系统设计，两套系统相互协作，共
 - `memory_forget`：删除指定记忆
 - `memory_list`：列出所有记忆
 
-#### 2.4.3 系统二：TwoLayerMemorySystem（两层记忆）
+#### 2.4.3 Experiences 表（经验学习）
 
 | 特性 | 说明 |
 |------|------|
-| **存储位置** | `memory/` 目录 |
-| **文件组成** | `MEMORY.md` + `HISTORY.md` |
-| **数据格式** | Markdown 文本格式 |
-| **使用方式** | 系统自动整合 |
-
-**MEMORY.md 结构**：
-
-```markdown
-# 长期记忆 (MEMORY.md)
-
-## Preferences
-- 编程语言: TypeScript
-
-## Facts
-- 姓名: 张三
-
-## Projects
-- 当前项目: GarClaw AI Agent 框架开发
-
-## Skills
-- 熟练: TypeScript, Go, Lua
-```
-
-**HISTORY.md 结构**：
-
-```markdown
-# 会话历史记录 (HISTORY.md)
-
-## 会话记录
-
-[2026-03-27 15:30] web_session_001 | 25 messages | 讨论了记忆系统设计 | web
-[2026-03-27 14:00] telegram_12345 | 12 messages | 查询天气汇率 | telegram
-```
+| **核心功能** | 记录任务执行过程中的经验，供未来参考 |
+| **评分机制** | `Score` 字段（0.0~1.0）评估经验有效性 |
+| **使用计数** | `UsedCount` 追踪经验被引用的次数 |
+| **数据结构** | `Actions` 以 JSON 数组存储执行步骤 |
 
 #### 2.4.4 记忆整合器（MemoryConsolidator）
 
@@ -393,12 +355,12 @@ type MemoryConsolidatorConfig struct {
 1. 监控当前对话的 token 使用量
 2. 当达到预算的 70% 时触发整合
 3. 调用 LLM 分析对话内容
-4. 提取重要信息写入 MEMORY.md
-5. 生成摘要写入 HISTORY.md
+4. 提取重要信息写入 GORM 数据库（Memories 表）
+5. 生成摘要写入 Sessions 表
 
 #### 2.4.5 上下文注入
 
-每次对话开始时，系统会自动将相关记忆注入到系统提示中：
+每次对话开始时，系统会自动从 GORM 数据库检索相关记忆并注入到系统提示中：
 
 ```
 ## 关于用户的记忆
@@ -409,11 +371,6 @@ type MemoryConsolidatorConfig struct {
 
 ## 基本事实
 - 姓名: 张三
-
-## 最近的对话记录
-
-- [2026-03-27 15:30] 讨论了记忆系统的设计与实现
-- [2026-03-27 14:00] 查询了北京天气和美元汇率
 ```
 
 ### 2.5 任务追踪器
@@ -467,52 +424,69 @@ type MessageMeta struct {
 - **模型感知**：模型可以根据失败状态调整策略
 - **日志分析**：便于统计工具调用的成功率
 
-### 2.7 会话管理器
+### 2.7 全局会话（GlobalSession）
 
-会话管理器（SessionManager）负责会话状态的持久化，确保用户的对话进度不会丢失。
+GhostClaw 使用全局单会话模型替代了旧版的多会话管理器。GlobalSession 是一个线程安全的单例对象（`sync.Once`），所有渠道共享同一份对话历史和任务状态。
 
 #### 2.7.1 核心功能
 
-**会话状态管理**：每个会话包含唯一的 SessionID、创建时间、更新时间、描述信息、场景状态（Stage）与对话历史（Messages）。
+**全局对话历史**：所有渠道的消息统一写入同一个 `History []Message` 切片，确保无论从哪个渠道发来消息，模型看到的都是完整的对话上下文。
 
-**持久化存储**：会话以 `.session.toon` 格式存储在 `sessions/` 目录，使用 toon 格式（类 YAML）便于阅读与编辑。
+**任务并发控制**：通过 `TryStartTask()` / `SetTaskRunning()` 实现互斥的任务调度，确保同一时间只有一个 AgentLoop 在运行，避免并发冲突。
 
-**自动保存**：支持定时自动保存功能，默认每 5 分钟自动保存当前会话，防止意外丢失。
+**流式输出分发**：`OutputQueue chan StreamChunk` 提供 500 容量的缓冲通道，将 AgentLoop 的流式输出桥接到 WebSocket 等消费端。
 
-**会话恢复**：可以从保存的会话文件中恢复完整的对话状态，包括场景设定、在场演员、对话历史等。
+**自动持久化**：每次消息更新后，通过 `autoSaveHistory()` 异步将会话保存到 `SessionPersistManager`，支持断电恢复。
 
-#### 2.7.2 会话状态结构
+#### 2.7.2 GlobalSession 结构
 
 ```go
-type SessionState struct {
-    SessionID   string    `json:"session_id"`      // 会话唯一标识
-    CreatedAt   time.Time `json:"created_at"`      // 创建时间
-    UpdatedAt   time.Time `json:"updated_at"`      // 最后更新时间
-    Description string    `json:"description"`     // 会话描述
+type GlobalSession struct {
+    ID          string           // 会话标识
+    History     []Message        // 全局共享的对话历史
+    CreatedAt   time.Time
+    LastSeen    time.Time
 
-    Stage       StageState  `json:"stage"`         // 场景状态
-    Messages    []Message   `json:"messages"`      // 对话历史
-}
+    TaskRunning   bool           // 任务并发控制
+    currentTaskID string
+    TaskCtx       context.Context  // 当前任务上下文
+    TaskCancel    context.CancelFunc
 
-type StageState struct {
-    CurrentActor   string           `json:"current_actor"`    // 当前演员
-    PresentActors  []string         `json:"present_actors"`   // 在场演员
-    Setting        StageSetting     `json:"setting"`          // 场景设定
-    AutoSwitch     AutoSwitchConfig `json:"auto_switch"`      // 自动切换配置
+    OutputQueue chan StreamChunk // 流式输出队列（供 WebSocket）
+
+    Connected bool              // WebSocket 连接状态
+    mu sync.RWMutex             // 读写锁
 }
 ```
 
-#### 2.7.3 会话管理命令
+#### 2.7.3 渠道消息处理
+
+各渠道（Telegram、Discord、Slack 等）内置 `processUserInput` 方法，直接管理任务生命周期：
+
+```
+渠道收到消息
+    │
+    ▼
+HandleSlashCommandWithDefaults() ─── 斜杠命令？──▶ 处理命令
+    │
+    ▼ (普通消息)
+session.TryStartTask() ─── 有任务运行？──▶ 排队等待
+    │
+    ▼ (获取任务锁)
+AgentLoop(taskCtx, ...)
+    │
+    ▼ (循环结束)
+session.SetTaskRunning(false, taskID)
+```
+
+#### 2.7.4 会话管理命令
 
 | 命令 | 说明 |
 |------|------|
 | `/save [描述]` | 保存当前会话 |
-| `/load [会话ID]` | 加载会话（不带ID则列出所有会话） |
+| `/load [会话ID]` | 加载会话 |
 | `/session` | 显示当前会话信息 |
 | `/session list` | 列出所有保存的会话 |
-| `/session delete <ID>` | 删除指定会话 |
-| `/session export <文件>` | 导出会话到JSON文件 |
-| `/session import <文件>` | 从JSON文件导入会话 |
 | `/new` | 创建新会话 |
 
 #### 2.7.4 持久化流程
@@ -746,33 +720,48 @@ tasks:
 ### 4.1 源码结构
 
 ```
-garclaw/
+ghostclaw/
 ├── main.go              # 程序入口，初始化各组件
 ├── AgentLoop.go         # 核心对话循环
-├── CallModel.go         # 模型 API 调用
+├── CallModel.go         # 模型 API 调用（含消息压缩）
 ├── const.go             # 常量定义，基础系统提示
+├── types.go             # Message/ToolUse/Response 类型定义
 │
-├── role.go           # 角色模板管理
-├── role_presets.go   # 预置角色定义
+├── session.go           # GlobalSession 全局单会话
+├── session_channel.go   # SessionChannel 输出桥接
+├── session_persist.go   # 会话持久化管理
+├── command.go           # 统一斜杠命令处理
+├── db.go                # GORM/SQLite 数据库层
+│
+├── role.go              # 角色模板管理
+├── role_presets.go      # 预置角色定义
 ├── actor.go             # 演员实例管理
 ├── stage.go             # 场景管理
-├── role_tools.go     # 角色相关工具
+├── role_tools.go        # 角色相关工具
 │
 ├── skill.go             # 技能管理器
 ├── skill_tools.go       # 技能相关命令处理
 │
-├── session.go           # 会话管理器（持久化）
-├── session_tools.go     # 会话相关命令处理
-│
-├── memory.go            # 记忆系统核心
+├── unified_memory.go    # 统一记忆系统（GORM）
+├── memory_consolidator.go # 记忆整合器
 ├── memory_tools.go      # 记忆相关工具
 ├── task_tracker.go      # 任务追踪器
+├── task_manager.go      # 后台任务管理
 ├── message.go           # 消息状态管理
 │
 ├── channel.go           # Channel 接口定义
 ├── cmd_channel.go       # 命令行通道
 ├── ws_channel.go        # WebSocket 通道
 ├── http_server.go       # HTTP 服务器
+├── telegram_channel.go  # Telegram 通道（可选编译）
+├── discord_channel.go   # Discord 通道（可选编译）
+├── slack_channel.go     # Slack 通道（可选编译）
+├── feishu_channel.go    # 飞书通道（可选编译）
+├── irc_channel.go       # IRC 通道（可选编译）
+├── webhook_channel.go   # Webhook 通道（可选编译）
+├── xmpp_channel.go      # XMPP 通道（可选编译）
+├── matrix_channel.go    # Matrix 通道（可选编译）
+├── email_channel.go     # Email 通道
 │
 ├── plugin.go            # 插件管理器
 ├── plugin_tools.go      # 插件相关工具
@@ -780,42 +769,57 @@ garclaw/
 ├── cron_executor.go     # 任务执行器
 ├── cron_tools.go        # 定时任务工具
 │
+├── mcp_server.go        # MCP 服务器
+├── mcp_client.go        # MCP 客户端
+├── mcp_tools.go         # MCP 工具注册
+├── mcp_types.go         # MCP 类型定义
+│
 ├── getTools.go          # 工具定义
 ├── shell.go             # Shell 执行
 ├── file.go              # 文件操作
 ├── helper.go            # 辅助函数
-├── config.go            # 配置加载
-└── services.go          # 外部服务（搜索、访问）
+├── config.go            # 配置加载（TOON 格式）
+├── services.go          # 外部服务（搜索、访问）
+├── security.go          # 安全策略（SSRF 防护）
+├── auth.go              # 认证管理
+├── version.go           # 版本信息与启动横幅
+├── tools_alias.go       # 工具别名
+├── profile_loader.go    # Profile 热加载
+├── messagebus.go        # 消息总线
+├── hooks.go             # Hook 管理
+├── heartbeat.go         # 心跳服务
+├── subagent.go          # 子代理管理
+├── embed.go             # 嵌入资源
+└── streamchunk.go       # 流式块定义
 ```
 
 ### 4.2 数据文件
 
 ```
-garclaw/
+ghostclaw/
 ├── config.toon          # 主配置文件
 ├── role.toon            # 自定义角色配置（可选）
 ├── actor.toon           # 演员与模型配置（可选）
 ├── cron.toon            # 定时任务配置
-├── memory/              # 记忆存储目录
-│   ├── memory.toon      # 结构化记忆（Key-Value）
-│   ├── MEMORY.md        # 长期记忆（自动整合）
-│   └── HISTORY.md       # 会话历史摘要（自动整合）
-├── sessions/            # 会话存储目录
-│   ├── 20240315_143022.session.toon
-│   └── 20240314_100000.session.toon
+├── tools.toon           # 工具别名配置
+├── ghostclaw.db         # SQLite 数据库（记忆+会话+经验）
 ├── skills/              # 技能定义目录
-│   ├── code_review.md   # 代码审查技能
-│   ├── translation.md   # 翻译技能
+│   ├── code_review.md
+│   ├── translation.md
 │   └── custom/          # 自定义技能
 ├── plugins/             # 插件目录
-│   ├── weather/
-│   │   └── weather.lua
-│   └── exchange/
-│       └── exchange.lua
-└── roles/               # 角色定义目录
-    ├── coder.md
-    ├── novelist.md
-    └── custom/          # 自定义角色
+│   ├── weather/weather.lua
+│   └── exchange/exchange.lua
+├── roles/               # 角色定义目录
+│   ├── coder.md
+│   ├── novelist.md
+│   └── custom/          # 自定义角色
+├── profiles/            # 系统提示 Profile
+│   ├── SOUL.md
+│   ├── TOOLS.md
+│   ├── AGENT.md
+│   └── USER.md
+└── webui/               # SvelteKit 前端
 ```
 
 ### 4.3 角色目录结构

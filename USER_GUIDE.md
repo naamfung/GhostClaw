@@ -1,6 +1,6 @@
-# GarClaw 用户指南
+# GhostClaw 用户指南
 
-欢迎使用 GarClaw —— 一个支持多角色协作的 AI Agent 框架。本指南将帮助你快速上手并充分利用 GarClaw 的强大功能。
+欢迎使用 GhostClaw —— 一个支持多角色协作的 AI Agent 框架。GhostClaw 是 GarClaw 的架构重构版本，采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据持久化。本指南将帮助你快速上手并充分利用 GhostClaw 的强大功能。
 
 ---
 
@@ -23,20 +23,20 @@
 
 ### 安装与启动
 
-1. 下载并解压 GarClaw
+1. 下载并解压 GhostClaw
 2. 编辑 `config.toon` 配置你的 API 密钥
 3. 运行程序：
 
 ```bash
-./garclaw
+./ghostclaw
 ```
 
 ### 首次使用
 
-启动后，你会看到命令行提示符 `GarClaw />`。此时你可以直接输入问题与 AI 对话。
+启动后，你会看到命令行提示符 `GhostClaw />`。此时你可以直接输入问题与 AI 对话。
 
 ```
-GarClaw /> 你好，请介绍一下你自己
+GhostClaw /> 你好，请介绍一下你自己
 ```
 
 ---
@@ -125,11 +125,11 @@ GarClaw 的核心特色是角色系统。每个角色都有独特的性格、说
 ### 切换角色示例
 
 ```
-GarClaw /> /role novelist
+GhostClaw /> /role novelist
 ✍️ **已切换到：小说家**
 📋 富有创造力的文学创作者，擅长构建故事世界
 
-GarClaw /> 帮我写一个科幻小说的开头
+GhostClaw /> 帮我写一个科幻小说的开头
 ```
 
 ---
@@ -143,21 +143,21 @@ GarClaw 支持多个角色协作完成复杂任务，特别适合小说创作等
 1. 启动自动切换：
 
 ```
-GarClaw /> /stage auto on
+GhostClaw /> /stage auto on
 ▶️ 自动演绎：开启 (director模式)
 ```
 
 2. 设置在场角色：
 
 ```
-GarClaw /> /actor hero_lin
-GarClaw /> /actor villain_mozun
+GhostClaw /> /actor hero_lin
+GhostClaw /> /actor villain_mozun
 ```
 
 3. 开始创作：
 
 ```
-GarClaw /> 开始写林风与魔尊的对决
+GhostClaw /> 开始写林风与魔尊的对决
 ```
 
 ### 角色切换机制
@@ -193,7 +193,7 @@ GarClaw /> 开始写林风与魔尊的对决
 ### 使用技能
 
 ```
-GarClaw /> /skill
+GhostClaw /> /skill
 🎯 可用技能:
 
 1. 📄 **代码审查** (`code_review`)
@@ -202,7 +202,7 @@ GarClaw /> /skill
 2. 📄 **翻译** (`translation`)
    多语言翻译能力...
 
-GarClaw /> /skill code_review
+GhostClaw /> /skill code_review
 🎯 **已激活技能: 代码审查**
 
 专业的代码审查能力，能够发现潜在问题...
@@ -332,7 +332,7 @@ timeout = {
 ### 保存会话
 
 ```
-GarClaw /> /save 林风复仇故事第一版
+GhostClaw /> /save 林风复仇故事第一版
 ✅ 会话已保存
    会话ID: 20240315_143022
    时间: 2024-03-15 14:30:22
@@ -341,7 +341,7 @@ GarClaw /> /save 林风复仇故事第一版
 ### 加载会话
 
 ```
-GarClaw /> /load
+GhostClaw /> /load
 📋 已保存的会话:
 
 1. [20240315_143022] 林风复仇故事第一版
@@ -350,7 +350,7 @@ GarClaw /> /load
 2. [20240314_100000] 程序员日常
    2024-03-14 10:00
 
-GarClaw /> /load 20240315_143022
+GhostClaw /> /load 20240315_143022
 ✅ 已加载会话: 20240315_143022
 ```
 
@@ -491,10 +491,10 @@ actors:
 让 AI 记住重要信息：
 
 ```
-GarClaw /> 请记住，我喜欢使用 TypeScript
+GhostClaw /> 请记住，我喜欢使用 TypeScript
 （AI 会调用 memory_save 工具保存）
 
-GarClaw /> 我之前说过我喜欢什么语言吗？
+GhostClaw /> 我之前说过我喜欢什么语言吗？
 （AI 会调用 memory_recall 检索记忆）
 ```
 
@@ -568,4 +568,4 @@ GarClaw 每 5 分钟自动保存。如果意外退出，可以：
 
 ---
 
-*GarClaw - 让 AI 角色栩栩如生*
+*GhostClaw - 让 AI 角色栩栩如生*

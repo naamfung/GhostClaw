@@ -242,7 +242,7 @@ func (tc *TelegramChannel) handleTextMessage(c tele.Context) error {
 
         // 普通消息，加入历史并启动任务
         session.AddToHistory("user", content)
-        go tc.processUserInput(session, c.Chat().ID, c.Sender().ID, content, metadata)
+        go tc.processUserInput(session, c.Chat().ID, strconv.FormatInt(c.Sender().ID, 10), content, metadata)
 
         return nil
 }

@@ -44,7 +44,7 @@ func PrintBanner() {
 
         // 打印简洁的启动信息
         fmt.Println()
-        fmt.Printf("  GarClaw %s", Version)
+        fmt.Printf("  GhostClaw %s", Version)
         if displayCommit != "unknown" {
                 fmt.Printf(" (%s)", displayCommit)
         }
