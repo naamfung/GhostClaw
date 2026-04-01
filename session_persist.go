@@ -244,19 +244,18 @@ func (m *SessionPersistManager) UpdateSession(sessionID string, history []Messag
 
 // LoadSession 从数据库加载会话
 func (m *SessionPersistManager) LoadSession(sessionID string) (*SavedSession, error) {
-        var row SessionHistories
+        // 模糊匹配：以 sessionID 为后缀查找（因为 SaveSession 的 ID 格式为 "timestamp_sessionID"）
+        var rows []SessionHistories
+        globalDB.Where("id LIKE ?", "%"+sessionID).Order("updated_at DESC").Limit(1).Find(&rows)
+        if len(rows) > 0 {
+                return dbRowToSavedSession(&rows[0])
+        }
 
-        // 精确匹配
+        // 兜底：精确匹配
+        var row SessionHistories
         result := globalDB.Where("id = ?", sessionID).First(&row)
         if result.Error == nil {
                 return dbRowToSavedSession(&row)
-        }
-
-        // 模糊匹配：尝试以 sessionID 为前缀查找
-        var rows []SessionHistories
-        globalDB.Where("id LIKE ?", sessionID+"%").Order("updated_at DESC").Limit(1).Find(&rows)
-        if len(rows) > 0 {
-                return dbRowToSavedSession(&rows[0])
         }
 
         // 未找到记录（首次运行属于正常情况）
