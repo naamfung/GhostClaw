@@ -81,29 +81,29 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
             fmt.Println(content)
         }
 
-	case "ssh_connect":
-		var err error
-		content, err = handleSSHConnect(argsMap)
-		if err != nil {
-		    content = err.Error()
-		    status = TaskStatusFailed
-		}
-	case "ssh_exec":
-		content, status = handleSSHExec(ctx, argsMap, ch)
-	case "ssh_list":
-		var err error
-		content, err = handleSSHList()
-		if err != nil {
-		    content = err.Error()
-		    status = TaskStatusFailed
-		}
-	case "ssh_close":
-		var err error
-		content, err = handleSSHClose(argsMap)
-		if err != nil {
-		    content = err.Error()
-		    status = TaskStatusFailed
-		}
+        case "ssh_connect":
+                var err error
+                content, err = handleSSHConnect(argsMap)
+                if err != nil {
+                    content = err.Error()
+                    status = TaskStatusFailed
+                }
+        case "ssh_exec":
+                content, status = handleSSHExec(ctx, argsMap, ch)
+        case "ssh_list":
+                var err error
+                content, err = handleSSHList()
+                if err != nil {
+                    content = err.Error()
+                    status = TaskStatusFailed
+                }
+        case "ssh_close":
+                var err error
+                content, err = handleSSHClose(argsMap)
+                if err != nil {
+                    content = err.Error()
+                    status = TaskStatusFailed
+                }
 
     case "read_file_line":
         filename, ok1 := argsMap["filename"].(string)
@@ -1067,6 +1067,8 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
     case "text_transform":
         content, _ = handleTextTransform(ctx, argsMap, ch)
 
+    case "plugin_create":
+        content, _ = handlePluginCreate(ctx, argsMap, ch)
     case "plugin_list":
         content, _ = handlePluginList(ctx, argsMap, ch)
     case "plugin_load":
@@ -1106,6 +1108,22 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 
     case "consolidate_memory":
         content, _ = HandleConsolidateMemory(argsMap)
+
+    case "scheme_eval":
+        expression, ok := argsMap["expression"].(string)
+        if !ok || expression == "" {
+            content = "Error: Invalid or empty expression"
+            status = TaskStatusFailed
+        } else {
+            result, err := schemeEval(ctx, expression)
+            if err != nil {
+                content = fmt.Sprintf("Error: %v", err)
+                status = TaskStatusFailed
+            } else {
+                content = result
+            }
+            fmt.Println(content)
+        }
 
     default:
         if strings.HasPrefix(toolName, "mcp_") && globalMCPClientManager != nil {
