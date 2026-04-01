@@ -94,7 +94,7 @@ func (w *cliLogWriter) Write(p []byte) (n int, err error) {
 }
 
 // runCMDMode CMD REPL 模式：与模型直接对话，日志静默
-// 通过 --cmd 标志启动，或从 Log 模式切换进入
+// 通过 --repl 标志启动，或从 Log 模式切换进入
 // /logs 切回 Log 模式（释放终端），/exit 退出程序
 func runCMDMode(ctx context.Context, session *GlobalSession) {
         cmdModeActive = true
@@ -197,13 +197,13 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 }
 
 // runLogMode Log 模式（默认）：程序正常运行，终端只显示日志
-// 后台 goroutine 监听 stdin，按 / 键可切换到 CMD 模式
+// 后台 goroutine 监听 stdin，输入 / 后回车切换到 CMD 模式
 // 如果 stdin 不是终端（如后台运行/管道），则仅阻塞等待 ctx 取消
 func runLogMode(ctx context.Context, session *GlobalSession) {
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("║  GhostClaw Log 模式（默认）            ║")
         fmt.Println("║  终端仅显示程序日志                     ║")
-        fmt.Println("║  按 / 键进入 CMD 模式                  ║")
+        fmt.Println("║  输入 / 回车进入 CMD 模式              ║")
         fmt.Println("║  Ctrl+C 退出程序                       ║")
         fmt.Println("╚══════════════════════════════════════╝")
 
@@ -214,56 +214,29 @@ func runLogMode(ctx context.Context, session *GlobalSession) {
                 return
         }
 
-        // 交互终端：后台 goroutine 监听 stdin，不阻塞主流程
+        // 交互终端：后台 goroutine 用行读取监听 stdin（不使用 raw mode，100% 可移植）
         switchToCMD := make(chan struct{})
         go func() {
-                // 尝试设置 raw mode 捕获单字符按键
-                oldState, err := setRawMode()
-                if err != nil {
-                        // raw mode 失败，用行读取方式监听（输入 / 后回车触发）
-                        reader := bufio.NewReader(os.Stdin)
-                        for {
-                                select {
-                                case <-ctx.Done():
-                                        return
-                                default:
-                                }
-                                line, err := reader.ReadString('\n')
-                                if err != nil {
-                                        return
-                                }
-                                line = strings.TrimSpace(line)
-                                if line == "/" {
-                                        select {
-                                        case switchToCMD <- struct{}{}:
-                                        default:
-                                        }
-                                        return
-                                }
-                        }
-                }
-                defer restoreTerminal(oldState)
-
+                reader := bufio.NewReader(os.Stdin)
                 for {
                         select {
                         case <-ctx.Done():
                                 return
                         default:
                         }
-                        var buf [1]byte
-                        n, err := os.Stdin.Read(buf[:])
-                        if err != nil || n == 0 {
-                                continue
+                        line, err := reader.ReadString('\n')
+                        if err != nil {
+                                return
                         }
-                        if buf[0] == '/' {
-                                fmt.Print("/") // 回显让用户知道
+                        line = strings.TrimSpace(line)
+                        if line == "/" {
                                 select {
                                 case switchToCMD <- struct{}{}:
                                 default:
                                 }
                                 return
                         }
-                        // 其他按键忽略
+                        // 其他输入忽略
                 }
         }()
 
@@ -290,7 +263,7 @@ func main() {
         promptFlag := flag.String("p", "", "调试模式：直接传入提示词，模型输出完成后自动退出")
         promptFlagLong := flag.String("prompt", "", "调试模式：直接传入提示词，模型输出完成后自动退出（长格式）")
         debugFlag := flag.Bool("debug", false, "启用调试输出")
-        cmdFlag := flag.Bool("cmd", false, "启动 CMD 交互模式（与模型直接对话）")
+        replFlag := flag.Bool("repl", false, "启动 REPL 交互模式（与模型直接对话）")
         flag.Parse()
 
         prompt := *promptFlag
@@ -667,8 +640,8 @@ func main() {
         }()
 
         // 根据启动模式选择运行方式
-        if *cmdFlag {
-                // --cmd 或 -c：启动 CMD 交互模式
+        if *replFlag {
+                // --repl：启动 REPL 交互模式
                 runCMDMode(ctx, session)
         } else {
                 // 默认：Log 模式（纯日志输出，不阻塞终端，适合后台运行）
