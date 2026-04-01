@@ -3,10 +3,12 @@
         import { Label } from '$lib/components/ui/label';
         import { Button } from '$lib/components/ui/button';
         import { Badge } from '$lib/components/ui/badge';
+        import { Checkbox } from '$lib/components/ui/checkbox';
         import { ScrollArea } from '$lib/components/ui/scroll-area';
         import { DialogConfirmation } from '$lib/components/app/dialogs';
         import { onMount } from 'svelte';
         import { Pencil, Trash2, Plus, Search, Cpu, ChevronLeft } from '@lucide/svelte';
+        import { config } from '$lib/stores/settings.svelte';
 
         interface ModelConfig {
                 Name: string;
@@ -16,6 +18,9 @@
                 Model: string;
                 Temperature: number;
                 MaxTokens: number;
+                Stream: boolean;
+                Thinking: boolean;
+                BlockDangerousCommands: boolean;
                 Description: string;
         }
 
@@ -29,6 +34,10 @@
         let showDeleteConfirm = $state(false);
         let modelToDelete = $state<ModelConfig | null>(null);
 
+        // Default Role (global setting from /api/config)
+        let defaultRole = $state('');
+        let defaultRoleLoaded = $state(false);
+
         // 编辑表单字段
         let editForm = $state({
                 Name: '',
@@ -38,6 +47,9 @@
                 Model: '',
                 Temperature: 0.7,
                 MaxTokens: 4096,
+                Stream: true,
+                Thinking: false,
+                BlockDangerousCommands: true,
                 Description: ''
         });
 
@@ -61,6 +73,20 @@
                         console.error('加载模型列表失败:', error);
                 } finally {
                         isLoading = false;
+                }
+        }
+
+        async function loadDefaultRole() {
+                try {
+                        const response = await fetch('/api/config');
+                        if (response.ok) {
+                                const data = await response.json();
+                                defaultRole = data.DefaultRole || config().defaultRole || '';
+                                defaultRoleLoaded = true;
+                        }
+                } catch (error) {
+                        console.error('加载默认角色失败:', error);
+                        defaultRole = config().defaultRole || '';
                 }
         }
 
@@ -88,6 +114,9 @@
                         Model: '',
                         Temperature: 0.7,
                         MaxTokens: 4096,
+                        Stream: true,
+                        Thinking: false,
+                        BlockDangerousCommands: true,
                         Description: ''
                 };
                 showEditor = true;
@@ -103,6 +132,9 @@
                         Model: model.Model,
                         Temperature: model.Temperature,
                         MaxTokens: model.MaxTokens,
+                        Stream: model.Stream ?? true,
+                        Thinking: model.Thinking ?? false,
+                        BlockDangerousCommands: model.BlockDangerousCommands ?? true,
                         Description: model.Description
                 };
                 showEditor = true;
@@ -203,6 +235,18 @@
                 }
         }
 
+        async function saveDefaultRole() {
+                try {
+                        await fetch('/api/config', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ defaultRole: defaultRole })
+                        });
+                } catch (error) {
+                        console.error('保存默认角色失败:', error);
+                }
+        }
+
         $effect(() => {
                 searchQuery;
                 filterModels();
@@ -210,6 +254,7 @@
 
         onMount(() => {
                 loadModels();
+                loadDefaultRole();
         });
 </script>
 
@@ -298,6 +343,52 @@
                                                 />
                                         </div>
 
+                                        <!-- 新增：Stream、Thinking、BlockDangerousCommands -->
+                                        <div class="flex items-center space-x-3">
+                                                <Checkbox
+                                                        id="stream"
+                                                        checked={editForm.Stream}
+                                                        onCheckedChange={(checked) => (editForm.Stream = Boolean(checked))}
+                                                        class="mt-0.5"
+                                                />
+                                                <div class="space-y-0.5">
+                                                        <label for="stream" class="cursor-pointer text-sm font-medium leading-none">
+                                                                流式输出
+                                                        </label>
+                                                        <p class="text-xs text-muted-foreground">启用流式传输，逐字显示 AI 回复</p>
+                                                </div>
+                                        </div>
+
+                                        <div class="flex items-center space-x-3">
+                                                <Checkbox
+                                                        id="thinking"
+                                                        checked={editForm.Thinking}
+                                                        onCheckedChange={(checked) => (editForm.Thinking = Boolean(checked))}
+                                                        class="mt-0.5"
+                                                />
+                                                <div class="space-y-0.5">
+                                                        <label for="thinking" class="cursor-pointer text-sm font-medium leading-none">
+                                                                思考模式
+                                                        </label>
+                                                        <p class="text-xs text-muted-foreground">启用模型思考过程，模型会在回复前展示推理步骤</p>
+                                                </div>
+                                        </div>
+
+                                        <div class="flex items-center space-x-3">
+                                                <Checkbox
+                                                        id="block-dangerous"
+                                                        checked={editForm.BlockDangerousCommands}
+                                                        onCheckedChange={(checked) => (editForm.BlockDangerousCommands = Boolean(checked))}
+                                                        class="mt-0.5"
+                                                />
+                                                <div class="space-y-0.5">
+                                                        <label for="block-dangerous" class="cursor-pointer text-sm font-medium leading-none">
+                                                                阻止危险命令
+                                                        </label>
+                                                        <p class="text-xs text-muted-foreground">阻止模型执行潜在危险的 Shell 命令</p>
+                                                </div>
+                                        </div>
+
                                         <div class="space-y-2">
                                                 <Label for="description">描述</Label>
                                                 <Input
@@ -315,6 +406,24 @@
                         </div>
                 </div>
         {:else}
+                <!-- 默认角色设置 -->
+                <div class="mb-4 rounded-lg border border-border/30 p-4">
+                        <div class="space-y-2">
+                                <Label for="default-role" class="text-sm font-medium">
+                                        默认角色
+                                </Label>
+                                <Input
+                                        id="default-role"
+                                        bind:value={defaultRole}
+                                        placeholder="设置 AI 的默认角色，如：你是一个有帮助的助手"
+                                        onchange={saveDefaultRole}
+                                />
+                                <p class="text-xs text-muted-foreground">
+                                        设置 AI 的默认角色。留空则使用后端默认角色。修改后自动保存。
+                                </p>
+                        </div>
+                </div>
+
                 <!-- 搜索栏和创建按钮 -->
                 <div class="mb-4 flex items-center gap-2">
                         <div class="relative flex-1">
@@ -441,6 +550,28 @@
                                                                 <div>
                                                                         <h4 class="mb-1 text-xs font-medium text-muted-foreground">最大词元数</h4>
                                                                         <p class="text-sm">{selectedModel.MaxTokens}</p>
+                                                                </div>
+
+                                                                <div class="flex items-center gap-4">
+                                                                        <div>
+                                                                                <h4 class="mb-1 text-xs font-medium text-muted-foreground">流式输出</h4>
+                                                                                <Badge variant={selectedModel.Stream ? 'default' : 'outline'}>
+                                                                                        {selectedModel.Stream ? '已启用' : '已禁用'}
+                                                                                </Badge>
+                                                                        </div>
+                                                                        <div>
+                                                                                <h4 class="mb-1 text-xs font-medium text-muted-foreground">思考模式</h4>
+                                                                                <Badge variant={selectedModel.Thinking ? 'default' : 'outline'}>
+                                                                                        {selectedModel.Thinking ? '已启用' : '已禁用'}
+                                                                                </Badge>
+                                                                        </div>
+                                                                </div>
+
+                                                                <div>
+                                                                        <h4 class="mb-1 text-xs font-medium text-muted-foreground">阻止危险命令</h4>
+                                                                        <Badge variant={selectedModel.BlockDangerousCommands ? 'default' : 'outline'}>
+                                                                                {selectedModel.BlockDangerousCommands ? '已启用' : '已禁用'}
+                                                                        </Badge>
                                                                 </div>
 
                                                                 {#if selectedModel.Description}

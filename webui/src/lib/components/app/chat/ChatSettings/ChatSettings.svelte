@@ -1,8 +1,6 @@
 <script lang="ts">
         import {
                 Settings,
-                Funnel,
-                AlertTriangle,
                 Code,
                 Monitor,
                 ChevronLeft,
@@ -12,7 +10,9 @@
                 User,
                 Wrench,
                 Users,
-                Timer
+                Timer,
+                Shield,
+                Globe
         } from '@lucide/svelte';
         import { McpLogo, McpServersSettings } from '$lib/components/app/mcp';
         import {
@@ -46,7 +46,7 @@
 
         let { onSave, initialSection }: Props = $props();
 
-        // 设置标签页顺序：模型相关 → 角色系统 → 界面设置 → 数据管理 → 开发者
+        // 设置标签页顺序：模型相关 → 角色系统 → 界面设置 → 数据管理
         const settingSections: Array<{
                 fields: SettingsFieldConfig[];
                 icon: Component;
@@ -57,118 +57,6 @@
                         title: SETTINGS_SECTION_TITLES.MODEL,
                         icon: Cpu,
                         fields: [] // 使用自定义组件
-                },
-                {
-                        title: SETTINGS_SECTION_TITLES.SAMPLING,
-                        icon: Funnel,
-                        fields: [
-                                {
-                                        key: SETTINGS_KEYS.TEMPERATURE,
-                                        label: '温度',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DYNATEMP_RANGE,
-                                        label: '动态温度范围',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DYNATEMP_EXPONENT,
-                                        label: '动态温度指数',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.TOP_K,
-                                        label: 'Top K',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.TOP_P,
-                                        label: 'Top P',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.MIN_P,
-                                        label: 'Min P',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.XTC_PROBABILITY,
-                                        label: 'XTC probability',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.XTC_THRESHOLD,
-                                        label: 'XTC threshold',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.TYP_P,
-                                        label: 'Typical P',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.MAX_TOKENS,
-                                        label: '最大词元数',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.SAMPLERS,
-                                        label: '采样器',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.BACKEND_SAMPLING,
-                                        label: '后端采样',
-                                        type: SettingsFieldType.CHECKBOX
-                                }
-                        ]
-                },
-                {
-                        title: SETTINGS_SECTION_TITLES.PENALTIES,
-                        icon: AlertTriangle,
-                        fields: [
-                                {
-                                        key: SETTINGS_KEYS.REPEAT_LAST_N,
-                                        label: '重复最后 N',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.REPEAT_PENALTY,
-                                        label: '重复惩罚',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.PRESENCE_PENALTY,
-                                        label: '存在惩罚',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.FREQUENCY_PENALTY,
-                                        label: '频率惩罚',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DRY_MULTIPLIER,
-                                        label: 'DRY 倍数',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DRY_BASE,
-                                        label: 'DRY 基数',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DRY_ALLOWED_LENGTH,
-                                        label: 'DRY 允许长度',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.DRY_PENALTY_LAST_N,
-                                        label: 'DRY 惩罚最后 N',
-                                        type: SettingsFieldType.INPUT
-                                }
-                        ]
                 },
                 // ===== 角色系统 =====
                 {
@@ -198,35 +86,9 @@
                                         options: SETTINGS_COLOR_MODES_CONFIG
                                 },
                                 {
-                                        key: SETTINGS_KEYS.SYSTEM_MESSAGE,
-                                        label: '系统消息',
+                                        key: SETTINGS_KEYS.DEFAULT_ROLE,
+                                        label: '默认角色',
                                         type: SettingsFieldType.TEXTAREA
-                                },
-                                {
-                                        key: SETTINGS_KEYS.PASTE_LONG_TEXT_TO_FILE_LEN,
-                                        label: '长文本自动转文件长度',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.COPY_TEXT_ATTACHMENTS_AS_PLAIN_TEXT,
-                                        label: '将文本附件复制为纯文本',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.ENABLE_CONTINUE_GENERATION,
-                                        label: '启用「继续」按钮',
-                                        type: SettingsFieldType.CHECKBOX,
-                                        isExperimental: true
-                                },
-                                {
-                                        key: SETTINGS_KEYS.PDF_AS_IMAGE,
-                                        label: '将 PDF 解析为图片',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.ASK_FOR_TITLE_CONFIRMATION,
-                                        label: '更改对话标题前请求确认',
-                                        type: SettingsFieldType.CHECKBOX
                                 }
                         ]
                 },
@@ -243,17 +105,6 @@
                                         key: SETTINGS_KEYS.SHOW_THOUGHT_IN_PROGRESS,
                                         label: '显示思考过程',
                                         type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.KEEP_STATS_VISIBLE,
-                                        label: '生成后保持统计可见',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.AUTO_MIC_ON_EMPTY,
-                                        label: '输入为空时显示麦克风',
-                                        type: SettingsFieldType.CHECKBOX,
-                                        isExperimental: true
                                 },
                                 {
                                         key: SETTINGS_KEYS.RENDER_USER_CONTENT_AS_MARKDOWN,
@@ -287,6 +138,30 @@
                                 }
                         ]
                 },
+                // ===== 安全设置 =====
+                {
+                        title: SETTINGS_SECTION_TITLES.SECURITY,
+                        icon: Shield,
+                        fields: [
+                                {
+                                        key: SETTINGS_KEYS.ENABLE_SSRF_PROTECTION,
+                                        label: '启用 SSRF 防护',
+                                        type: SettingsFieldType.CHECKBOX
+                                }
+                        ]
+                },
+                // ===== 浏览器设置 =====
+                {
+                        title: SETTINGS_SECTION_TITLES.BROWSER,
+                        icon: Globe,
+                        fields: [
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_USER_MODE,
+                                        label: '用户模式',
+                                        type: SettingsFieldType.CHECKBOX
+                                }
+                        ]
+                },
                 // ===== 数据管理 =====
                 {
                         title: SETTINGS_SECTION_TITLES.IMPORT_EXPORT,
@@ -297,28 +172,7 @@
                 {
                         title: SETTINGS_SECTION_TITLES.MCP,
                         icon: McpLogo,
-                        fields: [
-                                {
-                                        key: SETTINGS_KEYS.AGENTIC_MAX_TURNS,
-                                        label: '智能体循环最大轮次',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.ALWAYS_SHOW_AGENTIC_TURNS,
-                                        label: '始终显示智能体轮次',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.AGENTIC_MAX_TOOL_PREVIEW_LINES,
-                                        label: '工具预览最大行数',
-                                        type: SettingsFieldType.INPUT
-                                },
-                                {
-                                        key: SETTINGS_KEYS.SHOW_TOOL_CALL_IN_PROGRESS,
-                                        label: '显示进行中的工具调用',
-                                        type: SettingsFieldType.CHECKBOX
-                                }
-                        ]
+                        fields: [] // 仅使用 McpServersSettings 组件
                 },
                 // ===== 超时配置 =====
                 {
@@ -344,28 +198,6 @@
                                         key: SETTINGS_KEYS.TIMEOUT_BROWSER,
                                         label: '浏览器每步超时（秒）',
                                         type: SettingsFieldType.INPUT
-                                }
-                        ]
-                },
-                // ===== 开发者选项 =====
-                {
-                        title: SETTINGS_SECTION_TITLES.DEVELOPER,
-                        icon: Code,
-                        fields: [
-                                {
-                                        key: SETTINGS_KEYS.DISABLE_REASONING_PARSING,
-                                        label: '禁用推理内容解析',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.SHOW_RAW_OUTPUT_SWITCH,
-                                        label: '启用原始输出切换',
-                                        type: SettingsFieldType.CHECKBOX
-                                },
-                                {
-                                        key: SETTINGS_KEYS.CUSTOM,
-                                        label: '自定义 JSON',
-                                        type: SettingsFieldType.TEXTAREA
                                 }
                         ]
                 }
@@ -406,16 +238,6 @@
         }
 
         async function handleSave() {
-                if (localConfig.custom && typeof localConfig.custom === 'string' && localConfig.custom.trim()) {
-                        try {
-                                JSON.parse(localConfig.custom);
-                        } catch (error) {
-                                alert('Invalid JSON in custom parameters. Please check the format and try again.');
-                                console.error(error);
-                                return;
-                        }
-                }
-
                 // Convert numeric strings to numbers for numeric fields
                 const processedConfig = { ...localConfig };
 
@@ -437,22 +259,30 @@
 
                 settingsStore.updateMultipleConfig(processedConfig);
 
-                // Send timeout configuration to backend
+                // Send configuration to backend
                 try {
-                        const timeoutConfig = {
+                        const backendConfig: Record<string, unknown> = {};
+
+                        // Timeout configuration
+                        backendConfig.timeout = {
                                 shell: Number(processedConfig.timeoutShell) || 60,
                                 http: Number(processedConfig.timeoutHttp) || 120,
                                 plugin: Number(processedConfig.timeoutPlugin) || 120,
                                 browser: Number(processedConfig.timeoutBrowser) || 30
                         };
 
+                        // Default role
+                        if (processedConfig.defaultRole !== undefined) {
+                                backendConfig.defaultRole = processedConfig.defaultRole;
+                        }
+
                         await fetch('/api/config', {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ timeout: timeoutConfig })
+                                body: JSON.stringify(backendConfig)
                         });
                 } catch (error) {
-                        console.error('Failed to save timeout config to server:', error);
+                        console.error('Failed to save config to server:', error);
                 }
 
                 onSave?.();
@@ -596,17 +426,7 @@
                                 {:else if currentSection.title === SETTINGS_SECTION_TITLES.IMPORT_EXPORT}
                                         <ChatSettingsImportExportTab />
                                 {:else if currentSection.title === SETTINGS_SECTION_TITLES.MCP}
-                                        <div class="space-y-6">
-                                                <ChatSettingsFields
-                                                        fields={currentSection.fields}
-                                                        {localConfig}
-                                                        onConfigChange={handleConfigChange}
-                                                        onThemeChange={handleThemeChange}
-                                                />
-                                                <div class="border-t border-border/30 pt-6">
-                                                        <McpServersSettings />
-                                                </div>
-                                        </div>
+                                        <McpServersSettings />
                                 {:else}
                                         <div class="space-y-6">
                                                 <ChatSettingsFields
