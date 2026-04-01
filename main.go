@@ -1,6 +1,7 @@
 package main
 
 import (
+        "bufio"
         "context"
         "errors"
         "flag"
@@ -65,7 +66,8 @@ var (
         globalAuthManager      *AuthManager
         globalAuthConfig       AuthConfig
         globalCancel           context.CancelFunc
-        globalExecDir          string
+        globalExecDir          string // 程序自身目录（embed、uploads、download、output 等运行时文件）
+        globalDataDir          string // 数据目录（plugins、skills、memory、数据库等资产/配置文件）
         globalUploadDir        string
 
         // cmdModeActive 控制日志是否输出到终端
@@ -195,17 +197,92 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 }
 
 // runLogMode Log 模式（默认）：程序正常运行，终端只显示日志
-// 不读取 stdin，不阻塞终端，适合后台运行和跟随机器自启
+// 后台 goroutine 监听 stdin，按 / 键可切换到 CMD 模式
+// 如果 stdin 不是终端（如后台运行/管道），则仅阻塞等待 ctx 取消
 func runLogMode(ctx context.Context, session *GlobalSession) {
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("║  GhostClaw Log 模式（默认）            ║")
         fmt.Println("║  终端仅显示程序日志                     ║")
-        fmt.Println("║  使用 --cmd 或 -c 进入交互式 CMD 模式   ║")
+        fmt.Println("║  按 / 键进入 CMD 模式                  ║")
         fmt.Println("║  Ctrl+C 退出程序                       ║")
         fmt.Println("╚══════════════════════════════════════╝")
 
-        // 阻塞等待 context 取消（由 SIGINT/SIGTERM 触发）
-        <-ctx.Done()
+        // 检查 stdin 是否为交互式终端
+        if !isTerminal(os.Stdin) {
+                // 非交互终端（后台运行、管道等），仅阻塞等待
+                <-ctx.Done()
+                return
+        }
+
+        // 交互终端：后台 goroutine 监听 stdin，不阻塞主流程
+        switchToCMD := make(chan struct{})
+        go func() {
+                // 尝试设置 raw mode 捕获单字符按键
+                oldState, err := setRawMode()
+                if err != nil {
+                        // raw mode 失败，用行读取方式监听（输入 / 后回车触发）
+                        reader := bufio.NewReader(os.Stdin)
+                        for {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                default:
+                                }
+                                line, err := reader.ReadString('\n')
+                                if err != nil {
+                                        return
+                                }
+                                line = strings.TrimSpace(line)
+                                if line == "/" {
+                                        select {
+                                        case switchToCMD <- struct{}{}:
+                                        default:
+                                        }
+                                        return
+                                }
+                        }
+                }
+                defer restoreTerminal(oldState)
+
+                for {
+                        select {
+                        case <-ctx.Done():
+                                return
+                        default:
+                        }
+                        var buf [1]byte
+                        n, err := os.Stdin.Read(buf[:])
+                        if err != nil || n == 0 {
+                                continue
+                        }
+                        if buf[0] == '/' {
+                                fmt.Print("/") // 回显让用户知道
+                                select {
+                                case switchToCMD <- struct{}{}:
+                                default:
+                                }
+                                return
+                        }
+                        // 其他按键忽略
+                }
+        }()
+
+        select {
+        case <-ctx.Done():
+                return
+        case <-switchToCMD:
+                // 切换到 CMD 模式
+                runCMDMode(ctx, session)
+        }
+}
+
+// isTerminal 检查文件是否为交互式终端
+func isTerminal(f *os.File) bool {
+        fi, err := f.Stat()
+        if err != nil {
+                return false
+        }
+        return fi.Mode()&os.ModeCharDevice != 0
 }
 
 func main() {
@@ -237,6 +314,12 @@ func main() {
         config, err := loadConfig()
         if err != nil {
                 fmt.Printf("Warning: %v\n", err)
+        }
+
+        // 设置数据目录（默认为程序自身目录）
+        globalDataDir = config.DataDir
+        if globalDataDir == "" {
+                globalDataDir = globalExecDir
         }
 
         // 检查是否需要配置向导
@@ -292,14 +375,14 @@ func main() {
                 fmt.Println("Browser user mode is ENABLED. Using existing browser session.")
         }
 
-        // 初始化数据库
-        if err := InitDB(globalExecDir); err != nil {
+        // 初始化数据库（放在记忆目录中）
+        if err := InitDB(globalDataDir); err != nil {
                 log.Fatalf("Failed to init database: %v", err)
         }
         log.Println("Database initialized.")
 
         // 初始化插件管理器
-        pluginsDir := config.PluginsDir
+        pluginsDir := filepath.Join(globalDataDir, "plugins")
         globalPluginManager = NewPluginManager(pluginsDir)
         globalPluginManager.SetToolExecutor(callToolInternal)
         if err := globalPluginManager.LoadPluginsFromDir(); err != nil {
@@ -321,7 +404,7 @@ func main() {
         }()
 
         // 初始化 CronManager
-        cronFilePath := filepath.Join(globalExecDir, "cron.toon")
+        cronFilePath := filepath.Join(globalDataDir, "cron.toon")
         globalCronManager, err = NewCronManager(cronFilePath, &config.CronConfig)
         if err != nil {
                 log.Printf("Warning: failed to start cron manager: %v", err)
@@ -331,7 +414,7 @@ func main() {
         }
 
         // 初始化统一记忆系统
-        globalUnifiedMemory, err = NewUnifiedMemory(globalExecDir)
+        globalUnifiedMemory, err = NewUnifiedMemory(globalDataDir)
         if err != nil {
                 log.Printf("Warning: failed to start unified memory: %v", err)
         } else {
@@ -408,7 +491,7 @@ func main() {
 
         // 初始化心跳服务
         if config.Heartbeat.Enabled {
-                globalHeartbeatService = NewHeartbeatService(config.Heartbeat, globalExecDir)
+                globalHeartbeatService = NewHeartbeatService(config.Heartbeat, globalDataDir)
                 SetHeartbeatNotifier(NewBusHeartbeatNotifier())
                 if err := globalHeartbeatService.Start(); err != nil {
                         log.Printf("Warning: failed to start heartbeat service: %v", err)
@@ -423,7 +506,7 @@ func main() {
         }
 
         // 初始化角色模板管理器
-        roleFilePath := filepath.Join(globalExecDir, "role.toon")
+        roleFilePath := filepath.Join(globalDataDir, "role.toon")
         globalRoleManager, err = NewRoleManager(roleFilePath)
         if err != nil {
                 log.Printf("Warning: failed to start role manager: %v", err)
@@ -432,7 +515,7 @@ func main() {
         }
 
         // 初始化演员管理器
-        actorFilePath := filepath.Join(globalExecDir, "actor.toon")
+        actorFilePath := filepath.Join(globalDataDir, "actor.toon")
         globalActorManager, err = NewActorManager(actorFilePath, apiType, baseURL, apiKey, modelID, temperature, maxTokens, config.DefaultRole)
         if err != nil {
                 log.Printf("Warning: failed to start actor manager: %v", err)
@@ -444,7 +527,7 @@ func main() {
         globalStage = NewStage()
 
         // 初始化 ProfileLoader
-        profilesDir := filepath.Join(globalExecDir, "profiles")
+        profilesDir := filepath.Join(globalDataDir, "profiles")
         globalProfileLoader, err = NewProfileLoader(profilesDir)
         if err != nil {
                 log.Printf("Warning: failed to start profile loader: %v", err)
@@ -454,7 +537,7 @@ func main() {
         }
 
         // 加载工具别名（tools.toon）
-        toolsAliasPath := filepath.Join(globalExecDir, "tools.toon")
+        toolsAliasPath := filepath.Join(globalDataDir, "tools.toon")
         globalToolsAliases, err = LoadToolsAliases(toolsAliasPath)
         if err != nil {
                 log.Printf("Tools aliases not loaded: %v", err)
@@ -463,7 +546,7 @@ func main() {
         }
 
         // 初始化技能管理器
-        skillsDir := filepath.Join(globalExecDir, "skills")
+        skillsDir := filepath.Join(globalDataDir, "skills")
         globalSkillManager, err = NewSkillManager(skillsDir)
         if err != nil {
                 log.Printf("Warning: failed to start skill manager: %v", err)
@@ -489,7 +572,7 @@ func main() {
         }
 
         // 初始化 MCP 客户端管理器
-        if err := InitMCPClients(globalExecDir); err != nil {
+        if err := InitMCPClients(globalDataDir); err != nil {
                 log.Printf("Warning: failed to init MCP clients: %v", err)
         } else if globalMCPClientManager != nil && globalMCPClientManager.Count() > 0 {
                 log.Printf("MCP client manager started with %d server(s)", globalMCPClientManager.Count())

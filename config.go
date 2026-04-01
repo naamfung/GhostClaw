@@ -179,8 +179,7 @@ type Config struct {
     XMPPConfig     *XMPPConfig      `toon:"XMPPConfig,omitempty" json:"XMPPConfig,omitempty"`
     MatrixConfig   *MatrixConfig    `toon:"MatrixConfig,omitempty" json:"MatrixConfig,omitempty"`
     BrowserConfig  BrowserConfig    `toon:"BrowserConfig" json:"BrowserConfig"`
-    PluginsDir     string           `toon:"PluginsDir" json:"PluginsDir"`
-    DataDir        string           `toon:"DataDir" json:"DataDir"`
+    DataDir        string           `toon:"DataDir" json:"DataDir,omitempty"`
     CronConfig     CronConfig       `toon:"CronConfig" json:"CronConfig"`
     DefaultRole    string           `toon:"DefaultRole" json:"DefaultRole"`
     Timeout        TimeoutConfig    `toon:"Timeout" json:"Timeout"`
@@ -221,8 +220,7 @@ func loadConfig() (Config, error) {
         defaultConfig.APIConfig.BlockDangerousCommands = false
         defaultConfig.APIConfig.MaxRequestSizeBytes = 256 * 1024 // 256KB
         defaultConfig.HTTPServer.Listen = "0.0.0.0:10086"
-        defaultConfig.PluginsDir = filepath.Join(execDir, "plugins")
-        defaultConfig.DataDir = filepath.Join(execDir, ".garclaw")
+        defaultConfig.DataDir = ""    // 默认为程序自身目录，由 main.go 处理
         defaultConfig.Security.EnableSSRFProtection = true // 默认启用 SSRF 防护
 
         toonData, err := toon.Marshal(defaultConfig)
@@ -254,11 +252,10 @@ func loadConfig() (Config, error) {
     if config.HTTPServer.Listen == "" {
         config.HTTPServer.Listen = "0.0.0.0:10086"
     }
-    if config.PluginsDir == "" {
-        config.PluginsDir = filepath.Join(execDir, "plugins")
-    }
+    // DataDir: 数据目录（插件、技能、角色、记忆、数据库等）
+    // 默认为程序自身目录，用户可自定义
     if config.DataDir == "" {
-        config.DataDir = filepath.Join(execDir, ".garclaw")
+        config.DataDir = execDir
     }
     if config.CronConfig.MaxConcurrent == 0 {
         config.CronConfig.MaxConcurrent = 1

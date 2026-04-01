@@ -1,6 +1,8 @@
 package main
 
 import (
+        "fmt"
+        "os"
         "path/filepath"
         "time"
 
@@ -62,8 +64,13 @@ type SessionHistories struct {
 var globalDB *gorm.DB
 
 // InitDB 初始化数据库连接并自动迁移
+// 数据库存放在 dataDir/memory/ghostclaw.db
 func InitDB(dataDir string) error {
-        dbPath := filepath.Join(dataDir, "ghostclaw.db")
+        memoryDir := filepath.Join(dataDir, "memory")
+        if err := os.MkdirAll(memoryDir, 0755); err != nil {
+                return fmt.Errorf("failed to create memory directory: %v", err)
+        }
+        dbPath := filepath.Join(memoryDir, "ghostclaw.db")
         db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
         if err != nil {
                 return err

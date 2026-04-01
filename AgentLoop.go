@@ -300,10 +300,13 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
 
             if chunk.Content != "" {
+                // 对内容应用字符串替换（过滤累赘表达等）
+                // 确保 respContent（落盘/历史）和前端显示使用相同的过滤后内容
+                filteredContent := applyReplacements(chunk.Content)
                 if str, ok := respContent.(string); ok {
-                    respContent = str + chunk.Content
+                    respContent = str + filteredContent
                 } else {
-                    respContent = chunk.Content
+                    respContent = filteredContent
                 }
             }
             if chunk.ReasoningContent != "" {

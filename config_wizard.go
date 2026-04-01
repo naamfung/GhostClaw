@@ -214,9 +214,6 @@ func saveConfigWizardResult(config *Config) error {
         if config.HTTPServer.Listen == "" {
                 config.HTTPServer.Listen = "0.0.0.0:10086"
         }
-        if config.PluginsDir == "" {
-                config.PluginsDir = filepath.Join(execDir, "plugins")
-        }
         // 设置默认角色
         if config.DefaultRole == "" {
                 config.DefaultRole = "coder"

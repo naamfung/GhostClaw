@@ -1,16 +1,16 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"sync"
-	"time"
+        "crypto/rand"
+        "encoding/hex"
+        "encoding/json"
+        "fmt"
+        "log"
+        "net/http"
+        "os"
+        "path/filepath"
+        "sync"
+        "time"
 )
 
 // ============================================================
@@ -20,161 +20,161 @@ import (
 
 // AuthManager 认证管理器
 type AuthManager struct {
-	config      *AuthConfig
-	sessions    map[string]*AuthSession
-	mu          sync.RWMutex
-	persistFile string
+        config      *AuthConfig
+        sessions    map[string]*AuthSession
+        mu          sync.RWMutex
+        persistFile string
 }
 
 // AuthSession 认证会话
 type AuthSession struct {
-	Token     string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	UserAgent string
-	IP        string
+        Token     string
+        CreatedAt time.Time
+        ExpiresAt time.Time
+        UserAgent string
+        IP        string
 }
 
 // NewAuthManager 创建认证管理器
 func NewAuthManager(config *AuthConfig) *AuthManager {
-	// 修复：直接使用 globalExecDir 拼接，避免重复拼接
-	persistFile := filepath.Join(globalExecDir, "auth_sessions.json")
+        // 认证会话文件放在数据目录
+        persistFile := filepath.Join(globalDataDir, "auth_sessions.json")
 
-	am := &AuthManager{
-		config:      config,
-		sessions:    make(map[string]*AuthSession),
-		persistFile: persistFile,
-	}
-	// 加载已有会话
-	am.loadSessions()
-	if config.SessionToken != "" {
-		am.sessions[config.SessionToken] = &AuthSession{
-			Token:     config.SessionToken,
-			CreatedAt: time.Now(),
-			ExpiresAt: time.Now().Add(time.Duration(config.TokenExpiry) * time.Hour),
-		}
-	}
-	go am.cleanupExpiredSessions()
-	return am
+        am := &AuthManager{
+                config:      config,
+                sessions:    make(map[string]*AuthSession),
+                persistFile: persistFile,
+        }
+        // 加载已有会话
+        am.loadSessions()
+        if config.SessionToken != "" {
+                am.sessions[config.SessionToken] = &AuthSession{
+                        Token:     config.SessionToken,
+                        CreatedAt: time.Now(),
+                        ExpiresAt: time.Now().Add(time.Duration(config.TokenExpiry) * time.Hour),
+                }
+        }
+        go am.cleanupExpiredSessions()
+        return am
 }
 
 func (am *AuthManager) saveSessions() {
-	data, err := json.Marshal(am.sessions)
-	if err != nil {
-		log.Printf("Failed to marshal auth sessions: %v", err)
-		return
-	}
-	os.WriteFile(am.persistFile, data, 0600)
+        data, err := json.Marshal(am.sessions)
+        if err != nil {
+                log.Printf("Failed to marshal auth sessions: %v", err)
+                return
+        }
+        os.WriteFile(am.persistFile, data, 0600)
 }
 
 func (am *AuthManager) loadSessions() {
-	data, err := os.ReadFile(am.persistFile)
-	if err != nil {
-		return
-	}
-	var sessions map[string]*AuthSession
-	if err := json.Unmarshal(data, &sessions); err != nil {
-		log.Printf("Failed to unmarshal auth sessions: %v", err)
-		return
-	}
-	// 过滤过期的
-	now := time.Now()
-	for k, v := range sessions {
-		if now.After(v.ExpiresAt) {
-			delete(sessions, k)
-		}
-	}
-	am.sessions = sessions
-	am.saveSessions()
+        data, err := os.ReadFile(am.persistFile)
+        if err != nil {
+                return
+        }
+        var sessions map[string]*AuthSession
+        if err := json.Unmarshal(data, &sessions); err != nil {
+                log.Printf("Failed to unmarshal auth sessions: %v", err)
+                return
+        }
+        // 过滤过期的
+        now := time.Now()
+        for k, v := range sessions {
+                if now.After(v.ExpiresAt) {
+                        delete(sessions, k)
+                }
+        }
+        am.sessions = sessions
+        am.saveSessions()
 }
 
 // generateToken 生成随机令牌
 func generateToken() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+        b := make([]byte, 32)
+        rand.Read(b)
+        return hex.EncodeToString(b)
 }
 
 // ValidatePassword 验证密码
 func (am *AuthManager) ValidatePassword(password string) bool {
-	return password == am.config.Password
+        return password == am.config.Password
 }
 
 // CreateSession 创建会话
 func (am *AuthManager) CreateSession(userAgent, ip string) *AuthSession {
-	token := generateToken()
-	expiry := time.Duration(am.config.TokenExpiry) * time.Hour
-	if expiry == 0 {
-		expiry = 24 * time.Hour
-	}
+        token := generateToken()
+        expiry := time.Duration(am.config.TokenExpiry) * time.Hour
+        if expiry == 0 {
+                expiry = 24 * time.Hour
+        }
 
-	session := &AuthSession{
-		Token:     token,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(expiry),
-		UserAgent: userAgent,
-		IP:        ip,
-	}
+        session := &AuthSession{
+                Token:     token,
+                CreatedAt: time.Now(),
+                ExpiresAt: time.Now().Add(expiry),
+                UserAgent: userAgent,
+                IP:        ip,
+        }
 
-	am.mu.Lock()
-	am.sessions[token] = session
-	am.mu.Unlock()
+        am.mu.Lock()
+        am.sessions[token] = session
+        am.mu.Unlock()
 
-	return session
+        return session
 }
 
 // ValidateToken 验证令牌
 func (am *AuthManager) ValidateToken(token string) bool {
-	if token == "" {
-		return false
-	}
+        if token == "" {
+                return false
+        }
 
-	am.mu.RLock()
-	session, exists := am.sessions[token]
-	am.mu.RUnlock()
+        am.mu.RLock()
+        session, exists := am.sessions[token]
+        am.mu.RUnlock()
 
-	if !exists {
-		return false
-	}
+        if !exists {
+                return false
+        }
 
-	// 检查是否过期
-	if time.Now().After(session.ExpiresAt) {
-		am.mu.Lock()
-		delete(am.sessions, token)
-		am.mu.Unlock()
-		return false
-	}
+        // 检查是否过期
+        if time.Now().After(session.ExpiresAt) {
+                am.mu.Lock()
+                delete(am.sessions, token)
+                am.mu.Unlock()
+                return false
+        }
 
-	return true
+        return true
 }
 
 // Logout 登出
 func (am *AuthManager) Logout(token string) {
-	am.mu.Lock()
-	delete(am.sessions, token)
-	am.mu.Unlock()
+        am.mu.Lock()
+        delete(am.sessions, token)
+        am.mu.Unlock()
 }
 
 // cleanupExpiredSessions 清理过期会话
 func (am *AuthManager) cleanupExpiredSessions() {
-	ticker := time.NewTicker(1 * time.Hour)
-	for range ticker.C {
-		am.mu.Lock()
-		now := time.Now()
-		for token, session := range am.sessions {
-			if now.After(session.ExpiresAt) {
-				delete(am.sessions, token)
-			}
-		}
-		am.mu.Unlock()
-	}
+        ticker := time.NewTicker(1 * time.Hour)
+        for range ticker.C {
+                am.mu.Lock()
+                now := time.Now()
+                for token, session := range am.sessions {
+                        if now.After(session.ExpiresAt) {
+                                delete(am.sessions, token)
+                        }
+                }
+                am.mu.Unlock()
+        }
 }
 
 // GetSessionCount 获取会话数量
 func (am *AuthManager) GetSessionCount() int {
-	am.mu.RLock()
-	defer am.mu.RUnlock()
-	return len(am.sessions)
+        am.mu.RLock()
+        defer am.mu.RUnlock()
+        return len(am.sessions)
 }
 
 // ============================================================
@@ -183,12 +183,12 @@ func (am *AuthManager) GetSessionCount() int {
 
 // GetLoginPageHTML 获取登录页面 HTML
 func GetLoginPageHTML(errorMsg string) string {
-	errorHTML := ""
-	if errorMsg != "" {
-		errorHTML = fmt.Sprintf(`<div class="error">%s</div>`, errorMsg)
-	}
+        errorHTML := ""
+        if errorMsg != "" {
+                errorHTML = fmt.Sprintf(`<div class="error">%s</div>`, errorMsg)
+        }
 
-	return fmt.Sprintf(`<!DOCTYPE html>
+        return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
@@ -341,166 +341,166 @@ func GetLoginPageHTML(errorMsg string) string {
 
 // HandleLoginPage 处理登录页面
 func HandleLoginPage(w http.ResponseWriter, r *http.Request) {
-	// 检查是否已登录
-	cookie, err := r.Cookie("garclaw_token")
-	if err == nil && globalAuthManager.ValidateToken(cookie.Value) {
-		// 已登录，重定向到主页
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
+        // 检查是否已登录
+        cookie, err := r.Cookie("garclaw_token")
+        if err == nil && globalAuthManager.ValidateToken(cookie.Value) {
+                // 已登录，重定向到主页
+                http.Redirect(w, r, "/", http.StatusFound)
+                return
+        }
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(GetLoginPageHTML("")))
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        w.Write([]byte(GetLoginPageHTML("")))
 }
 
 // HandleLogin 处理登录请求
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+        if r.Method != "POST" {
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }
 
-	password := r.FormValue("password")
-	if password == "" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(GetLoginPageHTML("请输入密码")))
-		return
-	}
+        password := r.FormValue("password")
+        if password == "" {
+                w.Header().Set("Content-Type", "text/html; charset=utf-8")
+                w.Write([]byte(GetLoginPageHTML("请输入密码")))
+                return
+        }
 
-	if !globalAuthManager.ValidatePassword(password) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(GetLoginPageHTML("密码错误，请重试")))
-		log.Printf("[Auth] Failed login attempt from %s", r.RemoteAddr)
-		return
-	}
+        if !globalAuthManager.ValidatePassword(password) {
+                w.Header().Set("Content-Type", "text/html; charset=utf-8")
+                w.Write([]byte(GetLoginPageHTML("密码错误，请重试")))
+                log.Printf("[Auth] Failed login attempt from %s", r.RemoteAddr)
+                return
+        }
 
-	// 创建会话
-	session := globalAuthManager.CreateSession(r.UserAgent(), r.RemoteAddr)
+        // 创建会话
+        session := globalAuthManager.CreateSession(r.UserAgent(), r.RemoteAddr)
 
-	// 设置 cookie
-	expiry := time.Duration(globalAuthManager.config.TokenExpiry) * time.Hour
-	if expiry == 0 {
-		expiry = 24 * time.Hour
-	}
+        // 设置 cookie
+        expiry := time.Duration(globalAuthManager.config.TokenExpiry) * time.Hour
+        if expiry == 0 {
+                expiry = 24 * time.Hour
+        }
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "garclaw_token",
-		Value:    session.Token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   false, // 如果使用 HTTPS，设为 true
-		MaxAge:   int(expiry.Seconds()),
-	})
+        http.SetCookie(w, &http.Cookie{
+                Name:     "garclaw_token",
+                Value:    session.Token,
+                Path:     "/",
+                HttpOnly: true,
+                Secure:   false, // 如果使用 HTTPS，设为 true
+                MaxAge:   int(expiry.Seconds()),
+        })
 
-	log.Printf("[Auth] Successful login from %s", r.RemoteAddr)
+        log.Printf("[Auth] Successful login from %s", r.RemoteAddr)
 
-	// 重定向到主页
-	http.Redirect(w, r, "/", http.StatusFound)
+        // 重定向到主页
+        http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // HandleLogout 处理登出请求
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("garclaw_token")
-	if err == nil {
-		globalAuthManager.Logout(cookie.Value)
-	}
+        cookie, err := r.Cookie("garclaw_token")
+        if err == nil {
+                globalAuthManager.Logout(cookie.Value)
+        }
 
-	// 清除 cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     "garclaw_token",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
+        // 清除 cookie
+        http.SetCookie(w, &http.Cookie{
+                Name:     "garclaw_token",
+                Value:    "",
+                Path:     "/",
+                HttpOnly: true,
+                MaxAge:   -1,
+        })
 
-	http.Redirect(w, r, "/login", http.StatusFound)
+        http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 // HandleAPILogin 处理 API 登录请求
 func HandleAPILogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+        if r.Method != "POST" {
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }
 
-	var req struct {
-		Password string `json:"password"`
-	}
+        var req struct {
+                Password string `json:"password"`
+        }
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                http.Error(w, "Invalid request", http.StatusBadRequest)
+                return
+        }
 
-	if !globalAuthManager.ValidatePassword(req.Password) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Invalid password",
-		})
-		return
-	}
+        if !globalAuthManager.ValidatePassword(req.Password) {
+                w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusUnauthorized)
+                json.NewEncoder(w).Encode(map[string]string{
+                        "error": "Invalid password",
+                })
+                return
+        }
 
-	// 创建会话
-	session := globalAuthManager.CreateSession(r.UserAgent(), r.RemoteAddr)
+        // 创建会话
+        session := globalAuthManager.CreateSession(r.UserAgent(), r.RemoteAddr)
 
-	log.Printf("[Auth] API login from %s", r.RemoteAddr)
+        log.Printf("[Auth] API login from %s", r.RemoteAddr)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"token": session.Token,
-	})
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]string{
+                "token": session.Token,
+        })
 }
 
 // AuthMiddleware 认证中间件
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// 如果未启用认证，直接放行
-		if globalAuthManager == nil || !globalAuthManager.config.Enabled {
-			next(w, r)
-			return
-		}
+        return func(w http.ResponseWriter, r *http.Request) {
+                // 如果未启用认证，直接放行
+                if globalAuthManager == nil || !globalAuthManager.config.Enabled {
+                        next(w, r)
+                        return
+                }
 
-		// 检查 cookie
-		cookie, err := r.Cookie("garclaw_token")
-		if err != nil || !globalAuthManager.ValidateToken(cookie.Value) {
-			// 检查是否是 WebSocket 请求（通过 URL 参数传递 token）
-			token := r.URL.Query().Get("token")
-			if token != "" && globalAuthManager.ValidateToken(token) {
-				next(w, r)
-				return
-			}
+                // 检查 cookie
+                cookie, err := r.Cookie("garclaw_token")
+                if err != nil || !globalAuthManager.ValidateToken(cookie.Value) {
+                        // 检查是否是 WebSocket 请求（通过 URL 参数传递 token）
+                        token := r.URL.Query().Get("token")
+                        if token != "" && globalAuthManager.ValidateToken(token) {
+                                next(w, r)
+                                return
+                        }
 
-			// 检查 Authorization header
-			authHeader := r.Header.Get("Authorization")
-			if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-				token = authHeader[7:]
-				if globalAuthManager.ValidateToken(token) {
-					next(w, r)
-					return
-				}
-			}
+                        // 检查 Authorization header
+                        authHeader := r.Header.Get("Authorization")
+                        if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+                                token = authHeader[7:]
+                                if globalAuthManager.ValidateToken(token) {
+                                        next(w, r)
+                                        return
+                                }
+                        }
 
-			// 未认证，重定向到登录页或返回 401
-			if r.Header.Get("Accept") == "application/json" || r.URL.Path[:4] == "/api" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]string{
-					"error": "Unauthorized",
-				})
-			} else {
-				http.Redirect(w, r, "/login", http.StatusFound)
-			}
-			return
-		}
+                        // 未认证，重定向到登录页或返回 401
+                        if r.Header.Get("Accept") == "application/json" || r.URL.Path[:4] == "/api" {
+                                w.Header().Set("Content-Type", "application/json")
+                                w.WriteHeader(http.StatusUnauthorized)
+                                json.NewEncoder(w).Encode(map[string]string{
+                                        "error": "Unauthorized",
+                                })
+                        } else {
+                                http.Redirect(w, r, "/login", http.StatusFound)
+                        }
+                        return
+                }
 
-		next(w, r)
-	}
+                next(w, r)
+        }
 }
 
 // IsAuthEnabled 检查是否启用了认证
 func IsAuthEnabled() bool {
-	return globalAuthManager != nil && globalAuthManager.config.Enabled
+        return globalAuthManager != nil && globalAuthManager.config.Enabled
 }
 
