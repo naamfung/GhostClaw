@@ -383,9 +383,9 @@ func main() {
                 consolidatorConfig.MinMessagesToConsolidate,
                 consolidatorConfig.ConsolidationRatio*100)
 
-        // 初始化会话持久化管理器
+        // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
-        log.Println("Session persistence initialized")
+        log.Println("Session persistence initialized (database-backed)")
 
         // 初始化 Hook 管理器
         InitHookManager(&config)

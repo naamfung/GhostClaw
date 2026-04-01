@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"sync"
@@ -39,7 +40,7 @@ var globalSessionOnce sync.Once
 func GetGlobalSession() *GlobalSession {
 	globalSessionOnce.Do(func() {
 		globalSession = newGlobalSession()
-		if err := globalSession.LoadFromPersist(); err != nil && !os.IsNotExist(err) {
+		if err := globalSession.LoadFromPersist(); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.Printf("Failed to load session: %v", err)
 		}
 	})
@@ -66,7 +67,15 @@ func (s *GlobalSession) LoadFromPersist() error {
 	}
 	saved, err := globalSessionPersist.LoadSession(s.ID)
 	if err != nil {
+		// 文件不存在是首次运行的正常情况
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		return err
+	}
+	if saved == nil {
+		// 无持久化数据（首次运行）
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -226,4 +235,3 @@ func (s *GlobalSession) autoSaveHistory() {
 		}
 	}
 }
-
