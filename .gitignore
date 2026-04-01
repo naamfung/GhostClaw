@@ -8,6 +8,11 @@
 
 garclaw
 garclaw_*
+ghostclaw
+ghostclaw_*
+GhostClaw
+GhostClaw_*
+*.db
 
 m2t.sh
 
