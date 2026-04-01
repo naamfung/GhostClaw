@@ -71,8 +71,11 @@ func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Chann
         return string(resultTOON), TaskStatusSuccess
     }
 
-    // 同步执行
-    timeout := 60
+    // 同步执行：超时优先级为 模型参数 > 配置文件 > 程序默认值
+    timeout := globalTimeoutConfig.Shell
+    if timeout <= 0 {
+        timeout = DefaultShellTimeout
+    }
     if t, ok := argsMap["timeout_secs"].(float64); ok && t > 0 {
         timeout = int(t)
     }

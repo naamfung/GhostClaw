@@ -241,8 +241,12 @@ func handleExecuteShell(ctx context.Context, args map[string]interface{}) (CallT
         }, nil
     }
 
-    timeout := 60
-    if t, ok := args["timeout"].(float64); ok {
+    // 超时优先级为 模型参数 > 配置文件 > 程序默认值
+    timeout := globalTimeoutConfig.Shell
+    if timeout <= 0 {
+        timeout = DefaultShellTimeout
+    }
+    if t, ok := args["timeout"].(float64); ok && t > 0 {
         timeout = int(t)
     }
 
