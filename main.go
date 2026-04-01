@@ -486,6 +486,8 @@ func main() {
                         continue
                 }
 
+                // 從全局會話讀取歷史（確保跨頻道共享同一會話記錄）
+                history = session.GetHistory()
                 history = append(history, Message{Role: "user", Content: line})
                 if globalTaskTracker != nil {
                         globalTaskTracker.StartNewTask(line)
