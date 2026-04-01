@@ -1,4 +1,4 @@
-module garclaw
+module ghostclaw
 
 go 1.25.0
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# GarClaw 构建脚本
+# GhostClaw 构建脚本
 # 用法: ./build.sh [--check-deps]
 #
 # 兼容性：POSIX shell，适用于 Linux、FreeBSD、OpenBSD、NetBSD、macOS、GhostBSD 等
@@ -14,11 +14,11 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-printf "=== GarClaw 构建脚本 ===\n\n"
+printf "=== GhostClaw 构建脚本 ===\n\n"
 
 # 切换到脚本所在目录
 cd "$(dirname "$0")"
-rm -rf garclaw garclaw.exe garclaw_*
+rm -rf ghostclaw ghostclaw.exe ghostclaw_*
 rm -rf webui/node_modules webui/.svelte-kit
 
 # 检测操作系统
@@ -343,13 +343,13 @@ fi
 # 构建
 LDFLAGS="-X 'main.Version=$VERSION' -X 'main.GitCommit=$GIT_COMMIT' -X 'main.BuildTime=$BUILD_TIME'"
 if [ -n "$BUILD_TAGS" ]; then
-    go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o garclaw . || {
+    go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o ghostclaw . || {
         printf "\033[0;31mGo 编译失败\033[0m\n"
         printf "请确保已安装 Go 编译器\n"
         exit 1
     }
 else
-    go build -ldflags "$LDFLAGS" -o garclaw . || {
+    go build -ldflags "$LDFLAGS" -o ghostclaw . || {
         printf "\033[0;31mGo 编译失败\033[0m\n"
         printf "请确保已安装 Go 编译器\n"
         exit 1
@@ -357,8 +357,8 @@ else
 fi
 
 printf "\n\033[0;32m=== 构建完成 ===\033[0m\n"
-printf "可执行文件: ./garclaw\n\n"
-printf "运行程序: ./garclaw\n"
+printf "可执行文件: ./ghostclaw\n\n"
+printf "运行程序: ./ghostclaw\n"
 printf "访问地址: http://localhost:10086\n"
 if [ -n "$TAG_DESCRIPTIONS" ]; then
     printf "\n已启用扩展渠道:%s\n" "$TAG_DESCRIPTIONS"
