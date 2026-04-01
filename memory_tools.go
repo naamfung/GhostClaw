@@ -101,6 +101,21 @@ func handleMemoryRecall(ctx context.Context, argsMap map[string]interface{}, ch 
 
     entries := globalUnifiedMemory.SearchEntries(category, query, limit)
     if len(entries) == 0 {
+        // 单次搜索无结果时，尝试按空格拆分关键词分别搜索并聚合
+        keywords := strings.Fields(query)
+        if len(keywords) > 1 {
+            seen := make(map[string]bool) // 去重
+            for _, kw := range keywords {
+                for _, e := range globalUnifiedMemory.SearchEntries(category, kw, limit) {
+                    if !seen[e.ID] {
+                        seen[e.ID] = true
+                        entries = append(entries, e)
+                    }
+                }
+            }
+        }
+    }
+    if len(entries) == 0 {
         if query != "" {
             return fmt.Sprintf("No memories found matching '%s'.", query), false
         }
