@@ -101,7 +101,7 @@ func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Chann
 
     select {
     case <-ctxWithTimeout.Done():
-        return fmt.Sprintf("Command execution timeout after %d seconds.", timeout), TaskStatusFailed
+        return fmt.Sprintf("Command execution timeout after %d seconds.\n💡 提示：可通过参数 timeout_secs 设置更长的超时时间（当前为 %d 秒），譬如在网速较慢时建议将下载等长时任务设置为 1200 秒、2400 秒、4800 秒等等长时级别，同时在命令内部亦须注意设置合适的超时（如 sleep、curl 等命令本身的超时应小于 timeout_secs）。", timeout, timeout), TaskStatusFailed
     case err := <-errChan:
         if err != nil {
             return fmt.Sprintf("Command failed: %v\nOutput: %s", err, string(output)), TaskStatusFailed
