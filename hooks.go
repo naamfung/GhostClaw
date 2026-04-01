@@ -364,17 +364,17 @@ func hookDangerousCommand(ctx context.Context, event HookEvent, payload interfac
 
 // hookAuditLog 审计日志 Hook
 func hookAuditLog(ctx context.Context, event HookEvent, payload interface{}) *HookResult {
-        // 简单的审计日志输出
+        // 使用 log.Printf 输出审计日志，确保在 CMD 模式下被 cliLogWriter 拦截
         switch event {
         case HookEventBeforeToolCall:
                 if beforeTool, ok := payload.(*HookPayloadBeforeTool); ok {
                         inputJSON, _ := json.Marshal(beforeTool.ToolInput)
-                        fmt.Printf("[AUDIT] BeforeToolCall: chat=%d tool=%s input=%s\n",
+                        log.Printf("[AUDIT] BeforeToolCall: chat=%d tool=%s input=%s",
                                 beforeTool.ChatID, beforeTool.ToolName, string(inputJSON))
                 }
         case HookEventAfterToolCall:
                 if afterTool, ok := payload.(*HookPayloadAfterTool); ok {
-                        fmt.Printf("[AUDIT] AfterToolCall: chat=%d tool=%s error=%v\n",
+                        log.Printf("[AUDIT] AfterToolCall: chat=%d tool=%s error=%v",
                                 afterTool.ChatID, afterTool.ToolName, afterTool.Result.IsError)
                 }
         }

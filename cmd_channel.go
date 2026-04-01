@@ -12,7 +12,7 @@ import (
 type CmdChannel struct {
 	*BaseChannel
 	writer io.Writer
-	// 行级緩衝：用於處理跨 chunk 的 [AUDIT] / agentic 標籤過濾
+	// 行级緩衝：用於處理跨 chunk 的行分割
 	lineBuf string
 }
 
@@ -24,18 +24,15 @@ func NewCmdChannel() *CmdChannel {
 	}
 }
 
-// isAgenticLine 检查单行是否为 agentic 标签（前端专用，CLI 不显示）
-func isAgenticLine(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return false
-	}
-	return strings.HasPrefix(trimmed, "<<<AGENTIC_") ||
-		strings.HasPrefix(trimmed, "<<<TOOL_NAME:") ||
-		strings.HasPrefix(trimmed, "<<<TOOL_ARGS_") ||
-		strings.HasPrefix(trimmed, "<<<reasoning_") ||
-		trimmed == "<<<reasoning_content_start>>>" ||
-		trimmed == "<<<reasoning_content_end>>>"
+// agenticTagMarkers 需要从输出中移除的 agentic 标记列表
+var agenticTagMarkers = []string{
+	"<<<AGENTIC_TOOL_CALL_START>>>",
+	"<<<AGENTIC_TOOL_CALL_END>>>",
+	"<<<TOOL_NAME:",
+	"<<<TOOL_ARGS_START>>>",
+	"<<<TOOL_ARGS_END>>>",
+	"<<<reasoning_content_start>>>",
+	"<<<reasoning_content_end>>>",
 }
 
 // isAuditLine 检查单行是否为审计日志（调试用，CLI 不显示）
@@ -44,7 +41,43 @@ func isAuditLine(line string) bool {
 	return strings.HasPrefix(trimmed, "[AUDIT]")
 }
 
-// shouldFilterLine 检查单行是否应该被过滤（CLI 不显示）
+// isAgenticLine 检查单行是否完全由 agentic 标签组成（整行过滤）
+func isAgenticLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	for _, marker := range agenticTagMarkers {
+		if trimmed == marker {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "<<<TOOL_NAME:") && strings.HasSuffix(trimmed, ">>>") {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "<<<reasoning_") {
+			return true
+		}
+	}
+	return false
+}
+
+// stripAgenticTags 从文本中移除所有 agentic 标记（处理 mid-line 情况）
+// 当模型文本和 agentic 标记被拼接在同一行时，只保留模型文本部分
+func stripAgenticTags(text string) string {
+	result := text
+	for _, marker := range agenticTagMarkers {
+		result = strings.ReplaceAll(result, marker, "")
+	}
+	// 处理 <<<TOOL_NAME:xxx>>> 格式（动态工具名）
+	if idx := strings.Index(result, "<<<TOOL_NAME:"); idx >= 0 {
+		if endIdx := strings.Index(result[idx:], ">>>"); endIdx >= 0 {
+			result = result[:idx] + result[idx+endIdx+3:]
+		}
+	}
+	return result
+}
+
+// shouldFilterLine 检查单行是否应该被完全过滤（CLI 不显示）
 func shouldFilterLine(line string) bool {
 	return isAgenticLine(line) || isAuditLine(line)
 }
@@ -59,11 +92,17 @@ func (c *CmdChannel) filterContent(content string) string {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !shouldFilterLine(line) {
-			result.WriteString(line)
+		if shouldFilterLine(line) {
+			// 整行是 agentic 标签或 AUDIT 日志，完全丢弃
+			continue
+		}
+		// 行中可能包含 agentic 标记（与模型文本拼接在一起）
+		// 例如: "一些文本<<<AGENTIC_TOOL_CALL_START>>>"
+		cleaned := stripAgenticTags(line)
+		if cleaned != "" {
+			result.WriteString(cleaned)
 			result.WriteByte('\n')
 		}
-		// 被过滤的行直接丢弃
 	}
 
 	// 获取未完成的尾部（最后一行可能不完整）
@@ -103,10 +142,15 @@ func (c *CmdChannel) WriteChunk(chunk StreamChunk) error {
 	if processed.Done {
 		// 處理緩衝區中剩餘的內容（可能是不完整的最後一行）
 		if c.lineBuf != "" {
-			if !shouldFilterLine(c.lineBuf) {
-				fmt.Fprint(c.writer, c.lineBuf)
+			if shouldFilterLine(c.lineBuf) {
+				c.lineBuf = ""
+			} else {
+				cleaned := stripAgenticTags(c.lineBuf)
+				if cleaned != "" {
+					fmt.Fprint(c.writer, cleaned)
+				}
+				c.lineBuf = ""
 			}
-			c.lineBuf = ""
 		}
 		fmt.Fprintln(c.writer)
 	}

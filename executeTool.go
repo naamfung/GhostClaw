@@ -1122,7 +1122,6 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
             } else {
                 content = result
             }
-            fmt.Println(content)
         }
 
     default:
