@@ -21,8 +21,8 @@ const (
         DefaultBrowserTimeout     = 60  // 浏览器每次操作默认超时（增加以适应慢速网络）
 )
 
-// 通用系统规则（不含角色身份）
-var baseSystemRules = `请遵循以下原则：
+// 通用系统规则（不含角色身份）——仅作为无角色模式下的 fallback
+var fallbackSystemRules = `请遵循以下原则：
 
 1. **在调用任何工具之前，先回顾整个对话历史。如果回答用户当前问题所需的信息已在历史中（包括你之前的回答或工具结果），请直接回答，不要调用工具。**
 
@@ -46,7 +46,7 @@ var baseSystemRules = `请遵循以下原则：
 `
 
 func init() {
-        SYSTEM_PROMPT = baseSystemRules
+        SYSTEM_PROMPT = fallbackSystemRules
 }
 
 // BuildGeneralSystemPrompt 构建通用系统规则（不含角色身份）
@@ -63,7 +63,7 @@ func BuildGeneralSystemPrompt(enableImplicitSummary bool) string {
 - **当前系统时间**：%s
 - **主机名**：%s
 `, osInfo, programName, currentTime, hostname)
-    return envInfo + baseSystemRules
+    return envInfo + fallbackSystemRules
 }
 
 // getHostname 获取主机名（失败时返回 "unknown"）
@@ -101,6 +101,15 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                         prompt.WriteString(profile.Soul)
                         prompt.WriteString("\n\n")
                 }
+
+                // 0a2. 核心行为守则（所有角色共同遵守，Agent 场景最新优先）
+                prompt.WriteString("# 核心行为守则\n\n")
+                prompt.WriteString("## 最新用户消息优先\n\n")
+                prompt.WriteString("对话历史中可能包含多轮用户请求。判断\"当前任务\"时，始终以**最新的用户消息**为主要依据：\n\n")
+                prompt.WriteString("- 如果新消息与之前的请求冲突（如\"先做 A\"→\"不做 A，改做 B\"），以新消息为准\n")
+                prompt.WriteString("- 如果新消息是对之前请求的补充或追问（如\"分析日志\"→\"找到错误行\"），保留相关上下文继续执行\n")
+                prompt.WriteString("- 如果新消息是一个完全独立的新任务，开始处理新任务，不要继续历史中已完成的旧任务\n")
+                prompt.WriteString("- 消息中带有 `[最新请求]` 标记的是当前应优先处理的目标\n\n")
 
                 // 0b. 关于雇主
                 if profile.User != "" {
