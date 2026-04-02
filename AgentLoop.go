@@ -240,13 +240,39 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         default:
         }
 
-        // ========== 每次循环开始前截断历史（含时间分隔标记） ==========
+        // ========== 每次循环开始前截断历史（含时间分隔标记 + user边界切割） ==========
         if len(messages) > MaxHistoryMessages {
-            // 1. 截断前：从被丢弃的消息中提取最后一条用户消息的时间和信息
-            discardCount := len(messages) - MaxHistoryMessages
+            // 1. 计算目标保留数量，找到 user 消息边界（参考 nanobot 的 pick_consolidation_boundary）
+            //    不在 tool-call 链中间截断，而是向前/向后找到最近的 user 消息边界
+            hasSystem := messages[0].Role == "system"
+            budgetSlots := MaxHistoryMessages
+            if hasSystem {
+                budgetSlots = MaxHistoryMessages - 1 // system 占一个名额
+            }
+
+            // 计算理想的起始位置
+            idealStart := len(messages) - budgetSlots
+            if idealStart < 0 {
+                idealStart = 0
+            }
+
+            // 从 idealStart 向前搜索最近的 user 消息边界（容忍窗口 ±20条）
+            // "user 消息边界" = 一条 user 消息，且它前面不是 user 消息
+            boundaryStart := idealStart
+            searchWindow := 20
+            if idealStart > searchWindow {
+                for i := idealStart; i >= idealStart-searchWindow && i > 0; i-- {
+                    if messages[i].Role == "user" && (i == 0 || messages[i-1].Role != "user") {
+                        boundaryStart = i
+                        break
+                    }
+                }
+            }
+
+            // 2. 截断前：从被丢弃的消息中提取最后一条用户消息的时间和内容
             lastDiscardUserContent := ""
             lastDiscardUserTime := ""
-            for i := 0; i < discardCount; i++ {
+            for i := 0; i < boundaryStart; i++ {
                 if messages[i].Role == "user" {
                     if content, ok := messages[i].Content.(string); ok && content != "" {
                         lastDiscardUserContent = content
@@ -257,27 +283,22 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 }
             }
 
-            // 2. 执行截断
-            keep := MaxHistoryMessages
-            if messages[0].Role == "system" {
-                newMessages := make([]Message, 0, keep)
+            // 3. 执行截断
+            if hasSystem {
+                newMessages := make([]Message, 0, len(messages)-boundaryStart+1)
                 newMessages = append(newMessages, messages[0])
-                start := len(messages) - (keep - 1)
-                if start < 1 {
-                    start = 1
-                }
-                newMessages = append(newMessages, messages[start:]...)
+                newMessages = append(newMessages, messages[boundaryStart:]...)
                 messages = newMessages
             } else {
-                messages = messages[len(messages)-keep:]
+                messages = messages[boundaryStart:]
             }
 
-            // 3. 截断后清理可能产生的孤立 tool 消息和非法序列
-            messages = removeOrphanedToolMessages(messages)
+            // 4. 使用前向扫描算法清理孤儿工具消息（参考 nanobot 的 _find_legal_start）
+            messages = findLegalStart(messages)
             messages = removeOrphanedToolCalls(messages)
             messages = mergeConsecutiveSameRole(messages)
 
-            // 4. 构建时间分隔标记消息，插入到 system 消息之后
+            // 5. 构建时间分隔标记消息，插入到 system 消息之后
             var divider strings.Builder
             divider.WriteString("[对话历史分隔 — 以下为较早的对话记录]\n\n")
             if lastDiscardUserContent != "" {
@@ -317,7 +338,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             newMsgs = append(newMsgs, messages[insertIdx:]...)
             messages = newMsgs
 
-            log.Printf("[AgentLoop] History truncated to %d messages (with time divider, discarded %d)", len(messages), discardCount)
+            log.Printf("[AgentLoop] History truncated to %d messages (boundary at user msg idx=%d, discarded %d)", len(messages), boundaryStart, len(messages)-boundaryStart-1)
         }
         // ===============================================
 

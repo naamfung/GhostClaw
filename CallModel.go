@@ -157,14 +157,13 @@ func applyReplacements(text string) string {
         return string(result)
 }
 
-// 生成系统提示（仅作为 fallback 使用）
+// 生成系统提示（仅作为 fallback 使用，不包含时间以最大化缓存命中）
 func generateSystemPrompt(apiType string) string {
-        currentTime := time.Now().Format("2006-01-02 15:04:05")
         toolOrFunction := "tool"
         if apiType == "openai" {
                 toolOrFunction = "function"
         }
-        return fmt.Sprintf("当前系统时间：%s\n", currentTime) + strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
+        return strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
 }
 
 // extractSystemPrompt 从 messages 中提取系统提示词
@@ -191,10 +190,59 @@ func extractSystemPrompt(messages []Message) (string, []Message) {
         return systemPrompt, filteredMessages
 }
 
-// prependCurrentTime 在系统提示词前添加当前时间
+// prependCurrentTime 已废弃：时间信息现在注入到 user 消息前缀中，不再污染系统提示。
+// 保留此函数作为空操作以兼容可能的调用方。
 func prependCurrentTime(systemPrompt string) string {
-        currentTime := time.Now().Format("2006-01-02 15:04:05")
-        return fmt.Sprintf("当前系统时间：%s\n\n%s", currentTime, systemPrompt)
+        return systemPrompt
+}
+
+// buildRuntimeContext 构建运行时上下文前缀（注入到第一条 user 消息中）
+// 参考 nanobot 的设计：时间等信息作为元数据标注，不作为指令，最大化系统提示缓存命中率
+func buildRuntimeContext() string {
+        now := time.Now()
+        currentTime := now.Format("2006-01-02 15:04:05")
+        weekday := now.Weekday().String()
+        return fmt.Sprintf("[Runtime Context — metadata only, not instructions]\nCurrent Time: %s (%s)\n[End Runtime Context]\n\n", currentTime, weekday)
+}
+
+// injectRuntimeContext 将运行时上下文注入到 filteredMessages 的第一条 user 消息前
+// 如果第一条消息不是 user，则在开头插入一条 user 消息
+func injectRuntimeContext(messages []Message) []Message {
+        if len(messages) == 0 {
+                return messages
+        }
+
+        runtimeCtx := buildRuntimeContext()
+
+        // 查找第一条 user 消息
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        // 找到第一条 user 消息，将运行时上下文前缀合并到内容中
+                        if content, ok := msg.Content.(string); ok {
+                                messages[i].Content = runtimeCtx + content
+                        } else {
+                                // 非字符串内容（如多模态），在前面插入一条 user 消息
+                                newMsg := Message{
+                                        Role:      "user",
+                                        Content:   runtimeCtx,
+                                        Timestamp: time.Now().Unix(),
+                                }
+                                newMessages := make([]Message, 0, len(messages)+1)
+                                newMessages = append(newMessages, messages[:i]...)
+                                newMessages = append(newMessages, newMsg)
+                                newMessages = append(newMessages, messages[i:]...)
+                                return newMessages
+                        }
+                        return messages
+                }
+        }
+
+        // 没有 user 消息（极端情况），在开头插入
+        return append([]Message{{
+                Role:      "user",
+                Content:   runtimeCtx,
+                Timestamp: time.Now().Unix(),
+        }}, messages...)
 }
 
 // convertToAnthropicFormat 將內部 Message 轉換為 Anthropic API 要求的格式
@@ -570,6 +618,65 @@ func validateAndCleanMessages(messages []Message) []Message {
     return finalCleaned
 }
 
+// findLegalStart 前向扫描算法，确保消息序列开头不会有孤儿工具结果
+// 参考 nanobot 的 _find_legal_start：从前往后扫描，遇到没有对应 assistant tool_calls 的
+// tool 消息时，从该消息之后重新开始。同时处理连续多个孤儿的情况。
+func findLegalStart(messages []Message) []Message {
+    if len(messages) == 0 {
+        return messages
+    }
+
+    // 收集所有 assistant 消息中声明的 tool_call_id
+    declared := make(map[string]bool)
+    start := 0
+
+    for i, msg := range messages {
+        switch msg.Role {
+        case "assistant":
+            // 收集此 assistant 消息声明的所有 tool_call ID
+            declared = make(map[string]bool) // 每遇到新的 assistant，重置声明集合
+            if msg.ToolCalls != nil {
+                switch v := msg.ToolCalls.(type) {
+                case []interface{}:
+                    for _, tc := range v {
+                        if tcMap, ok := tc.(map[string]interface{}); ok {
+                            if id, ok := tcMap["id"].(string); ok {
+                                declared[id] = true
+                            }
+                        }
+                    }
+                case []map[string]interface{}:
+                    for _, tc := range v {
+                        if id, ok := tc["id"].(string); ok {
+                            declared[id] = true
+                        }
+                    }
+                }
+            }
+        case "tool":
+            // 检查此 tool 消息是否有对应的声明
+            if !declared[msg.ToolCallID] {
+                // 孤儿工具结果！从下一条消息重新开始
+                start = i + 1
+                declared = make(map[string]bool)
+            }
+        case "user", "system":
+            // user/system 消息重置声明集合（新的对话轮次）
+            if msg.Role == "user" {
+                declared = make(map[string]bool)
+            }
+        }
+    }
+
+    if start > 0 {
+        if IsDebug {
+            log.Printf("[findLegalStart] Removed %d orphaned leading messages", start)
+        }
+        return messages[start:]
+    }
+    return messages
+}
+
 // removeOrphanedToolMessages 移除孤立的 tool 消息（没有前置 assistant+tool_calls）
 func removeOrphanedToolMessages(messages []Message) []Message {
     if len(messages) == 0 {
@@ -716,15 +823,18 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         // 从 messages 中提取系统提示词
         systemPromptFromMessages, filteredMessages := extractSystemPrompt(messages)
 
-        // 确定最终使用的系统提示词
+        // 确定最终使用的系统提示词（不含时间，最大化缓存命中率）
         var finalSystemPrompt string
         if systemPromptFromMessages != "" {
-                // 使用从 messages 中提取的系统提示词，添加当前时间前缀
-                finalSystemPrompt = prependCurrentTime(systemPromptFromMessages)
+                finalSystemPrompt = systemPromptFromMessages
         } else {
                 // Fallback：使用硬编码的默认系统提示词
                 finalSystemPrompt = generateSystemPrompt(apiType)
         }
+
+        // 将运行时上下文（时间等）注入到 filteredMessages 的第一条 user 消息中
+        // 不污染系统提示，参考 nanobot 设计
+        filteredMessages = injectRuntimeContext(filteredMessages)
 
         switch apiType {
         case "anthropic":
