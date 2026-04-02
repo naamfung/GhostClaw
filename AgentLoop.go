@@ -240,8 +240,24 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         default:
         }
 
-        // ========== 新增：每次循环开始前截断历史 ==========
+        // ========== 每次循环开始前截断历史（含时间分隔标记） ==========
         if len(messages) > MaxHistoryMessages {
+            // 1. 截断前：从被丢弃的消息中提取最后一条用户消息的时间和信息
+            discardCount := len(messages) - MaxHistoryMessages
+            lastDiscardUserContent := ""
+            lastDiscardUserTime := ""
+            for i := 0; i < discardCount; i++ {
+                if messages[i].Role == "user" {
+                    if content, ok := messages[i].Content.(string); ok && content != "" {
+                        lastDiscardUserContent = content
+                        if messages[i].Timestamp > 0 {
+                            lastDiscardUserTime = time.Unix(messages[i].Timestamp, 0).Format("15:04:05")
+                        }
+                    }
+                }
+            }
+
+            // 2. 执行截断
             keep := MaxHistoryMessages
             if messages[0].Role == "system" {
                 newMessages := make([]Message, 0, keep)
@@ -255,11 +271,53 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             } else {
                 messages = messages[len(messages)-keep:]
             }
-            // 截断后清理可能产生的孤立 tool 消息和非法序列
+
+            // 3. 截断后清理可能产生的孤立 tool 消息和非法序列
             messages = removeOrphanedToolMessages(messages)
             messages = removeOrphanedToolCalls(messages)
             messages = mergeConsecutiveSameRole(messages)
-            log.Printf("[AgentLoop] History truncated to %d messages", len(messages))
+
+            // 4. 构建时间分隔标记消息，插入到 system 消息之后
+            var divider strings.Builder
+            divider.WriteString("[对话历史分隔 — 以下为较早的对话记录]\n\n")
+            if lastDiscardUserContent != "" {
+                if lastDiscardUserTime != "" {
+                    divider.WriteString(fmt.Sprintf("[最近被截断的用户请求] (%s)\n", lastDiscardUserTime))
+                } else {
+                    divider.WriteString("[最近被截断的用户请求]\n")
+                }
+                if len(lastDiscardUserContent) > 200 {
+                    divider.WriteString(lastDiscardUserContent[:200] + "...\n\n")
+                } else {
+                    divider.WriteString(lastDiscardUserContent + "\n\n")
+                }
+            }
+            divider.WriteString("请注意对话的时间顺序，优先响应下方最新的用户消息。如有指令冲突，以最新用户消息的指令为准。\n")
+            divider.WriteString("[历史消息结束 — 以下为最近对话]")
+
+            dividerMsg := Message{
+                Role:      "user",
+                Content:   divider.String(),
+                Timestamp: time.Now().Unix(),
+            }
+
+            // 找到插入位置：system 消息之后的第一条非 system 消息前
+            insertIdx := 0
+            for i, msg := range messages {
+                if msg.Role == "system" {
+                    insertIdx = i + 1
+                } else {
+                    break
+                }
+            }
+            // 构建新的消息切片，插入分隔标记
+            newMsgs := make([]Message, 0, len(messages)+1)
+            newMsgs = append(newMsgs, messages[:insertIdx]...)
+            newMsgs = append(newMsgs, dividerMsg)
+            newMsgs = append(newMsgs, messages[insertIdx:]...)
+            messages = newMsgs
+
+            log.Printf("[AgentLoop] History truncated to %d messages (with time divider, discarded %d)", len(messages), discardCount)
         }
         // ===============================================
 
@@ -398,12 +456,14 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             messages = append(messages, Message{
                 Role:      "assistant",
                 ToolCalls: toolCalls,
+                Timestamp: time.Now().Unix(),
             })
         } else {
             messages = append(messages, Message{
                 Role:             "assistant",
                 Content:          respContent,
                 ReasoningContent: reasoningContent,
+                Timestamp:        time.Now().Unix(),
             })
         }
 
@@ -561,6 +621,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             messages = append(messages, Message{
                 Role:      "assistant",
                 ToolCalls: validToolCalls,
+                Timestamp: time.Now().Unix(),
             })
 
             for _, call := range callsToProcess {
@@ -783,8 +844,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             shouldPrompt, promptMsg := globalTaskTracker.ShouldPromptTodo()
             if shouldPrompt && promptMsg != "" {
                 messages = append(messages, Message{
-                    Role:    "user",
-                    Content: promptMsg,
+                    Role:      "user",
+                    Content:   promptMsg,
+                    Timestamp: time.Now().Unix(),
                 })
             }
         }

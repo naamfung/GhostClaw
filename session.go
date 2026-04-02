@@ -101,7 +101,7 @@ func (s *GlobalSession) LoadFromPersist() error {
 func (s *GlobalSession) AddToHistory(role, content string) {
         s.mu.Lock()
         defer s.mu.Unlock()
-        s.History = append(s.History, Message{Role: role, Content: content})
+        s.History = append(s.History, Message{Role: role, Content: content, Timestamp: time.Now().Unix()})
         s.LastSeen = time.Now()
         go s.autoSaveHistory()
 }

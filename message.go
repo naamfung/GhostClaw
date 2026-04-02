@@ -122,6 +122,7 @@ func (em EnrichedMessage) ToAPIMessage() Message {
                 ToolCalls:        em.ToolCalls,
                 ToolCallID:       em.ToolCallID,
                 ReasoningContent: em.ReasoningContent,
+                Timestamp:        em.Meta.Timestamp,
         }
 
         // 特殊处理：工具结果消息
@@ -328,14 +329,22 @@ func (mh *MessageHistory) GetLastToolCallID() string {
         return ""
 }
 
-// GetHistoricalSummary 获取历史摘要（用于长对话压缩）
+// GetHistoricalSummary 获取历史摘要（用于长对话压缩，包含时间戳）
 func (mh *MessageHistory) GetHistoricalSummary() string {
         var summary strings.Builder
         for _, msg := range mh.messages {
                 if msg.Meta.IsHistorical {
+                        ts := ""
+                        if msg.Meta.Timestamp > 0 {
+                                ts = time.Unix(msg.Meta.Timestamp, 0).Format("15:04:05")
+                        }
                         switch msg.Role {
                         case "user":
-                                summary.WriteString(fmt.Sprintf("User: %s\n", truncateContent(msg.Content, 100)))
+                                if ts != "" {
+                                        summary.WriteString(fmt.Sprintf("[%s] User: %s\n", ts, truncateContent(msg.Content, 100)))
+                                } else {
+                                        summary.WriteString(fmt.Sprintf("User: %s\n", truncateContent(msg.Content, 100)))
+                                }
                         case "assistant":
                                 if msg.ToolCalls != nil {
                                         summary.WriteString(fmt.Sprintf("Assistant: [Tool Call - %s]\n", msg.Meta.Status))

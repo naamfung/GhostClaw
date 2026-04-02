@@ -7,6 +7,7 @@ type Message struct {
     ToolCalls        interface{} `json:"tool_calls,omitempty"`
     ToolCallID       string      `json:"tool_call_id,omitempty"`
     ReasoningContent interface{} `json:"reasoning_content,omitempty"`
+    Timestamp        int64       `json:"timestamp,omitempty"` // Unix时间戳（秒），omitempty确保零值不序列化，不影响API兼容性
 }
 
 // Response 模型响应结构
