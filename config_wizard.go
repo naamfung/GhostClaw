@@ -31,7 +31,7 @@ func RunConfigWizard(existingConfig Config) ConfigWizardResult {
 
         fmt.Println()
         fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-        fmt.Println("║          欢迎使用 GarClaw - 首次启动配置向导                  ║")
+        fmt.Println("  欢迎使用 GarClaw - 首次启动配置向导")
         fmt.Println("╚══════════════════════════════════════════════════════════════╝")
         fmt.Println()
         fmt.Println("请配置必要的模型连接参数。按 Ctrl+C 可随时退出。")

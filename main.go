@@ -100,10 +100,10 @@ func (w *cliLogWriter) Write(p []byte) (n int, err error) {
 func runCMDMode(ctx context.Context, session *GlobalSession) {
         cmdModeActive = true
         fmt.Println("╔══════════════════════════════════════╗")
-        fmt.Println("║  GhostClaw REPL 模式                  ║")
-        fmt.Println("║  输入消息与模型对话                     ║")
-        fmt.Println("║  /logs → 切回 Log 模式（释放终端）      ║")
-        fmt.Println("║  /exit → 退出程序                      ║")
+        fmt.Println("  GhostClaw REPL 模式")
+        fmt.Println("  输入消息与模型对话")
+        fmt.Println("  /logs → 切回 Log 模式（释放终端）")
+        fmt.Println("  /exit → 退出程序")
         fmt.Println("╚══════════════════════════════════════╝")
 
         rl, err := readline.New("GhostClaw /> ")
@@ -202,10 +202,10 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 // 如果 stdin 不是终端（如后台运行/管道），则仅阻塞等待 ctx 取消
 func runLogMode(ctx context.Context, session *GlobalSession) {
         fmt.Println("╔══════════════════════════════════════╗")
-        fmt.Println("║  GhostClaw Log 模式（默认）            ║")
-        fmt.Println("║  终端仅显示程序日志                     ║")
-        fmt.Println("║  按 / 键 或启动时加 --repl 进入对话    ║")
-        fmt.Println("║  Ctrl+C 退出程序                       ║")
+        fmt.Println("  GhostClaw Log 模式（默认）")
+        fmt.Println("  终端仅显示程序日志")
+        fmt.Println("  按 / 键 或启动时加 --repl 进入对话")
+        fmt.Println("  Ctrl+C 退出程序")
         fmt.Println("╚══════════════════════════════════════╝")
 
         // 检查 stdin 是否为交互式终端

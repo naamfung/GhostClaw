@@ -84,7 +84,7 @@ func ProcessSlashCommand(input string, rm *RoleManager, am *ActorManager, stage 
 func GetHelpText() string {
         var sb strings.Builder
         sb.WriteString("╔══════════════════════════════════════════════════════════════╗\n")
-        sb.WriteString("║                   📖 GhostClaw 命令帮助                       ║\n")
+        sb.WriteString("  📖 GhostClaw 命令帮助\n")
         sb.WriteString("╚══════════════════════════════════════════════════════════════╝\n\n")
 
         // 系统命令
