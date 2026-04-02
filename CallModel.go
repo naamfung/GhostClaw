@@ -239,7 +239,7 @@ func injectRuntimeContext(messages []Message) []Message {
         }}, messages...)
 }
 
-// markLatestUserRequest 标记最后一条 user 消息为 [最新请求]，引导模型优先处理
+// markLatestUserRequest 标记最后一条 user 消息为 [GC:LATEST]，引导模型优先处理
 // 仅当存在多条 user 消息时才添加标记（避免单条对话时冗余）
 func markLatestUserRequest(messages []Message) []Message {
         if len(messages) < 2 {
@@ -264,7 +264,7 @@ func markLatestUserRequest(messages []Message) []Message {
         // 给最后一条 user 消息添加标记
         if lastUserIdx >= 0 {
                 if content, ok := messages[lastUserIdx].Content.(string); ok {
-                        messages[lastUserIdx].Content = "[最新请求] " + content
+                        messages[lastUserIdx].Content = LatestRequestMarker + " " + content
                 }
         }
 
@@ -862,7 +862,7 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         // 不污染系统提示，参考 nanobot 设计
         filteredMessages = injectRuntimeContext(filteredMessages)
 
-        // 标记最后一条 user 消息为 [最新请求]，引导模型优先处理而非面面俱到
+        // 标记最后一条 user 消息为 [GC:LATEST]，引导模型优先处理而非面面俱到
         filteredMessages = markLatestUserRequest(filteredMessages)
 
         switch apiType {

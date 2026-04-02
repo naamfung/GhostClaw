@@ -20,6 +20,11 @@ const (
         DefaultBrowserTimeout     = 60  // 浏览器每次操作默认超时（增加以适应慢速网络）
 )
 
+// 内部系统标记常量（仅由程序注入，不在用户输入中出现）
+const (
+        LatestRequestMarker = "[USR:LATEST]" // 标记最新用户请求，引导模型优先处理
+)
+
 // 通用系统规则（不含角色身份）——仅作为无角色模式下的 fallback
 var fallbackSystemRules = `请遵循以下原则：
 
@@ -82,7 +87,7 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 prompt.WriteString("- 如果新消息与之前的请求冲突（如\"先做 A\"→\"不做 A，改做 B\"），以新消息为准\n")
                 prompt.WriteString("- 如果新消息是对之前请求的补充或追问（如\"分析日志\"→\"找到错误行\"），保留相关上下文继续执行\n")
                 prompt.WriteString("- 如果新消息是一个完全独立的新任务，开始处理新任务，不要继续历史中已完成的旧任务\n")
-                prompt.WriteString("- 消息中带有 `[最新请求]` 标记的是当前应优先处理的目标\n\n")
+                prompt.WriteString(fmt.Sprintf("- 消息中带有 `%s` 标记的是当前应优先处理的目标\n\n", LatestRequestMarker))
 
                 // 0b. 关于雇主
                 if profile.User != "" {
