@@ -245,6 +245,38 @@ func injectRuntimeContext(messages []Message) []Message {
         }}, messages...)
 }
 
+// markLatestUserRequest 标记最后一条 user 消息为 [最新请求]，引导模型优先处理
+// 仅当存在多条 user 消息时才添加标记（避免单条对话时冗余）
+func markLatestUserRequest(messages []Message) []Message {
+        if len(messages) < 2 {
+                return messages
+        }
+
+        // 统计 user 消息数量，并找到最后一条
+        userCount := 0
+        lastUserIdx := -1
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        userCount++
+                        lastUserIdx = i
+                }
+        }
+
+        // 只有一条 user 消息时不需要标记
+        if userCount <= 1 {
+                return messages
+        }
+
+        // 给最后一条 user 消息添加标记
+        if lastUserIdx >= 0 {
+                if content, ok := messages[lastUserIdx].Content.(string); ok {
+                        messages[lastUserIdx].Content = "[最新请求] " + content
+                }
+        }
+
+        return messages
+}
+
 // convertToAnthropicFormat 將內部 Message 轉換為 Anthropic API 要求的格式
 // 注意：Anthropic API 使用单独的 system 参数，不将 system 消息放在 messages 中
 func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
@@ -835,6 +867,9 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         // 将运行时上下文（时间等）注入到 filteredMessages 的第一条 user 消息中
         // 不污染系统提示，参考 nanobot 设计
         filteredMessages = injectRuntimeContext(filteredMessages)
+
+        // 标记最后一条 user 消息为 [最新请求]，引导模型优先处理而非面面俱到
+        filteredMessages = markLatestUserRequest(filteredMessages)
 
         switch apiType {
         case "anthropic":
