@@ -72,12 +72,122 @@ func ProcessSlashCommand(input string, rm *RoleManager, am *ActorManager, stage 
         case "new":
                 return CommandResult{Handled: true, Response: HandleNewCommand()}
 
+        case "context":
+                return CommandResult{Handled: true, Response: HandleContextCommand()}
+
         case "help", "?":
                 return CommandResult{Handled: true, Response: GetHelpText()}
 
         default:
                 return CommandResult{Handled: false}
         }
+}
+
+// HandleContextCommand 处理 /context 命令，显示当前上下文使用情况
+func HandleContextCommand() string {
+        var sb strings.Builder
+        sb.WriteString("📊 上下文信息\n\n")
+
+        session := GetGlobalSession()
+        history := session.GetHistory()
+
+        // 1. 消息统计
+        totalMsgs := len(history)
+        userMsgs, assistantMsgs, toolMsgs, systemMsgs := 0, 0, 0, 0
+        for _, msg := range history {
+                switch msg.Role {
+                case "user":
+                        userMsgs++
+                case "assistant":
+                        assistantMsgs++
+                case "tool":
+                        toolMsgs++
+                case "system":
+                        systemMsgs++
+                }
+        }
+        sb.WriteString(fmt.Sprintf("消息总数: %d 条\n", totalMsgs))
+        sb.WriteString(fmt.Sprintf("  user: %d  assistant: %d  tool: %d  system: %d\n\n", userMsgs, assistantMsgs, toolMsgs, systemMsgs))
+
+        // 2. Token 估算
+        totalTokens := 0
+        for _, msg := range history {
+                if content, ok := msg.Content.(string); ok {
+                        totalTokens += EstimateTokens(content)
+                }
+                if msg.ToolCalls != nil {
+                        totalTokens += 50 // tool_calls 的额外开销估算
+                }
+        }
+        if totalTokens >= 1000 {
+                sb.WriteString(fmt.Sprintf("Token 估算: ~%dk tokens\n", totalTokens/1000))
+        } else {
+                sb.WriteString(fmt.Sprintf("Token 估算: ~%d tokens\n", totalTokens))
+        }
+
+        // 3. 硬截断阈值
+        sb.WriteString(fmt.Sprintf("硬截断阈值: %d 条消息\n", MaxHistoryMessages))
+        remaining := MaxHistoryMessages - totalMsgs
+        if totalMsgs >= MaxHistoryMessages {
+                sb.WriteString("  ⚠️  已超出阈值，下次 AgentLoop 将触发截断\n")
+        } else if remaining <= 10 {
+                sb.WriteString(fmt.Sprintf("  ⚠️  距离阈值仅剩 %d 条消息\n", remaining))
+        } else {
+                sb.WriteString(fmt.Sprintf("  距离阈值还有 %d 条消息\n", remaining))
+        }
+
+        // 4. 记忆整合器信息
+        if globalMemoryConsolidator != nil {
+                sb.WriteString("\n记忆整合器:\n")
+                budgetInfo := globalMemoryConsolidator.GetBudgetInfo("default")
+                if budget, ok := budgetInfo["budget"].(int); ok {
+                        threshold, _ := budgetInfo["threshold"].(int)
+                        current, _ := budgetInfo["current_tokens"].(int)
+                        consolidated, _ := budgetInfo["consolidated"].(int)
+                        unconsolidated, _ := budgetInfo["unconsolidated"].(int)
+                        should, _ := budgetInfo["should_consolidate"].(bool)
+                        ratio, _ := budgetInfo["usage_ratio"].(float64)
+
+                        if budget >= 1000 {
+                                sb.WriteString(fmt.Sprintf("  上下文预算: %dk tokens\n", budget/1000))
+                        } else {
+                                sb.WriteString(fmt.Sprintf("  上下文预算: %d tokens\n", budget))
+                        }
+                        if threshold >= 1000 {
+                                sb.WriteString(fmt.Sprintf("  整合触发阈值: %dk tokens\n", threshold/1000))
+                        } else {
+                                sb.WriteString(fmt.Sprintf("  整合触发阈值: %d tokens\n", threshold))
+                        }
+                        if current >= 1000 {
+                                sb.WriteString(fmt.Sprintf("  当前估算: ~%dk tokens\n", current/1000))
+                        } else {
+                                sb.WriteString(fmt.Sprintf("  当前估算: ~%d tokens\n", current))
+                        }
+                        sb.WriteString(fmt.Sprintf("  预算使用率: %.1f%%\n", ratio*100))
+                        sb.WriteString(fmt.Sprintf("  已整合消息: %d 条\n", consolidated))
+                        sb.WriteString(fmt.Sprintf("  未整合消息: %d 条\n", unconsolidated))
+                        if should {
+                                sb.WriteString("  状态: ⚠️ 需要整合\n")
+                        } else {
+                                sb.WriteString("  状态: ✅ 正常\n")
+                        }
+                } else {
+                        msgCount := globalMemoryConsolidator.GetMessageCount("default")
+                        sb.WriteString(fmt.Sprintf("  未整合消息: %d 条\n", msgCount))
+                }
+        }
+
+        // 5. 当前模型配置
+        sb.WriteString(fmt.Sprintf("\n当前模型: %s\n", globalAPIConfig.Model))
+        sb.WriteString(fmt.Sprintf("MaxTokens: %d\n", globalAPIConfig.MaxTokens))
+        if globalAPIConfig.Thinking {
+                sb.WriteString("Thinking: 开启\n")
+        }
+        if globalAPIConfig.BaseURL != "" {
+                sb.WriteString(fmt.Sprintf("API: %s\n", globalAPIConfig.BaseURL))
+        }
+
+        return sb.String()
 }
 
 // GetHelpText 返回帮助文本
@@ -92,6 +202,7 @@ func GetHelpText() string {
         sb.WriteString("│  /help, /?              显示此帮助信息\n")
         sb.WriteString("│  /exit, /quit, /q       退出程序（终端模式）或断开连接（网页模式）\n")
         sb.WriteString("│  /stop                  取消当前正在执行的任务\n")
+        sb.WriteString("│  /context               查看当前上下文使用情况（消息数、token估算、截断阈值等）\n")
         sb.WriteString("└───────────────────────────────────────────────────────────────\n\n")
 
         // 角色管理
