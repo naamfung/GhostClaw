@@ -5,22 +5,24 @@ import { AGENTIC_TAGS, AGENTIC_REGEX, REASONING_TAGS, TRIM_NEWLINES_REGEX } from
  * Represents a parsed section of agentic content
  */
 export interface AgenticSection {
-	type: AgenticSectionType;
-	content: string;
-	toolName?: string;
-	toolArgs?: string;
-	toolResult?: string;
+        type: AgenticSectionType;
+        content: string;
+        toolName?: string;
+        toolArgs?: string;
+        toolResult?: string;
+        /** Whether this tool call resulted in an error (failed or cancelled) */
+        hasError?: boolean;
 }
 
 /**
  * Represents a segment of content that may contain reasoning blocks
  */
 type ReasoningSegment = {
-	type:
-		| AgenticSectionType.TEXT
-		| AgenticSectionType.REASONING
-		| AgenticSectionType.REASONING_PENDING;
-	content: string;
+        type:
+                | AgenticSectionType.TEXT
+                | AgenticSectionType.REASONING
+                | AgenticSectionType.REASONING_PENDING;
+        content: string;
 };
 
 /**
@@ -46,31 +48,31 @@ type ReasoningSegment = {
  * ```
  */
 export function parseAgenticContent(rawContent: string): AgenticSection[] {
-	if (!rawContent) return [];
+        if (!rawContent) return [];
 
-	const segments = splitReasoningSegments(rawContent);
-	const sections: AgenticSection[] = [];
+        const segments = splitReasoningSegments(rawContent);
+        const sections: AgenticSection[] = [];
 
-	for (const segment of segments) {
-		if (segment.type === AgenticSectionType.TEXT) {
-			sections.push(...parseToolCallContent(segment.content));
-			continue;
-		}
+        for (const segment of segments) {
+                if (segment.type === AgenticSectionType.TEXT) {
+                        sections.push(...parseToolCallContent(segment.content));
+                        continue;
+                }
 
-		if (segment.type === AgenticSectionType.REASONING) {
-			if (segment.content.trim()) {
-				sections.push({ type: AgenticSectionType.REASONING, content: segment.content });
-			}
-			continue;
-		}
+                if (segment.type === AgenticSectionType.REASONING) {
+                        if (segment.content.trim()) {
+                                sections.push({ type: AgenticSectionType.REASONING, content: segment.content });
+                        }
+                        continue;
+                }
 
-		sections.push({
-			type: AgenticSectionType.REASONING_PENDING,
-			content: segment.content
-		});
-	}
+                sections.push({
+                        type: AgenticSectionType.REASONING_PENDING,
+                        content: segment.content
+                });
+        }
 
-	return sections;
+        return sections;
 }
 
 /**
@@ -86,123 +88,126 @@ export function parseAgenticContent(rawContent: string): AgenticSection[] {
  * @returns Array of agentic sections representing tool calls and text
  */
 function parseToolCallContent(rawContent: string): AgenticSection[] {
-	if (!rawContent) return [];
+        if (!rawContent) return [];
 
-	const sections: AgenticSection[] = [];
+        const sections: AgenticSection[] = [];
 
-	const completedToolCallRegex = new RegExp(AGENTIC_REGEX.COMPLETED_TOOL_CALL.source, 'g');
+        const completedToolCallRegex = new RegExp(AGENTIC_REGEX.COMPLETED_TOOL_CALL.source, 'g');
 
-	let lastIndex = 0;
-	let match;
+        let lastIndex = 0;
+        let match;
 
-	while ((match = completedToolCallRegex.exec(rawContent)) !== null) {
-		if (match.index > lastIndex) {
-			const textBefore = rawContent.slice(lastIndex, match.index).trim();
-			if (textBefore) {
-				sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
-			}
-		}
+        while ((match = completedToolCallRegex.exec(rawContent)) !== null) {
+                if (match.index > lastIndex) {
+                        const textBefore = rawContent.slice(lastIndex, match.index).trim();
+                        if (textBefore) {
+                                sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
+                        }
+                }
 
-		const toolName = match[1];
-		const toolArgs = match[2];
-		const toolResult = match[3].replace(TRIM_NEWLINES_REGEX, '');
+                const toolName = match[1];
+                const toolArgs = match[2];
+                const toolResult = match[3].replace(TRIM_NEWLINES_REGEX, '');
+                const toolStatus = match[4]; // captured from <<<TOOL_STATUS:xxx>>>
+                const hasError = toolStatus === 'failed' || toolStatus === 'cancelled';
 
-		sections.push({
-			type: AgenticSectionType.TOOL_CALL,
-			content: toolResult,
-			toolName,
-			toolArgs,
-			toolResult
-		});
+                sections.push({
+                        type: AgenticSectionType.TOOL_CALL,
+                        content: toolResult,
+                        toolName,
+                        toolArgs,
+                        toolResult,
+                        hasError
+                });
 
-		lastIndex = match.index + match[0].length;
-	}
+                lastIndex = match.index + match[0].length;
+        }
 
-	const remainingContent = rawContent.slice(lastIndex);
+        const remainingContent = rawContent.slice(lastIndex);
 
-	const pendingMatch = remainingContent.match(AGENTIC_REGEX.PENDING_TOOL_CALL);
-	const partialWithNameMatch = remainingContent.match(AGENTIC_REGEX.PARTIAL_WITH_NAME);
-	const earlyMatch = remainingContent.match(AGENTIC_REGEX.EARLY_MATCH);
+        const pendingMatch = remainingContent.match(AGENTIC_REGEX.PENDING_TOOL_CALL);
+        const partialWithNameMatch = remainingContent.match(AGENTIC_REGEX.PARTIAL_WITH_NAME);
+        const earlyMatch = remainingContent.match(AGENTIC_REGEX.EARLY_MATCH);
 
-	if (pendingMatch) {
-		const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
+        if (pendingMatch) {
+                const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
 
-		if (pendingIndex > 0) {
-			const textBefore = remainingContent.slice(0, pendingIndex).trim();
+                if (pendingIndex > 0) {
+                        const textBefore = remainingContent.slice(0, pendingIndex).trim();
 
-			if (textBefore) {
-				sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
-			}
-		}
+                        if (textBefore) {
+                                sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
+                        }
+                }
 
-		const toolName = pendingMatch[1];
-		const toolArgs = pendingMatch[2];
-		const streamingResult = (pendingMatch[3] || '').replace(TRIM_NEWLINES_REGEX, '');
+                const toolName = pendingMatch[1];
+                const toolArgs = pendingMatch[2];
+                const streamingResult = (pendingMatch[3] || '').replace(TRIM_NEWLINES_REGEX, '');
 
-		sections.push({
-			type: AgenticSectionType.TOOL_CALL_PENDING,
-			content: streamingResult,
-			toolName,
-			toolArgs,
-			toolResult: streamingResult || undefined
-		});
-	} else if (partialWithNameMatch) {
-		const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
+                sections.push({
+                        type: AgenticSectionType.TOOL_CALL_PENDING,
+                        content: streamingResult,
+                        toolName,
+                        toolArgs,
+                        toolResult: streamingResult || undefined
+                });
+        } else if (partialWithNameMatch) {
+                const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
 
-		if (pendingIndex > 0) {
-			const textBefore = remainingContent.slice(0, pendingIndex).trim();
-			if (textBefore) {
-				sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
-			}
-		}
+                if (pendingIndex > 0) {
+                        const textBefore = remainingContent.slice(0, pendingIndex).trim();
+                        if (textBefore) {
+                                sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
+                        }
+                }
 
-		const partialArgs = partialWithNameMatch[2] || '';
+                const partialArgs = partialWithNameMatch[2] || '';
 
-		sections.push({
-			type: AgenticSectionType.TOOL_CALL_STREAMING,
-			content: '',
-			toolName: partialWithNameMatch[1],
-			toolArgs: partialArgs || undefined,
-			toolResult: undefined
-		});
-	} else if (earlyMatch) {
-		const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
+                sections.push({
+                        type: AgenticSectionType.TOOL_CALL_STREAMING,
+                        content: '',
+                        toolName: partialWithNameMatch[1],
+                        toolArgs: partialArgs || undefined,
+                        toolResult: undefined
+                });
+        } else if (earlyMatch) {
+                const pendingIndex = remainingContent.indexOf(AGENTIC_TAGS.TOOL_CALL_START);
 
-		if (pendingIndex > 0) {
-			const textBefore = remainingContent.slice(0, pendingIndex).trim();
-			if (textBefore) {
-				sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
-			}
-		}
+                if (pendingIndex > 0) {
+                        const textBefore = remainingContent.slice(0, pendingIndex).trim();
+                        if (textBefore) {
+                                sections.push({ type: AgenticSectionType.TEXT, content: textBefore });
+                        }
+                }
 
-		const nameMatch = earlyMatch[1]?.match(AGENTIC_REGEX.TOOL_NAME_EXTRACT);
+                const nameMatch = earlyMatch[1]?.match(AGENTIC_REGEX.TOOL_NAME_EXTRACT);
 
-		sections.push({
-			type: AgenticSectionType.TOOL_CALL_STREAMING,
-			content: '',
-			toolName: nameMatch?.[1],
-			toolArgs: undefined,
-			toolResult: undefined
-		});
-	} else if (lastIndex < rawContent.length) {
-		let remainingText = rawContent.slice(lastIndex).trim();
+                sections.push({
+                        type: AgenticSectionType.TOOL_CALL_STREAMING,
+                        content: '',
+                        toolName: nameMatch?.[1],
+                        toolArgs: undefined,
+                        toolResult: undefined
+                });
+        } else if (lastIndex < rawContent.length) {
+                let remainingText = rawContent.slice(lastIndex).trim();
 
-		const partialMarkerMatch = remainingText.match(AGENTIC_REGEX.PARTIAL_MARKER);
+                const partialMarkerMatch = remainingText.match(AGENTIC_REGEX.PARTIAL_MARKER);
 
-		if (partialMarkerMatch) {
-			remainingText = remainingText.slice(0, partialMarkerMatch.index).trim();
-		}
+                if (partialMarkerMatch) {
+                        remainingText = remainingText.slice(0, partialMarkerMatch.index).trim();
+                }
 
-		if (remainingText) {
-			sections.push({ type: AgenticSectionType.TEXT, content: remainingText });
-		}
-	}
+                if (remainingText) {
+                        sections.push({ type: AgenticSectionType.TEXT, content: remainingText });
+                }
+        }
 
-	if (sections.length === 0 && rawContent.trim()) {
-		sections.push({ type: AgenticSectionType.TEXT, content: rawContent });
-	}
+        if (sections.length === 0 && rawContent.trim()) {
+                sections.push({ type: AgenticSectionType.TEXT, content: rawContent });
+        }
 
-	return sections;
+        return sections;
 }
 
 /**
@@ -215,13 +220,13 @@ function parseToolCallContent(rawContent: string): AgenticSection[] {
  * @returns Text with partial markers removed
  */
 function stripPartialMarker(text: string): string {
-	const partialMarkerMatch = text.match(AGENTIC_REGEX.PARTIAL_MARKER);
+        const partialMarkerMatch = text.match(AGENTIC_REGEX.PARTIAL_MARKER);
 
-	if (partialMarkerMatch) {
-		return text.slice(0, partialMarkerMatch.index).trim();
-	}
+        if (partialMarkerMatch) {
+                return text.slice(0, partialMarkerMatch.index).trim();
+        }
 
-	return text;
+        return text;
 }
 
 /**
@@ -235,50 +240,50 @@ function stripPartialMarker(text: string): string {
  * @returns Array of reasoning segments with their types and content
  */
 function splitReasoningSegments(rawContent: string): ReasoningSegment[] {
-	if (!rawContent) return [];
+        if (!rawContent) return [];
 
-	const segments: ReasoningSegment[] = [];
-	let cursor = 0;
+        const segments: ReasoningSegment[] = [];
+        let cursor = 0;
 
-	while (cursor < rawContent.length) {
-		const startIndex = rawContent.indexOf(REASONING_TAGS.START, cursor);
+        while (cursor < rawContent.length) {
+                const startIndex = rawContent.indexOf(REASONING_TAGS.START, cursor);
 
-		if (startIndex === -1) {
-			const remainingText = rawContent.slice(cursor);
+                if (startIndex === -1) {
+                        const remainingText = rawContent.slice(cursor);
 
-			if (remainingText) {
-				segments.push({ type: AgenticSectionType.TEXT, content: remainingText });
-			}
+                        if (remainingText) {
+                                segments.push({ type: AgenticSectionType.TEXT, content: remainingText });
+                        }
 
-			break;
-		}
+                        break;
+                }
 
-		if (startIndex > cursor) {
-			const textBefore = rawContent.slice(cursor, startIndex);
+                if (startIndex > cursor) {
+                        const textBefore = rawContent.slice(cursor, startIndex);
 
-			if (textBefore) {
-				segments.push({ type: AgenticSectionType.TEXT, content: textBefore });
-			}
-		}
+                        if (textBefore) {
+                                segments.push({ type: AgenticSectionType.TEXT, content: textBefore });
+                        }
+                }
 
-		const contentStart = startIndex + REASONING_TAGS.START.length;
-		const endIndex = rawContent.indexOf(REASONING_TAGS.END, contentStart);
+                const contentStart = startIndex + REASONING_TAGS.START.length;
+                const endIndex = rawContent.indexOf(REASONING_TAGS.END, contentStart);
 
-		if (endIndex === -1) {
-			const pendingContent = rawContent.slice(contentStart);
+                if (endIndex === -1) {
+                        const pendingContent = rawContent.slice(contentStart);
 
-			segments.push({
-				type: AgenticSectionType.REASONING_PENDING,
-				content: stripPartialMarker(pendingContent)
-			});
+                        segments.push({
+                                type: AgenticSectionType.REASONING_PENDING,
+                                content: stripPartialMarker(pendingContent)
+                        });
 
-			break;
-		}
+                        break;
+                }
 
-		const reasoningContent = rawContent.slice(contentStart, endIndex);
-		segments.push({ type: AgenticSectionType.REASONING, content: reasoningContent });
-		cursor = endIndex + REASONING_TAGS.END.length;
-	}
+                const reasoningContent = rawContent.slice(contentStart, endIndex);
+                segments.push({ type: AgenticSectionType.REASONING, content: reasoningContent });
+                cursor = endIndex + REASONING_TAGS.END.length;
+        }
 
-	return segments;
+        return segments;
 }

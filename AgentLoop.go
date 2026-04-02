@@ -21,6 +21,7 @@ const (
     AgenticToolNamePrefix  = "<<<TOOL_NAME:"
     AgenticToolArgsStart   = "<<<TOOL_ARGS_START>>>"
     AgenticToolArgsEnd     = "<<<TOOL_ARGS_END>>>"
+    AgenticToolStatusTag   = "<<<TOOL_STATUS:"
     AgenticTagSuffix       = ">>>"
 )
 
@@ -59,6 +60,13 @@ func sendToolCallStart(ch Channel, toolName string, argsJSON string) {
     sb.WriteString(AgenticToolArgsEnd)
     sb.WriteString("\n")
     ch.WriteChunk(StreamChunk{Content: sb.String()})
+}
+
+// sendToolCallStatus 发送工具调用状态标记（仅在非成功时发送，供前端以警告色渲染）
+func sendToolCallStatus(ch Channel, status TaskStatus) {
+    if status == TaskStatusFailed || status == TaskStatusCancelled {
+        ch.WriteChunk(StreamChunk{Content: AgenticToolStatusTag + string(status) + AgenticTagSuffix + "\n"})
+    }
 }
 
 // sendToolCallEnd 发送工具调用结束标记

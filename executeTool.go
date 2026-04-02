@@ -25,6 +25,7 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
         argsJSON, _ := json.Marshal(map[string]interface{}{"error": "permission denied"})
         sendToolCallStart(ch, toolName, string(argsJSON))
         ch.WriteChunk(StreamChunk{Content: errMsg + "\n"})
+        sendToolCallStatus(ch, TaskStatusFailed)
         sendToolCallEnd(ch)
         return NewToolResultMessage(toolID, errMsg, TaskStatusFailed, toolName)
     }
@@ -32,6 +33,11 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
     argsJSON, _ := json.Marshal(argsMap)
     sendToolCallStart(ch, toolName, string(argsJSON))
     defer sendToolCallEnd(ch)
+    // 注意：defer 按注册逆序执行，所以 status 标签会在 END 标记之前写入
+    // 使用闭包捕获 status 变量引用，确保返回时读取的是最终值
+    defer func() {
+        sendToolCallStatus(ch, status)
+    }()
 
     switch toolName {
     case "smart_shell":
