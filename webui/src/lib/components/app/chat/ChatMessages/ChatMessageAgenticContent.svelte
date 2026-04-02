@@ -200,7 +200,7 @@
                         title={section.toolName || ''}
                         subtitle={isPending ? 'executing...' : (hasError ? 'failed' : undefined)}
                         isStreaming={isPending}
-                        {error}
+                        error={hasError}
                         onToggle={() => toggleExpanded(index, section)}
                 >
                         {#if section.toolArgs && section.toolArgs !== '{}'}
