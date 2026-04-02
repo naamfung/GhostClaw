@@ -177,7 +177,7 @@ func (c *MCPClient) initializeStdio() error {
                 Tools: &ToolCapabilities{},
             },
             "clientInfo": MCPImplementation{
-                Name:    "GarClaw",
+                Name:    "GhostClaw",
                 Version: "1.0.0",
             },
         },
@@ -313,7 +313,7 @@ func (c *MCPClient) connectHTTP(ctx context.Context) error {
                 Tools: &ToolCapabilities{},
             },
             "clientInfo": MCPImplementation{
-                Name:    "GarClaw",
+                Name:    "GhostClaw",
                 Version: "1.0.0",
             },
         },

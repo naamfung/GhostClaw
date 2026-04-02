@@ -2,7 +2,7 @@
 
 ## 一、系统架构概述
 
-GhostClaw 是 GarClaw 的架构重构版本，使用 Go 语言编写的 AI Agent 框架，采用模块化设计，支持多角色、多模型协作。系统的核心设计理念是"角色即服务"——每个角色（Role）都有独立的能力边界与行为约束，可以在不同模型间灵活切换。与 GarClaw 最大的区别在于：GhostClaw 采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，所有渠道共享同一个对话上下文。
+GhostClaw 是 GhostClaw 的架构重构版本，使用 Go 语言编写的 AI Agent 框架，采用模块化设计，支持多角色、多模型协作。系统的核心设计理念是"角色即服务"——每个角色（Role）都有独立的能力边界与行为约束，可以在不同模型间灵活切换。与 GhostClaw 最大的区别在于：GhostClaw 采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，所有渠道共享同一个对话上下文。
 
 ### 1.1 核心架构图
 
@@ -79,7 +79,7 @@ GhostClaw 的设计遵循以下核心原则：
 
 ### 2.1 角色/演员系统
 
-角色系统是 GarClaw 最具特色的设计，采用三层架构实现角色的灵活配置与多模型协作。
+角色系统是 GhostClaw 最具特色的设计，采用三层架构实现角色的灵活配置与多模型协作。
 
 #### 2.1.1 三层架构
 
@@ -209,7 +209,7 @@ ToolPermission: ToolPermission{
 
 ### 2.3 多模型协作机制
 
-GarClaw 支持多模型协作，可以在对话过程中动态切换不同的模型与角色。
+GhostClaw 支持多模型协作，可以在对话过程中动态切换不同的模型与角色。
 
 #### 2.3.1 自动切换模式
 
@@ -269,7 +269,7 @@ GarClaw 支持多模型协作，可以在对话过程中动态切换不同的模
 
 ### 2.4 GORM/SQLite 记忆系统
 
-GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的记忆系统，替代了旧版 GarClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。所有记忆数据统一存储在 `ghostclaw.db` 文件中，通过 GORM 提供的类型安全的数据库操作接口进行管理。
+GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的记忆系统，替代了旧版 GhostClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。所有记忆数据统一存储在 `ghostclaw.db` 文件中，通过 GORM 提供的类型安全的数据库操作接口进行管理。
 
 #### 2.4.1 数据库架构
 
@@ -825,7 +825,7 @@ ghostclaw/
 ### 4.3 角色目录结构
 
 ```
-garclaw/
+ghostclaw/
 └── roles/                    # 角色模板目录
     ├── coder.md                 # 程序员
     ├── novelist.md              # 小说家
@@ -1034,7 +1034,7 @@ type Channel interface {
 
 ### 8.1 双轨设计
 
-GarClaw 采用双轨 Shell 工具设计，根据命令特性智能选择执行方式：
+GhostClaw 采用双轨 Shell 工具设计，根据命令特性智能选择执行方式：
 
 #### shell - 同步执行
 

@@ -1,7 +1,7 @@
 /**
- * GarClaw Chat Service
+ * GhostClaw Chat Service
  *
- * A WebSocket-based chat service for the GarClaw backend.
+ * A WebSocket-based chat service for the GhostClaw backend.
  * Maintains the same interface as the original llama.cpp ChatService
  * for compatibility with the existing chat store.
  */
@@ -96,7 +96,7 @@ class WebSocketManager {
         }): void {
                 if (chunk.session_id) {
                         this.sessionId = chunk.session_id;
-                        localStorage.setItem('garclaw_session_id', chunk.session_id);
+                        localStorage.setItem('ghostclaw_session_id', chunk.session_id);
                 }
 
                 if (chunk.error) {
@@ -201,7 +201,7 @@ const wsManager = new WebSocketManager();
 
 // Restore session ID from localStorage
 if (typeof window !== 'undefined') {
-        const savedSessionId = localStorage.getItem('garclaw_session_id');
+        const savedSessionId = localStorage.getItem('ghostclaw_session_id');
         if (savedSessionId) {
                 wsManager.setSessionId(savedSessionId);
         }
@@ -271,7 +271,7 @@ export class ChatService {
                 }
 
                 // Handle attachments (images, files, etc.)
-                // For GarClaw backend, we upload files first and then reference them by path
+                // For GhostClaw backend, we upload files first and then reference them by path
                 if ('extra' in lastMessage && lastMessage.extra && lastMessage.extra.length > 0) {
                         for (const extra of lastMessage.extra) {
                                 if (extra.type === AttachmentType.IMAGE) {

@@ -1,4 +1,4 @@
-# GarClaw 跨平台构建镜像
+# GhostClaw 跨平台构建镜像
 # 支持目标：Linux (amd64/arm64), Alpine (amd64/arm64), Loong64, Windows (amd64), FreeBSD/GhostBSD (amd64)
 
 # 阶段1: 前端构建
@@ -68,7 +68,7 @@ COPY --from=frontend-builder /app/embed ./embed
 # 构建参数
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-ARG BINARY_NAME=garclaw
+ARG BINARY_NAME=ghostclaw
 ARG STATIC_LINK=false
 
 # 设置交叉编译环境
@@ -100,7 +100,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 # 复制编译产物
-COPY --from=backend-builder /app/garclaw /app/garclaw
+COPY --from=backend-builder /app/ghostclaw /app/ghostclaw
 
 # 复制必要资源
 COPY roles/ ./roles/
@@ -115,4 +115,4 @@ RUN mkdir -p uploads embed
 EXPOSE 10086
 
 # 启动命令
-CMD ["./garclaw"]
+CMD ["./ghostclaw"]

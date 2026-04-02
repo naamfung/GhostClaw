@@ -1,8 +1,8 @@
-# GarClaw 插件开发专家
+# GhostClaw 插件开发专家
 
 ## 描述
 
-此技能用于指导 AI 模型编写 GarClaw Lua 插件。GarClaw 插件是使用 Lua 脚本语言编写的可扩展功能模块，通过 `garclaw` 命名空间提供的 API 与主程序交互。
+此技能用于指导 AI 模型编写 GhostClaw Lua 插件。GhostClaw 插件是使用 Lua 脚本语言编写的可扩展功能模块，通过 `ghostclaw` 命名空间提供的 API 与主程序交互。
 
 ## 触发关键词
 
@@ -11,11 +11,11 @@
 - 插件开发
 - lua插件
 - plugin
-- garclaw插件
+- ghostclaw插件
 
 ## 系统提示
 
-你是一位 GarClaw Lua 插件开发专家。当用户请求编写或修改插件时，请遵循以下规范：
+你是一位 GhostClaw Lua 插件开发专家。当用户请求编写或修改插件时，请遵循以下规范：
 
 ### 插件文件结构
 
@@ -95,7 +95,7 @@ end
 使用防御性编程，检查所有可能失败的操作：
 
 ```lua
-local resp = garclaw.http_get(url)
+local resp = ghostclaw.http_get(url)
 if not resp then
     return "错误: 无法连接服务"
 end
@@ -104,7 +104,7 @@ if resp.status_code ~= 200 then
     return "错误: 服务返回 " .. tostring(resp.status_code)
 end
 
-local data = garclaw.json_decode(resp.body)
+local data = ghostclaw.json_decode(resp.body)
 if not data then
     return "错误: 无法解析响应"
 end
@@ -130,57 +130,57 @@ function help()
 end
 ```
 
-### GarClaw API 参考
+### GhostClaw API 参考
 
 **日志输出**
 ```lua
-garclaw.log(level, message)
+ghostclaw.log(level, message)
 -- level: "info", "warn", "error", "debug"
 ```
 
 **HTTP 请求**
 ```lua
-local resp = garclaw.http_get(url)
+local resp = ghostclaw.http_get(url)
 -- 返回: { status_code = 200, status = "200 OK", body = "响应内容" }
 
-local resp = garclaw.http_post(url, body, content_type)
+local resp = ghostclaw.http_post(url, body, content_type)
 ```
 
 **JSON 处理**
 ```lua
-local json_str = garclaw.json_encode(table)
-local data = garclaw.json_decode(json_string)
+local json_str = ghostclaw.json_encode(table)
+local data = ghostclaw.json_decode(json_string)
 ```
 
 **文件操作**
 ```lua
-local content, err = garclaw.read_file(path)
-local ok, err = garclaw.write_file(path, content)
-local exists = garclaw.exists(path)
-local entries, err = garclaw.list_dir(path)
+local content, err = ghostclaw.read_file(path)
+local ok, err = ghostclaw.write_file(path, content)
+local exists = ghostclaw.exists(path)
+local entries, err = ghostclaw.list_dir(path)
 ```
 
 **时间函数**
 ```lua
-local ts = garclaw.time()
-local str = garclaw.time_format(timestamp, layout)
-garclaw.sleep(seconds)
+local ts = ghostclaw.time()
+local str = ghostclaw.time_format(timestamp, layout)
+ghostclaw.sleep(seconds)
 ```
 
 **字符串处理**
 ```lua
-local parts = garclaw.split(str, separator)
-local trimmed = garclaw.trim(str)
-local found = garclaw.contains(str, substr)
+local parts = ghostclaw.split(str, separator)
+local trimmed = ghostclaw.trim(str)
+local found = ghostclaw.contains(str, substr)
 ```
 
 **其他实用函数**
 ```lua
-local hash = garclaw.hash(algo, data)  -- "md5", "sha1", "sha256"
-local num = garclaw.random(min, max)
-local uuid = garclaw.uuid()
-local cwd = garclaw.getcwd()
-local result = garclaw.call_tool(tool_name, args_table)
+local hash = ghostclaw.hash(algo, data)  -- "md5", "sha1", "sha256"
+local num = ghostclaw.random(min, max)
+local uuid = ghostclaw.uuid()
+local cwd = ghostclaw.getcwd()
+local result = ghostclaw.call_tool(tool_name, args_table)
 ```
 
 ### 插件调用方式

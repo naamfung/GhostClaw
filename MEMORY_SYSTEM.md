@@ -1,6 +1,6 @@
 # GhostClaw 记忆系统详解
 
-本文档详细说明 GhostClaw 的 GORM/SQLite 记忆系统架构、工作原理及使用方法。GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的统一记忆方案，替代了旧版 GarClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。
+本文档详细说明 GhostClaw 的 GORM/SQLite 记忆系统架构、工作原理及使用方法。GhostClaw 采用基于 GORM ORM 和 SQLite 数据库的统一记忆方案，替代了旧版 GhostClaw 基于文件系统的双轨记忆设计（`memory.toon` + `MEMORY.md` + `HISTORY.md`）。
 
 ---
 
@@ -199,11 +199,11 @@ config := MemoryConsolidatorConfig{
 
 ---
 
-## 四、与旧版 GarClaw 的对比
+## 四、与旧版 GhostClaw 的对比
 
 ### 4.1 架构差异
 
-| 特性 | GarClaw（旧版） | GhostClaw（新版） |
+| 特性 | GhostClaw（旧版） | GhostClaw（新版） |
 |------|----------------|-------------------|
 | 存储方式 | 文件系统 | GORM/SQLite 数据库 |
 | 结构化记忆 | `memory/memory.toon` | `Memories` 表 |
@@ -217,7 +217,7 @@ config := MemoryConsolidatorConfig{
 
 ### 4.2 迁移说明
 
-从 GarClaw 迁移到 GhostClaw 时，旧的 `memory/` 目录文件不会被自动导入。如需保留旧记忆，需手动将 `memory.toon` 中的关键信息通过 `memory_save` 工具重新保存到新的数据库中。
+从 GhostClaw 迁移到 GhostClaw 时，旧的 `memory/` 目录文件不会被自动导入。如需保留旧记忆，需手动将 `memory.toon` 中的关键信息通过 `memory_save` 工具重新保存到新的数据库中。
 
 ---
 

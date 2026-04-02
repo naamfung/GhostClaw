@@ -284,7 +284,7 @@ func (s *MCPServer) handleInitialize(params map[string]interface{}) InitializeRe
                         Name:    s.name,
                         Version: s.version,
                 },
-                Instructions: "GarClaw AI Agent MCP Server. Use tools to interact with the agent.",
+                Instructions: "GhostClaw AI Agent MCP Server. Use tools to interact with the agent.",
         }
 }
 

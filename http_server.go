@@ -236,7 +236,7 @@ func (s *HTTPServer) modelsHandler(w http.ResponseWriter, r *http.Request) {
                                 "id":       currentModel,
                                 "object":   "model",
                                 "created":  time.Now().Unix(),
-                                "owned_by": "garclaw",
+                                "owned_by": "ghostclaw",
                                 "in_cache": true,
                                 "path":     currentModel,
                                 "status":   map[string]interface{}{"value": "loaded"},

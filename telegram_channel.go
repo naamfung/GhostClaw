@@ -148,11 +148,11 @@ func (tc *TelegramChannel) registerCommands() {
                 if !tc.isAllowed(c.Sender()) {
                         return c.Send("Sorry, you are not authorized to use this bot.")
                 }
-                return c.Send(fmt.Sprintf("👋 Hi %s! I'm GarClaw AI Agent.\n\nSend me a message and I'll respond!\nType /help to see available commands.", c.Sender().FirstName))
+                return c.Send(fmt.Sprintf("👋 Hi %s! I'm GhostClaw AI Agent.\n\nSend me a message and I'll respond!\nType /help to see available commands.", c.Sender().FirstName))
         })
 
         tc.bot.Handle("/help", func(c tele.Context) error {
-                return c.Send("🤖 GarClaw AI Agent commands:\n/new — Start a new conversation\n/stop — Stop the current task\n/help — Show available commands")
+                return c.Send("🤖 GhostClaw AI Agent commands:\n/new — Start a new conversation\n/stop — Stop the current task\n/help — Show available commands")
         })
 
         tc.bot.Handle("/new", func(c tele.Context) error {

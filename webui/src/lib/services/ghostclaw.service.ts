@@ -1,15 +1,15 @@
 /**
- * GarClaw WebSocket Service
+ * GhostClaw WebSocket Service
  *
- * Handles WebSocket communication with the GarClaw backend server.
- * This service replaces the HTTP-based ChatService for GarClaw integration.
+ * Handles WebSocket communication with the GhostClaw backend server.
+ * This service replaces the HTTP-based ChatService for GhostClaw integration.
  */
 
-export interface GarClawWSMessage {
+export interface GhostClawWSMessage {
         content?: string;
 }
 
-export interface GarClawWSChunk {
+export interface GhostClawWSChunk {
         session_id?: string;
         content?: string;
         reasoning_content?: string;
@@ -28,7 +28,7 @@ export interface GarClawWSChunk {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export interface GarClawWSOptions {
+export interface GhostClawWSOptions {
         onChunk?: (chunk: string) => void;
         onReasoningChunk?: (chunk: string) => void;
         onToolCallChunk?: (chunk: string) => void;
@@ -39,15 +39,15 @@ export interface GarClawWSOptions {
         onTaskRunning?: (running: boolean) => void;
 }
 
-class GarClawWebSocketService {
+class GhostClawWebSocketService {
         private ws: WebSocket | null = null;
         private status: ConnectionStatus = 'disconnected';
         private sessionId: string = '';
-        private options: GarClawWSOptions = {};
+        private options: GhostClawWSOptions = {};
         private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
         private pendingMessage: string | null = null;
 
-        connect(options: GarClawWSOptions = {}): void {
+        connect(options: GhostClawWSOptions = {}): void {
                 this.options = options;
                 this.setStatus('connecting');
 
@@ -80,7 +80,7 @@ class GarClawWebSocketService {
 
                 this.ws.onmessage = (event) => {
                         try {
-                                const chunk: GarClawWSChunk = JSON.parse(event.data);
+                                const chunk: GhostClawWSChunk = JSON.parse(event.data);
                                 this.handleChunk(chunk);
                         } catch (error) {
                                 console.error('Failed to parse WebSocket message:', error);
@@ -99,7 +99,7 @@ class GarClawWebSocketService {
                 };
         }
 
-        private handleChunk(chunk: GarClawWSChunk): void {
+        private handleChunk(chunk: GhostClawWSChunk): void {
                 // Handle session ID
                 if (chunk.session_id) {
                         this.sessionId = chunk.session_id;
@@ -162,7 +162,7 @@ class GarClawWebSocketService {
                         return;
                 }
 
-                const msg: GarClawWSMessage = { content: message };
+                const msg: GhostClawWSMessage = { content: message };
                 this.ws.send(JSON.stringify(msg));
         }
 
@@ -174,7 +174,7 @@ class GarClawWebSocketService {
                 if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
                         return;
                 }
-                const msg: GarClawWSMessage = { content: '/stop' };
+                const msg: GhostClawWSMessage = { content: '/stop' };
                 this.ws.send(JSON.stringify(msg));
         }
 
@@ -204,4 +204,4 @@ class GarClawWebSocketService {
 }
 
 // Singleton instance
-export const garclawWS = new GarClawWebSocketService();
+export const ghostclawWS = new GhostClawWebSocketService();

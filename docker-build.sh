@@ -1,5 +1,5 @@
 #!/bin/sh
-# GarClaw Docker 跨平台构建脚本
+# GhostClaw Docker 跨平台构建脚本
 # 用法: ./docker-build.sh [目标] [选项]
 #
 # 目标:
@@ -40,7 +40,7 @@ USE_CN_MIRROR="false"
 NO_CACHE="false"
 TARGET=""
 
-printf "${CYAN}=== GarClaw Docker 跨平台构建 ===${NC}\n\n"
+printf "${CYAN}=== GhostClaw Docker 跨平台构建 ===${NC}\n\n"
 
 # 解析参数
 parse_args() {
@@ -130,56 +130,56 @@ build_platform() {
     STATIC="false"
     case "$TARGET" in
         linux-amd64)
-            BINARY="garclaw-linux-amd64"
+            BINARY="ghostclaw-linux-amd64"
             GOOS="linux"
             GOARCH="amd64"
             ;;
         linux-arm64)
-            BINARY="garclaw-linux-arm64"
+            BINARY="ghostclaw-linux-arm64"
             GOOS="linux"
             GOARCH="arm64"
             ;;
         windows-amd64)
-            BINARY="garclaw-windows-amd64.exe"
+            BINARY="ghostclaw-windows-amd64.exe"
             GOOS="windows"
             GOARCH="amd64"
             ;;
         freebsd-amd64)
-            BINARY="garclaw-freebsd-amd64"
+            BINARY="ghostclaw-freebsd-amd64"
             GOOS="freebsd"
             GOARCH="amd64"
             ;;
         ghostbsd-amd64)
-            BINARY="garclaw-ghostbsd-amd64"
+            BINARY="ghostclaw-ghostbsd-amd64"
             GOOS="freebsd"
             GOARCH="amd64"
             ;;
         alpine-amd64)
-            BINARY="garclaw-alpine-amd64"
+            BINARY="ghostclaw-alpine-amd64"
             GOOS="linux"
             GOARCH="amd64"
             STATIC="true"
             ;;
         alpine-arm64)
-            BINARY="garclaw-alpine-arm64"
+            BINARY="ghostclaw-alpine-arm64"
             GOOS="linux"
             GOARCH="arm64"
             STATIC="true"
             ;;
         loong64)
-            BINARY="garclaw-linux-loong64"
+            BINARY="ghostclaw-linux-loong64"
             GOOS="linux"
             GOARCH="loong64"
             ;;
         darwin-amd64)
             # macOS Intel (x86_64)
-            BINARY="garclaw-darwin-amd64"
+            BINARY="ghostclaw-darwin-amd64"
             GOOS="darwin"
             GOARCH="amd64"
             ;;
         darwin-arm64)
             # macOS Apple Silicon (M1/M2/M3)
-            BINARY="garclaw-darwin-arm64"
+            BINARY="ghostclaw-darwin-arm64"
             GOOS="darwin"
             GOARCH="arm64"
             ;;
@@ -212,11 +212,11 @@ build_platform() {
     docker build \
         $BUILD_ARGS \
         --target backend-builder \
-        -t "garclaw-build:${TARGET}" \
+        -t "ghostclaw-build:${TARGET}" \
         .
 
     # 提取构建产物
-    CONTAINER_ID=$(docker create "garclaw-build:${TARGET}")
+    CONTAINER_ID=$(docker create "ghostclaw-build:${TARGET}")
     docker cp "${CONTAINER_ID}:/app/${BINARY}" "${DIST_DIR}/${BINARY}"
     docker rm "$CONTAINER_ID" > /dev/null
 
@@ -247,14 +247,14 @@ build_runtime() {
     docker build \
         $BUILD_ARGS \
         --target runtime \
-        -t "garclaw:${VERSION}" \
-        -t "garclaw:latest" \
+        -t "ghostclaw:${VERSION}" \
+        -t "ghostclaw:latest" \
         .
 
     printf "${GREEN}✓ 运行时镜像构建完成${NC}\n"
-    printf "  镜像标签: garclaw:${VERSION}, garclaw:latest\n\n"
+    printf "  镜像标签: ghostclaw:${VERSION}, ghostclaw:latest\n\n"
     printf "运行容器:\n"
-    printf "  docker run -d -p 10086:10086 --name garclaw garclaw:latest\n\n"
+    printf "  docker run -d -p 10086:10086 --name ghostclaw ghostclaw:latest\n\n"
 }
 
 # 清理构建产物
@@ -265,8 +265,8 @@ clean() {
     rm -rf webui/node_modules webui/.svelte-kit embed
 
     # 清理 Docker 镜像
-    docker images --filter=reference='garclaw-build:*' -q | xargs -r docker rmi -f 2>/dev/null || true
-    docker images --filter=reference='garclaw:*' -q | xargs -r docker rmi -f 2>/dev/null || true
+    docker images --filter=reference='ghostclaw-build:*' -q | xargs -r docker rmi -f 2>/dev/null || true
+    docker images --filter=reference='ghostclaw:*' -q | xargs -r docker rmi -f 2>/dev/null || true
 
     printf "${GREEN}✓ 清理完成${NC}\n"
 }

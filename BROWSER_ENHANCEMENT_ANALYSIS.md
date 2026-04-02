@@ -6,7 +6,7 @@
 
 ### 1.1 Browser 层 (`browser.go`)
 
-| 功能 | 方法 | 说明 | GarClaw实现 |
+| 功能 | 方法 | 说明 | GhostClaw实现 |
 |------|------|------|-------------|
 | 连接管理 | `Connect()`, `Close()` | 连接/关闭浏览器 | ✅ `launchBrowserRod()` |
 | 隐身模式 | `Incognito()` | 创建隐私浏览上下文 | ⚠️ 可扩展 |
@@ -19,7 +19,7 @@
 
 ### 1.2 Page 层 (`page.go`)
 
-| 类别 | 功能 | 方法 | GarClaw实现 |
+| 类别 | 功能 | 方法 | GhostClaw实现 |
 |------|------|------|-------------|
 | **导航** | 前进/后退/重载 | `Navigate()`, `NavigateBack()`, `NavigateForward()`, `Reload()` | ✅ `browser_navigate` |
 | **等待** | 多种等待策略 | `WaitLoad()`, `WaitIdle()`, `WaitStable()`, `WaitDOMStable()`, `WaitRequestIdle()`, `WaitNavigation()` | ✅ `browser_wait_smart` |
@@ -36,7 +36,7 @@
 
 ### 1.3 Element 层 (`element.go`)
 
-| 类别 | 功能 | 方法 | GarClaw实现 |
+| 类别 | 功能 | 方法 | GhostClaw实现 |
 |------|------|------|-------------|
 | **交互** | 点击/悬停/输入 | `Click()`, `Hover()`, `Tap()`, `Input()`, `Focus()`, `Blur()` | ✅ 完整实现 |
 | **等待** | 元素状态等待 | `WaitVisible()`, `WaitEnabled()`, `WaitWritable()`, `WaitInteractable()`, `WaitStable()` | ✅ `browser_wait_smart` |
@@ -49,7 +49,7 @@
 
 ### 1.4 Launcher 层 (`lib/launcher/launcher.go`)
 
-| 功能 | 方法 | 说明 | GarClaw实现 |
+| 功能 | 方法 | 说明 | GhostClaw实现 |
 |------|------|------|-------------|
 | 基础配置 | `Headless()`, `NoSandbox()` | 无头模式/沙盒 | ✅ 内部使用 |
 | 用户数据 | `UserDataDir()`, `ProfileDir()` | 数据目录设置 | ✅ UserMode支持 |
@@ -61,7 +61,7 @@
 
 ---
 
-## 二、GarClaw 浏览器工具实现状态
+## 二、GhostClaw 浏览器工具实现状态
 
 ### 2.1 工具总览 (27个工具)
 
@@ -219,7 +219,7 @@ func (e *BrowserError) Error() string {
 ## 四、文件结构
 
 ```
-garclaw/
+ghostclaw/
 ├── browser_session.go        # 浏览器会话管理器 (新增)
 ├── browser_tools.go          # 基础浏览器工具 (新增)
 ├── browser_tools_advanced.go # 高级浏览器工具 (新增)
@@ -297,7 +297,7 @@ garclaw/
 
 ## 八、总结
 
-GarClaw 的浏览器工具已经实现了 Rod 大部分核心功能：
+GhostClaw 的浏览器工具已经实现了 Rod 大部分核心功能：
 
 - **27 个浏览器工具**覆盖了常见的自动化场景
 - **Cookie TOON 持久化**解决了登录态保持问题

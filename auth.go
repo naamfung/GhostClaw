@@ -193,7 +193,7 @@ func GetLoginPageHTML(errorMsg string) string {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GarClaw - 登录</title>
+    <title>GhostClaw - 登录</title>
     <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjU2IiBpZD0ic2NyZWVuc2hvdC1lZjk0ZmJiMC1kYmFiLTgwZWQtODAwNi04OTQyOTkwMGVkYmYiIHZpZXdCb3g9IjAgMCAyNTYgMjU2IiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgZmlsbD0ibm9uZSIgdmVyc2lvbj0iMS4xIj48ZyBpZD0ic2hhcGUtZWY5NGZiYjAtZGJhYi04MGVkLTgwMDYtODk0Mjk5MDBlZGJmIiByeD0iMCIgcnk9IjAiPjxnIGlkPSJzaGFwZS1lZjk0ZmJiMC1kYmFiLTgwZWQtODAwNi04OTQyMTU3NTVjM2EiPjxnIGNsYXNzPSJmaWxscyIgaWQ9ImZpbGxzLWVmOTRmYmIwLWRiYWItODBlZC04MDA2LTg5NDIxNTc1NWMzYSI+PHJlY3Qgcng9IjAiIHJ5PSIwIiB4PSIwIiB5PSIwIiB0cmFuc2Zvcm09Im1hdHJpeCgxLjAwMDAwMCwgMC4wMDAwMDAsIDAuMDAwMDAwLCAxLjAwMDAwMCwgMC4wMDAwMDAsIDAuMDAwMDAwKSIgd2lkdGg9IjI1NiIgaGVpZ2h0PSIyNTYiIHN0eWxlPSJmaWxsOiByZ2IoMjcsIDMxLCAzMik7IGZpbGwtb3BhY2l0eTogMTsiLz48L2c+PC9nPjxnIGlkPSJzaGFwZS1lZjk0ZmJiMC1kYmFiLTgwZWQtODAwNi04OTQyMjM2M2VmM2YiIHJ4PSIwIiByeT0iMCI+PGcgaWQ9InNoYXBlLWVmOTRmYmIwLWRiYWItODBlZC04MDA2LTg5NDIyMzYzZWY0MCI+PGcgY2xhc3M9ImZpbGxzIiBpZD0iZmlsbHMtZWY5NGZiYjAtZGJhYi04MGVkLTgwMDYtODk0MjIzNjNlZjQwIj48cGF0aCBkPSJNMTcxLjY2NTAwODU0NDkyMTg4LDk5LjUzMDI1MDU0OTMxNjRMMTU5Ljc5OTUzMDAyOTI5Njg4LDEyMC42MjQ2ODcxOTQ4MjQyMkMxNDQuMTU0NTEwNDk4MDQ2ODgsMTA4LjU4MzI5MDEwMDA5NzY2LDEyMC45NTA0MTY1NjQ5NDE0LDEwNi44MjU0MTY1NjQ5NDE0LDEwNS4zMDUzOTcwMzM2OTE0LDExOS43NDU3NTA0MjcyNDYxQzgwLjA3OTgxMTA5NjE5MTQsMTQwLjU3NjUyMjgyNzE0ODQ0LDgxLjgzNzYyMzU5NjE5MTQsMTg4Ljc0MjI2Mzc5Mzk0NTMsMTIxLjEyNjE5NzgxNDk0MTQsMTg5LjAwNTg3NDYzMzc4OTA2QzEzMi4xMTMwMDY1OTE3OTY4OCwxODkuMDA1ODc0NjMzNzg5MDYsMTQxLjQyOTY1Njk4MjQyMTg4LDE4My44MjAxMTQxMzU3NDIyLDE1MS40NDk2NzY1MTM2NzE4OCwxODAuMzkyMzQ5MjQzMTY0MDZMMTU2LjcyMzM1ODE1NDI5Njg4LDIwMS4zOTg4NDk0ODczMDQ3QzE0Ny44NDU5MTY3NDgwNDY4OCwyMDUuNTI5ODkxOTY3NzczNDQsMTM4Ljc5MjkzODIzMjQyMTg4LDIwOS43NDg3MzM1MjA1MDc4LDEyOS4wMzY4MzQ3MTY3OTY4OCwyMTEuMDY3MTIzNDEzMDg1OTRDNDAuMDg4MzUyMjAzMzY5MTQsMjIzLjE5NjQ1NjkwOTE3OTcsNDUuMTg2MDA4NDUzMzY5MTQsOTQuNzg0MDA0MjExNDI1NzgsMTI1LjYwODg2MzgzMDU2NjQsODguMTA0MDcyNTcwODAwNzhDMTQyLjQ4NDM0NDQ4MjQyMTg4LDg2LjY5NzgyMjU3MDgwMDc4LDE1Ny4zMzgzNDgzODg2NzE4OCw5MS4wOTI0NzU4OTExMTMyOCwxNzEuNzUzMTQzMzEwNTQ2ODgsOTkuNTMwMjUwNTQ5MzE2NFoiIGNsYXNzPSJzdDAiIHN0eWxlPSJmaWxsOiByZ2IoMjU1LCAxMzAsIDU0KTsgZmlsbC1vcGFjaXR5OiAxOyIvPjwvZz48L2c+PC9nPjwvZz48L3N2Zz4=" />
     <style>
         :root {
@@ -332,7 +332,7 @@ func GetLoginPageHTML(errorMsg string) string {
                 </div>
                 <button type="submit" class="login-btn">登 录</button>
             </form>
-            <p class="footer">GarClaw AI Agent · 安全访问</p>
+            <p class="footer">GhostClaw AI Agent · 安全访问</p>
         </div>
     </div>
 </body>
@@ -342,7 +342,7 @@ func GetLoginPageHTML(errorMsg string) string {
 // HandleLoginPage 处理登录页面
 func HandleLoginPage(w http.ResponseWriter, r *http.Request) {
         // 检查是否已登录
-        cookie, err := r.Cookie("garclaw_token")
+        cookie, err := r.Cookie("ghostclaw_token")
         if err == nil && globalAuthManager.ValidateToken(cookie.Value) {
                 // 已登录，重定向到主页
                 http.Redirect(w, r, "/", http.StatusFound)
@@ -384,7 +384,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
         }
 
         http.SetCookie(w, &http.Cookie{
-                Name:     "garclaw_token",
+                Name:     "ghostclaw_token",
                 Value:    session.Token,
                 Path:     "/",
                 HttpOnly: true,
@@ -400,14 +400,14 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 // HandleLogout 处理登出请求
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
-        cookie, err := r.Cookie("garclaw_token")
+        cookie, err := r.Cookie("ghostclaw_token")
         if err == nil {
                 globalAuthManager.Logout(cookie.Value)
         }
 
         // 清除 cookie
         http.SetCookie(w, &http.Cookie{
-                Name:     "garclaw_token",
+                Name:     "ghostclaw_token",
                 Value:    "",
                 Path:     "/",
                 HttpOnly: true,
@@ -463,7 +463,7 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
                 }
 
                 // 检查 cookie
-                cookie, err := r.Cookie("garclaw_token")
+                cookie, err := r.Cookie("ghostclaw_token")
                 if err != nil || !globalAuthManager.ValidateToken(cookie.Value) {
                         // 检查是否是 WebSocket 请求（通过 URL 参数传递 token）
                         token := r.URL.Query().Get("token")

@@ -331,7 +331,7 @@ ENABLE_ALL_CHANNELS=1 ./build.sh
 
 1. 在 Developer Portal 确认已启用 **Message Content Intent**
 2. 重新邀请 Bot 到服务器
-3. 重启 GarClaw
+3. 重启 GhostClaw
 
 ### Q: Slack Bot 无法连接？
 

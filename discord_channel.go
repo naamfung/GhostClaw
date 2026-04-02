@@ -186,9 +186,9 @@ func (dc *DiscordChannel) connect() error {
                         "token":   dc.config.Token,
                         "intents": dc.config.Intents,
                         "properties": map[string]string{
-                                "os":      "garclaw",
-                                "browser": "garclaw",
-                                "device":  "garclaw",
+                                "os":      "ghostclaw",
+                                "browser": "ghostclaw",
+                                "device":  "ghostclaw",
                         },
                 },
         }

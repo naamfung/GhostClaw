@@ -1,10 +1,10 @@
-# GarClaw 浏览器工具完整指南
+# GhostClaw 浏览器工具完整指南
 
 > 版本: v2.7.15 | 更新日期: 2026-03-28
 
 ## 概述
 
-GarClaw 提供了一套功能完整的浏览器自动化工具，基于 [Rod](https://github.com/go-rod/rod) 浏览器自动化库实现。本文档详细介绍所有 27 个浏览器工具的使用方法、参数说明和最佳实践。
+GhostClaw 提供了一套功能完整的浏览器自动化工具，基于 [Rod](https://github.com/go-rod/rod) 浏览器自动化库实现。本文档详细介绍所有 27 个浏览器工具的使用方法、参数说明和最佳实践。
 
 ---
 
@@ -67,10 +67,10 @@ GarClaw 提供了一套功能完整的浏览器自动化工具，基于 [Rod](ht
 
 **返回示例 (TOON格式)：**
 ```
-Title: GarClaw - GitHub
-Link: https://github.com/xxx/garclaw
+Title: GhostClaw - GitHub
+Link: https://github.com/xxx/ghostclaw
 ---
-Title: GarClaw 使用教程
+Title: GhostClaw 使用教程
 Link: https://example.com/tutorial
 ```
 
@@ -678,7 +678,7 @@ browser_cookie_save(url="https://example.com", file_path="cookies_example_com.to
 
 ### 10.1 会话管理器架构
 
-GarClaw 内置了浏览器会话管理器，支持：
+GhostClaw 内置了浏览器会话管理器，支持：
 
 - **会话复用**：避免每次操作重新启动浏览器
 - **多标签页管理**：在同一个浏览器实例中管理多个页面
@@ -935,5 +935,5 @@ AgentLoop.go              - 工具调用处理
 ## 十六、参考资料
 
 - [Rod 官方文档](https://github.com/go-rod/rod)
-- [TOON 格式规范](./garclaw/skills/toon_format.md)
+- [TOON 格式规范](./ghostclaw/skills/toon_format.md)
 - [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)

@@ -1,4 +1,4 @@
-# GarClaw Docker Compose 配置
+# GhostClaw Docker Compose 配置
 # 用法: docker compose build [target]
 # 目标: linux-amd64, linux-arm64, alpine-amd64, alpine-arm64, loong64, darwin-amd64, darwin-arm64, windows-amd64, freebsd-amd64, ghostbsd-amd64
 
@@ -12,7 +12,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-linux-amd64
+        BINARY_NAME: ghostclaw-linux-amd64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -26,7 +26,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: arm64
-        BINARY_NAME: garclaw-linux-arm64
+        BINARY_NAME: ghostclaw-linux-arm64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -40,7 +40,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-alpine-amd64
+        BINARY_NAME: ghostclaw-alpine-amd64
         STATIC_LINK: true
     volumes:
       - ./dist:/app/dist
@@ -54,7 +54,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: arm64
-        BINARY_NAME: garclaw-alpine-arm64
+        BINARY_NAME: ghostclaw-alpine-arm64
         STATIC_LINK: true
     volumes:
       - ./dist:/app/dist
@@ -68,7 +68,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: loong64
-        BINARY_NAME: garclaw-linux-loong64
+        BINARY_NAME: ghostclaw-linux-loong64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -82,7 +82,7 @@ services:
       args:
         TARGETOS: darwin
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-darwin-amd64
+        BINARY_NAME: ghostclaw-darwin-amd64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -96,7 +96,7 @@ services:
       args:
         TARGETOS: darwin
         TARGETARCH: arm64
-        BINARY_NAME: garclaw-darwin-arm64
+        BINARY_NAME: ghostclaw-darwin-arm64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -110,7 +110,7 @@ services:
       args:
         TARGETOS: windows
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-windows-amd64.exe
+        BINARY_NAME: ghostclaw-windows-amd64.exe
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -124,7 +124,7 @@ services:
       args:
         TARGETOS: freebsd
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-freebsd-amd64
+        BINARY_NAME: ghostclaw-freebsd-amd64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist
@@ -138,7 +138,7 @@ services:
       args:
         TARGETOS: freebsd
         TARGETARCH: amd64
-        BINARY_NAME: garclaw-ghostbsd-amd64
+        BINARY_NAME: ghostclaw-ghostbsd-amd64
         STATIC_LINK: false
     volumes:
       - ./dist:/app/dist

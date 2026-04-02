@@ -19,7 +19,7 @@ type XMPPConfig struct {
         Server      string   `toon:"server" json:"Server"`           // XMPP 服务器地址（如 talk.google.com:5222）
         Username    string   `toon:"username" json:"Username"`         // 用户名/ JID（如 bot@example.com）
         Password    string   `toon:"password" json:"Password"`         // 密码
-        Resource    string   `toon:"resource" json:"Resource"`         // 资源标识，默认 "garclaw"
+        Resource    string   `toon:"resource" json:"Resource"`         // 资源标识，默认 "ghostclaw"
         Rooms       []string `toon:"rooms" json:"Rooms"`               // 自动加入的 MUC 房间
         UseTLS      bool     `toon:"use_tls" json:"UseTLS"`            // 是否启用 TLS
         InsecureTLS bool     `toon:"insecure_tls" json:"InsecureTLS"`  // 是否跳过 TLS 证书验证
@@ -44,10 +44,10 @@ func NewXMPPChannel(config *XMPPConfig) (*XMPPChannel, error) {
                 return nil, fmt.Errorf("xmpp username is required")
         }
         if config.Resource == "" {
-                config.Resource = "garclaw"
+                config.Resource = "ghostclaw"
         }
         if config.Nick == "" {
-                config.Nick = "GarClaw"
+                config.Nick = "GhostClaw"
         }
         return &XMPPChannel{
                 BaseChannel: NewBaseChannel("xmpp"),

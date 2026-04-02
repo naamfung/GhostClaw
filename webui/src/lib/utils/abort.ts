@@ -5,7 +5,7 @@
  * These utilities help ensure that async operations can be properly cancelled
  * when needed (e.g., user stops generation, navigates away, etc.).
  *
- * In GarClaw context, "abort" triggers a /stop command to terminate model operation
+ * In GhostClaw context, "abort" triggers a /stop command to terminate model operation
  * while maintaining WebSocket connection for continued conversation.
  */
 

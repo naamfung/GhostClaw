@@ -55,7 +55,7 @@ func BuildGeneralSystemPrompt(enableImplicitSummary bool) string {
     hostname := getHostname()
     currentTime := time.Now().Format("2006-01-02 15:04:05")
     osInfo := runtime.GOOS + "/" + runtime.GOARCH
-    programName := "GarClaw"
+    programName := "GhostClaw"
 
     envInfo := fmt.Sprintf(`# 系统环境信息
 - **操作系统**：%s

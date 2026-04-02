@@ -1,19 +1,19 @@
 /**
- * GarClaw Chat Service
+ * GhostClaw Chat Service
  *
  * A WebSocket-based chat service that replaces the HTTP-based ChatService
- * for integration with the GarClaw backend.
+ * for integration with the GhostClaw backend.
  *
  * This service maintains the same interface as ChatService.sendMessage
  * for compatibility with the existing chat store.
  */
 
-import { garclawWS, type ConnectionStatus } from './garclaw.service';
+import { ghostclawWS, type ConnectionStatus } from './ghostclaw.service';
 import type { ApiChatMessageData } from '$lib/types/api';
 import type { DatabaseMessage, DatabaseMessageExtra } from '$lib/types';
 import { MessageRole } from '$lib/enums';
 
-export interface GarClawChatOptions {
+export interface GhostClawChatOptions {
         stream?: boolean;
         onChunk?: (chunk: string) => void;
         onComplete?: (content: string, reasoningContent?: string, timings?: unknown, toolCalls?: string) => void;
@@ -25,18 +25,18 @@ export interface GarClawChatOptions {
         signal?: AbortSignal;
 }
 
-export class GarClawChatService {
+export class GhostClawChatService {
         private static accumulatedContent: string = '';
         private static accumulatedReasoning: string = '';
 
         /**
          * Send a message via WebSocket.
-         * Note: GarClaw backend handles conversation history internally,
+         * Note: GhostClaw backend handles conversation history internally,
          * so we only send the latest user message.
          */
         static async sendMessage(
                 messages: ApiChatMessageData[] | (DatabaseMessage & { extra?: DatabaseMessageExtra[] })[],
-                options: GarClawChatOptions = {},
+                options: GhostClawChatOptions = {},
                 _conversationId?: string,
                 signal?: AbortSignal
         ): Promise<string | void> {
@@ -85,7 +85,7 @@ export class GarClawChatService {
                 // This keeps the WebSocket open for wake notifications
                 if (signal) {
                         signal.addEventListener('abort', () => {
-                                garclawWS.sendStop();
+                                ghostclawWS.sendStop();
                                 const abortError = new Error('Request aborted');
                                 abortError.name = 'AbortError';
                                 onError?.(abortError);
@@ -94,7 +94,7 @@ export class GarClawChatService {
 
                 return new Promise((resolve, reject) => {
                         // Connect to WebSocket if not connected
-                        garclawWS.connect({
+                        ghostclawWS.connect({
                                 onChunk: (chunk) => {
                                         this.accumulatedContent += chunk;
                                         onChunk?.(chunk);
@@ -121,12 +121,12 @@ export class GarClawChatService {
                                 },
                                 onSessionId: (sessionId) => {
                                         // Store session ID for reconnection
-                                        localStorage.setItem('garclaw_session_id', sessionId);
+                                        localStorage.setItem('ghostclaw_session_id', sessionId);
                                 },
                                 onStatusChange: (status: ConnectionStatus) => {
                                         if (status === 'connected') {
                                                 // Send the message once connected
-                                                garclawWS.send(content);
+                                                ghostclawWS.send(content);
                                         }
                                 },
                                 onTaskRunning: (running) => {
@@ -135,8 +135,8 @@ export class GarClawChatService {
                         });
 
                         // If already connected, send immediately
-                        if (garclawWS.getStatus() === 'connected') {
-                                garclawWS.send(content);
+                        if (ghostclawWS.getStatus() === 'connected') {
+                                ghostclawWS.send(content);
                         }
                 });
         }
@@ -145,20 +145,20 @@ export class GarClawChatService {
          * Check if WebSocket is connected
          */
         static isConnected(): boolean {
-                return garclawWS.getStatus() === 'connected';
+                return ghostclawWS.getStatus() === 'connected';
         }
 
         /**
          * Get current session ID
          */
         static getSessionId(): string {
-                return garclawWS.getSessionId();
+                return ghostclawWS.getSessionId();
         }
 
         /**
          * Disconnect WebSocket
          */
         static disconnect(): void {
-                garclawWS.disconnect();
+                ghostclawWS.disconnect();
         }
 }

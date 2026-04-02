@@ -1,6 +1,6 @@
 # GhostClaw 用户指南
 
-欢迎使用 GhostClaw —— 一个支持多角色协作的 AI Agent 框架。GhostClaw 是 GarClaw 的架构重构版本，采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据持久化。本指南将帮助你快速上手并充分利用 GhostClaw 的强大功能。
+欢迎使用 GhostClaw —— 一个支持多角色协作的 AI Agent 框架。GhostClaw 是 GhostClaw 的架构重构版本，采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据持久化。本指南将帮助你快速上手并充分利用 GhostClaw 的强大功能。
 
 ---
 
@@ -43,7 +43,7 @@ GhostClaw /> 你好，请介绍一下你自己
 
 ## 基本命令
 
-GarClaw 提供了一系列斜杠命令，用于控制程序行为。
+GhostClaw 提供了一系列斜杠命令，用于控制程序行为。
 
 ### 通用命令
 
@@ -109,7 +109,7 @@ GarClaw 提供了一系列斜杠命令，用于控制程序行为。
 
 ## 角色系统
 
-GarClaw 的核心特色是角色系统。每个角色都有独特的性格、说话风格与专业能力。
+GhostClaw 的核心特色是角色系统。每个角色都有独特的性格、说话风格与专业能力。
 
 ### 预置角色
 
@@ -136,7 +136,7 @@ GhostClaw /> 帮我写一个科幻小说的开头
 
 ## 多角色协作
 
-GarClaw 支持多个角色协作完成复杂任务，特别适合小说创作等场景。
+GhostClaw 支持多个角色协作完成复杂任务，特别适合小说创作等场景。
 
 ### 小说创作模式
 
@@ -242,7 +242,7 @@ GhostClaw /> /skill code_review
 
 ## Shell 工具系统
 
-GarClaw 提供两种 Shell 执行工具，根据任务性质智能选择。
+GhostClaw 提供两种 Shell 执行工具，根据任务性质智能选择。
 
 ### shell - 同步执行
 
@@ -356,7 +356,7 @@ GhostClaw /> /load 20240315_143022
 
 ### 自动保存
 
-GarClaw 每 5 分钟自动保存当前会话，防止意外丢失。
+GhostClaw 每 5 分钟自动保存当前会话，防止意外丢失。
 
 ---
 
@@ -456,7 +456,7 @@ roles/
 
 ### 热加载
 
-修改角色文件后，GarClaw 会自动检测并重新加载，无需重启程序。
+修改角色文件后，GhostClaw 会自动检测并重新加载，无需重启程序。
 
 ---
 
@@ -531,7 +531,7 @@ cron_jobs:
 
 ### Q: 程序意外退出，会话丢失？
 
-GarClaw 每 5 分钟自动保存。如果意外退出，可以：
+GhostClaw 每 5 分钟自动保存。如果意外退出，可以：
 1. 检查 `sessions/` 目录是否有自动保存的会话
 2. 养成手动保存的习惯 `/save`
 

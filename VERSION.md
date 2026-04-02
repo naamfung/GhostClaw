@@ -2,13 +2,13 @@
 
 ## v0.0.3 (2026-04-01)
 
-### 文档全面更新：GarClaw → GhostClaw
+### 文档全面更新：GhostClaw → GhostClaw
 
-将所有文档从旧版 GarClaw 名称与架构描述更新为 GhostClaw 的新架构。
+将所有文档从旧版 GhostClaw 名称与架构描述更新为 GhostClaw 的新架构。
 
 **文档更新**：
 
-1. **version.go**：启动横幅从 `GarClaw` 更新为 `GhostClaw`
+1. **version.go**：启动横幅从 `GhostClaw` 更新为 `GhostClaw`
 2. **README.md**：全面重写，反映 GhostClaw 的全局单会话模型、GORM/SQLite 记忆系统、新项目结构
 3. **SYSTEM_DESIGN.md**：重写系统设计文档，更新架构图为 GlobalSession 架构，更新记忆系统为 GORM/SQLite 方案
 4. **USER_GUIDE.md**：全面更新为 GhostClaw 品牌，反映单会话模型下的交互方式
@@ -16,15 +16,15 @@
 6. **MEMORY_SYSTEM.md**：重写为基于 GORM/SQLite 的记忆系统架构，移除旧的文件系统相关描述
 
 **名称变更**：
-- 所有文档中的 `GarClaw` 引用替换为 `GhostClaw`
-- 所有文档中的 `garclaw` 二进制名引用替换为 `ghostclaw`
+- 所有文档中的 `GhostClaw` 引用替换为 `GhostClaw`
+- 所有文档中的 `ghostclaw` 二进制名引用替换为 `ghostclaw`
 - 切换标记 `[GARCLAW:NEXT:...]` / `[GARCLAW:END]` 保持不变（代码兼容）
 
 ## v0.0.2 (2026-04-01)
 
 ### 架构升级：全局单会话模型
 
-GhostClaw 是 GarClaw 的架构重构版本，核心变更如下：
+GhostClaw 是 GhostClaw 的架构重构版本，核心变更如下：
 
 **架构重塑**：
 
@@ -62,9 +62,9 @@ GhostClaw 是 GarClaw 的架构重构版本，核心变更如下：
    - 替代旧版的 `MaxRequestSizeBytes` 请求体大小检查机制
 
 7. **模块重命名**：
-   - Go module: `garclaw` → `ghostclaw`
-   - 二进制输出: `garclaw` → `ghostclaw`
-   - 数据库文件: `garclaw.db` → `ghostclaw.db`
+   - Go module: `ghostclaw` → `ghostclaw`
+   - 二进制输出: `ghostclaw` → `ghostclaw`
+   - 数据库文件: `ghostclaw.db` → `ghostclaw.db`
 
 ### 修复
 

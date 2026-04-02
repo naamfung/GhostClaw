@@ -50,14 +50,14 @@ func handlePluginCreate(ctx context.Context, argsMap map[string]interface{}, ch 
                 template += `-- Description: ` + description + "\n"
         }
         template += `
--- This is a template for a GarClaw Lua plugin.
+-- This is a template for a GhostClaw Lua plugin.
 -- You can define any number of functions, and call them via plugin_call.
--- Use garclaw.log(level, msg) to log messages.
--- Use garclaw.call_tool(tool_name, args_table) to invoke GarClaw tools.
+-- Use ghostclaw.log(level, msg) to log messages.
+-- Use ghostclaw.call_tool(tool_name, args_table) to invoke GhostClaw tools.
 
 -- Example function:
 function hello(name)
-    garclaw.log("info", "hello called with name: " .. name)
+    ghostclaw.log("info", "hello called with name: " .. name)
     return "Hello, " .. name .. " from plugin " .. "` + name + `"
 end
 

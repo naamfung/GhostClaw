@@ -1,6 +1,6 @@
 # GhostClaw
 
-GhostClaw 是 GarClaw 的架构重构版本——一个基于 LLM（大语言模型）的多渠道智能 AI Agent 框架，使用 Go 语言开发。GhostClaw 在 GarClaw 的基础上进行了核心架构升级，采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，支持命令行、Web 网页、邮件及多种聊天应用交互，所有渠道共享同一个对话上下文。
+GhostClaw 是 GhostClaw 的架构重构版本——一个基于 LLM（大语言模型）的多渠道智能 AI Agent 框架，使用 Go 语言开发。GhostClaw 在 GhostClaw 的基础上进行了核心架构升级，采用全局单会话模型（GlobalSession）和 GORM/SQLite 数据库持久化，支持命令行、Web 网页、邮件及多种聊天应用交互，所有渠道共享同一个对话上下文。
 
 ## 核心特性
 
@@ -95,11 +95,11 @@ feishu_config:
 
 ## 🔄 全局单会话模型
 
-GhostClaw 采用全局单会话模型（GlobalSession），这是与旧版 GarClaw 最核心的架构差异。
+GhostClaw 采用全局单会话模型（GlobalSession），这是与旧版 GhostClaw 最核心的架构差异。
 
 ### 架构对比
 
-| 特性 | GarClaw（旧版） | GhostClaw（新版） |
+| 特性 | GhostClaw（旧版） | GhostClaw（新版） |
 |------|----------------|-------------------|
 | 会话模型 | 多会话（WebSessionManager） | 全局单会话（GlobalSession） |
 | 渠道隔离 | 每渠道独立会话 | 所有渠道共享同一会话 |

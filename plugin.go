@@ -296,23 +296,23 @@ func (pm *PluginManager) CompilePlugin(name, code string) error {
     return nil
 }
 
-// registerAPIs 向 Lua VM 注册 garclaw 命名空间的函数
+// registerAPIs 向 Lua VM 注册 ghostclaw 命名空间的函数
 func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
-    garclaw := L.NewTable()
-    L.SetGlobal("garclaw", garclaw)
+    ghostclaw := L.NewTable()
+    L.SetGlobal("ghostclaw", ghostclaw)
 
     // ==================== 基础功能 ====================
 
-    // garclaw.log(level, msg) - 日志输出
-    L.SetField(garclaw, "log", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.log(level, msg) - 日志输出
+    L.SetField(ghostclaw, "log", L.NewFunction(func(L *lua.LState) int {
         level := L.CheckString(1)
         msg := L.CheckString(2)
         log.Printf("[plugin %s] %s: %s", pluginName, level, msg)
         return 0
     }))
 
-    // garclaw.call_tool(name, args) - 调用主程序工具
-    L.SetField(garclaw, "call_tool", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.call_tool(name, args) - 调用主程序工具
+    L.SetField(ghostclaw, "call_tool", L.NewFunction(func(L *lua.LState) int {
         toolName := L.CheckString(1)
         argsTable := L.CheckTable(2)
         args := make(map[string]interface{})
@@ -335,8 +335,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 文件系统 ====================
 
-    // garclaw.read_file(path) - 读取文件内容
-    L.SetField(garclaw, "read_file", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.read_file(path) - 读取文件内容
+    L.SetField(ghostclaw, "read_file", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         data, err := os.ReadFile(path)
         if err != nil {
@@ -348,8 +348,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.write_file(path, content) - 写入文件
-    L.SetField(garclaw, "write_file", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.write_file(path, content) - 写入文件
+    L.SetField(ghostclaw, "write_file", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         content := L.CheckString(2)
         err := os.WriteFile(path, []byte(content), 0644)
@@ -362,8 +362,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.list_dir(path) - 列出目录内容
-    L.SetField(garclaw, "list_dir", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.list_dir(path) - 列出目录内容
+    L.SetField(ghostclaw, "list_dir", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         entries, err := os.ReadDir(path)
         if err != nil {
@@ -386,8 +386,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.stat(path) - 获取文件信息
-    L.SetField(garclaw, "stat", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.stat(path) - 获取文件信息
+    L.SetField(ghostclaw, "stat", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         info, err := os.Stat(path)
         if err != nil {
@@ -405,16 +405,16 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.exists(path) - 检查文件是否存在
-    L.SetField(garclaw, "exists", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.exists(path) - 检查文件是否存在
+    L.SetField(ghostclaw, "exists", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         _, err := os.Stat(path)
         L.Push(lua.LBool(err == nil))
         return 1
     }))
 
-    // garclaw.mkdir(path) - 创建目录
-    L.SetField(garclaw, "mkdir", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.mkdir(path) - 创建目录
+    L.SetField(ghostclaw, "mkdir", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         err := os.MkdirAll(path, 0755)
         if err != nil {
@@ -426,8 +426,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.remove(path) - 删除文件或目录
-    L.SetField(garclaw, "remove", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.remove(path) - 删除文件或目录
+    L.SetField(ghostclaw, "remove", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         err := os.RemoveAll(path)
         if err != nil {
@@ -439,8 +439,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.rename(old_path, new_path) - 重命名/移动
-    L.SetField(garclaw, "rename", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.rename(old_path, new_path) - 重命名/移动
+    L.SetField(ghostclaw, "rename", L.NewFunction(func(L *lua.LState) int {
         oldPath := L.CheckString(1)
         newPath := L.CheckString(2)
         err := os.Rename(oldPath, newPath)
@@ -455,8 +455,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== JSON ====================
 
-    // garclaw.json_encode(table) - 编码为JSON
-    L.SetField(garclaw, "json_encode", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.json_encode(table) - 编码为JSON
+    L.SetField(ghostclaw, "json_encode", L.NewFunction(func(L *lua.LState) int {
         table := L.CheckTable(1)
         data := luaValueToGo(table)
         bytes, err := json.Marshal(data)
@@ -469,8 +469,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.json_decode(str) - 解码JSON
-    L.SetField(garclaw, "json_decode", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.json_decode(str) - 解码JSON
+    L.SetField(ghostclaw, "json_decode", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         var data interface{}
         err := json.Unmarshal([]byte(str), &data)
@@ -485,8 +485,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== HTTP ====================
 
-    // garclaw.http_get(url) - HTTP GET请求（自动 SSRF 检查）
-    L.SetField(garclaw, "http_get", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.http_get(url) - HTTP GET请求（自动 SSRF 检查）
+    L.SetField(ghostclaw, "http_get", L.NewFunction(func(L *lua.LState) int {
         url := L.CheckString(1)
         // 使用安全 HTTP 客户端（自动 SSRF 检查），超时使用配置值
         timeout := globalTimeoutConfig.Plugin
@@ -516,8 +516,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.http_post(url, body, content_type) - HTTP POST请求（自动 SSRF 检查）
-    L.SetField(garclaw, "http_post", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.http_post(url, body, content_type) - HTTP POST请求（自动 SSRF 检查）
+    L.SetField(ghostclaw, "http_post", L.NewFunction(func(L *lua.LState) int {
         url := L.CheckString(1)
         body := L.CheckString(2)
         contentType := L.OptString(3, "application/json")
@@ -550,14 +550,14 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 时间 ====================
 
-    // garclaw.time() - 当前时间戳
-    L.SetField(garclaw, "time", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.time() - 当前时间戳
+    L.SetField(ghostclaw, "time", L.NewFunction(func(L *lua.LState) int {
         L.Push(lua.LNumber(time.Now().Unix()))
         return 1
     }))
 
-    // garclaw.time_format(timestamp, layout) - 格式化时间
-    L.SetField(garclaw, "time_format", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.time_format(timestamp, layout) - 格式化时间
+    L.SetField(ghostclaw, "time_format", L.NewFunction(func(L *lua.LState) int {
         timestamp := L.CheckNumber(1)
         layout := L.OptString(2, "2006-01-02 15:04:05")
         t := time.Unix(int64(timestamp), 0)
@@ -565,8 +565,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.time_parse(str, layout) - 解析时间字符串
-    L.SetField(garclaw, "time_parse", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.time_parse(str, layout) - 解析时间字符串
+    L.SetField(ghostclaw, "time_parse", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         layout := L.OptString(2, "2006-01-02 15:04:05")
         t, err := time.Parse(layout, str)
@@ -579,8 +579,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.sleep(seconds) - 休眠
-    L.SetField(garclaw, "sleep", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.sleep(seconds) - 休眠
+    L.SetField(ghostclaw, "sleep", L.NewFunction(func(L *lua.LState) int {
         seconds := L.CheckNumber(1)
         time.Sleep(time.Duration(float64(seconds) * float64(time.Second)))
         return 0
@@ -588,8 +588,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 加密/哈希 ====================
 
-    // garclaw.hash(algo, data) - 哈希计算
-    L.SetField(garclaw, "hash", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.hash(algo, data) - 哈希计算
+    L.SetField(ghostclaw, "hash", L.NewFunction(func(L *lua.LState) int {
         algo := L.CheckString(1)
         data := L.CheckString(2)
         var hash []byte
@@ -614,8 +614,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 随机数/UUID ====================
 
-    // garclaw.random(min, max) - 随机数
-    L.SetField(garclaw, "random", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.random(min, max) - 随机数
+    L.SetField(ghostclaw, "random", L.NewFunction(func(L *lua.LState) int {
         min := float64(L.OptNumber(1, 0))
         max := float64(L.OptNumber(2, 1))
         r := float64(time.Now().UnixNano()%1000000) / 1000000.0
@@ -624,16 +624,16 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.uuid() - 生成UUID
-    L.SetField(garclaw, "uuid", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.uuid() - 生成UUID
+    L.SetField(ghostclaw, "uuid", L.NewFunction(func(L *lua.LState) int {
         L.Push(lua.LString(uuid.New().String()))
         return 1
     }))
 
     // ==================== 环境变量 ====================
 
-    // garclaw.getenv(name) - 获取环境变量
-    L.SetField(garclaw, "getenv", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.getenv(name) - 获取环境变量
+    L.SetField(ghostclaw, "getenv", L.NewFunction(func(L *lua.LState) int {
         name := L.CheckString(1)
         value := os.Getenv(name)
         if value == "" {
@@ -644,8 +644,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.setenv(name, value) - 设置环境变量
-    L.SetField(garclaw, "setenv", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.setenv(name, value) - 设置环境变量
+    L.SetField(ghostclaw, "setenv", L.NewFunction(func(L *lua.LState) int {
         name := L.CheckString(1)
         value := L.CheckString(2)
         err := os.Setenv(name, value)
@@ -660,8 +660,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 工作目录 ====================
 
-    // garclaw.getcwd() - 获取当前工作目录
-    L.SetField(garclaw, "getcwd", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.getcwd() - 获取当前工作目录
+    L.SetField(ghostclaw, "getcwd", L.NewFunction(func(L *lua.LState) int {
         dir, err := os.Getwd()
         if err != nil {
             L.Push(lua.LNil)
@@ -672,8 +672,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.chdir(path) - 切换工作目录
-    L.SetField(garclaw, "chdir", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.chdir(path) - 切换工作目录
+    L.SetField(ghostclaw, "chdir", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         err := os.Chdir(path)
         if err != nil {
@@ -687,8 +687,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 路径操作 ====================
 
-    // garclaw.join_path(parts...) - 连接路径
-    L.SetField(garclaw, "join_path", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.join_path(parts...) - 连接路径
+    L.SetField(ghostclaw, "join_path", L.NewFunction(func(L *lua.LState) int {
         n := L.GetTop()
         parts := make([]string, n)
         for i := 1; i <= n; i++ {
@@ -698,8 +698,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.split_path(path) - 分割路径
-    L.SetField(garclaw, "split_path", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.split_path(path) - 分割路径
+    L.SetField(ghostclaw, "split_path", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         dir, file := filepath.Split(path)
         table := L.CreateTable(0, 2)
@@ -709,8 +709,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.abs_path(path) - 获取绝对路径
-    L.SetField(garclaw, "abs_path", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.abs_path(path) - 获取绝对路径
+    L.SetField(ghostclaw, "abs_path", L.NewFunction(func(L *lua.LState) int {
         path := L.CheckString(1)
         abs, err := filepath.Abs(path)
         if err != nil {
@@ -724,8 +724,8 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 
     // ==================== 字符串增强 ====================
 
-    // garclaw.split(str, sep) - 分割字符串
-    L.SetField(garclaw, "split", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.split(str, sep) - 分割字符串
+    L.SetField(ghostclaw, "split", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         sep := L.CheckString(2)
         parts := strings.Split(str, sep)
@@ -737,23 +737,23 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
         return 1
     }))
 
-    // garclaw.trim(str) - 去除首尾空白
-    L.SetField(garclaw, "trim", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.trim(str) - 去除首尾空白
+    L.SetField(ghostclaw, "trim", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         L.Push(lua.LString(strings.TrimSpace(str)))
         return 1
     }))
 
-    // garclaw.contains(str, substr) - 检查是否包含子串
-    L.SetField(garclaw, "contains", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.contains(str, substr) - 检查是否包含子串
+    L.SetField(ghostclaw, "contains", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         substr := L.CheckString(2)
         L.Push(lua.LBool(strings.Contains(str, substr)))
         return 1
     }))
 
-    // garclaw.replace(str, old, new) - 替换字符串
-    L.SetField(garclaw, "replace", L.NewFunction(func(L *lua.LState) int {
+    // ghostclaw.replace(str, old, new) - 替换字符串
+    L.SetField(ghostclaw, "replace", L.NewFunction(func(L *lua.LState) int {
         str := L.CheckString(1)
         old := L.CheckString(2)
         newStr := L.CheckString(3)
