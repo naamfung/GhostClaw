@@ -1,9 +1,8 @@
 package main
 
 import (
-        "os"
         "fmt"
-        "time"
+        "os"
         "runtime"
         "strings"
 )
@@ -47,32 +46,6 @@ var fallbackSystemRules = `请遵循以下原则：
 
 func init() {
         SYSTEM_PROMPT = fallbackSystemRules
-}
-
-// BuildGeneralSystemPrompt 构建通用系统规则（不含角色身份）
-func BuildGeneralSystemPrompt(enableImplicitSummary bool) string {
-    // 获取系统环境信息
-    hostname := getHostname()
-    currentTime := time.Now().Format("2006-01-02 15:04:05")
-    osInfo := runtime.GOOS + "/" + runtime.GOARCH
-    programName := "GhostClaw"
-
-    envInfo := fmt.Sprintf(`# 系统环境信息
-- **操作系统**：%s
-- **宿主程序**：%s
-- **当前系统时间**：%s
-- **主机名**：%s
-`, osInfo, programName, currentTime, hostname)
-    return envInfo + fallbackSystemRules
-}
-
-// getHostname 获取主机名（失败时返回 "unknown"）
-func getHostname() string {
-    hostname, err := os.Hostname()
-    if err != nil {
-        return "unknown"
-    }
-    return hostname
 }
 
 // BuildSystemPromptForActor 为指定演员构建系统提示
@@ -202,6 +175,17 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 prompt.WriteString("\n\n")
                 prompt.WriteString(toolSection)
         }
+
+        // === 9. 静态环境信息（进程生命周期内不变，不影响 prompt cache 命中率）===
+        osInfo := runtime.GOOS + "/" + runtime.GOARCH
+        hostname, _ := os.Hostname()
+        if hostname == "" {
+                hostname = "unknown"
+        }
+        prompt.WriteString("\n\n# 系统环境\n\n")
+        prompt.WriteString(fmt.Sprintf("- **操作系统**：%s\n", osInfo))
+        prompt.WriteString("- **宿主程序**：GhostClaw\n")
+        prompt.WriteString(fmt.Sprintf("- **主机名**：%s\n", hostname))
 
         return prompt.String()
 }

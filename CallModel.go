@@ -190,12 +190,6 @@ func extractSystemPrompt(messages []Message) (string, []Message) {
         return systemPrompt, filteredMessages
 }
 
-// prependCurrentTime 已废弃：时间信息现在注入到 user 消息前缀中，不再污染系统提示。
-// 保留此函数作为空操作以兼容可能的调用方。
-func prependCurrentTime(systemPrompt string) string {
-        return systemPrompt
-}
-
 // buildRuntimeContext 构建运行时上下文前缀（注入到第一条 user 消息中）
 // 参考 nanobot 的设计：时间等信息作为元数据标注，不作为指令，最大化系统提示缓存命中率
 func buildRuntimeContext() string {
