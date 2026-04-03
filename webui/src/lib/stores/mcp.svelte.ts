@@ -97,9 +97,7 @@ class MCPStore {
 	private activeFlowCount = 0;
 
 	constructor() {
-		if (browser) {
-			this.probeProxy();
-		}
+		// probeProxy() moved to ensureInitialized() to avoid premature network requests
 	}
 
 	/**
@@ -107,12 +105,47 @@ class MCPStore {
 	 * The endpoint is only registered when llama-server runs with --webui-mcp-proxy.
 	 */
 	async probeProxy(): Promise<void> {
-		try {
-			const response = await fetch(`${base}${CORS_PROXY_ENDPOINT}`, { method: 'HEAD' });
-			this._proxyAvailable = response.status !== 404;
-		} catch {
+		// Skip proxy probe if we're in a development environment
+		// or if the endpoint is likely not available
+		if (import.meta.env.DEV) {
 			this._proxyAvailable = false;
+			return;
 		}
+		
+		const maxRetries = 3;
+		let retryCount = 0;
+		
+		while (retryCount < maxRetries) {
+			try {
+				const controller = new AbortController();
+				// Increase timeout to 3 seconds for more reliable detection
+				const timeoutId = setTimeout(() => controller.abort(), 3000);
+				
+				const response = await fetch(`${base}${CORS_PROXY_ENDPOINT}`, {
+					method: 'HEAD',
+					signal: controller.signal,
+					// Add cache control to avoid cached responses
+					headers: {
+						'Cache-Control': 'no-cache, no-store, must-revalidate',
+						'Pragma': 'no-cache',
+						'Expires': '0'
+					}
+				});
+				
+				clearTimeout(timeoutId);
+				this._proxyAvailable = response.status !== 404;
+				return;
+			} catch (error) {
+				retryCount++;
+				// Wait before retrying
+				if (retryCount < maxRetries) {
+					await new Promise(resolve => setTimeout(resolve, 500));
+				}
+			}
+		}
+		
+		// All retries failed
+		this._proxyAvailable = false;
 	}
 
 	get isProxyAvailable(): boolean {
@@ -571,6 +604,11 @@ class MCPStore {
 	async ensureInitialized(perChatOverrides?: McpServerOverride[]): Promise<boolean> {
 		if (!browser) {
 			return false;
+		}
+
+		// Probe proxy availability only when MCP is actually needed
+		if (!this.isProxyAvailable && !import.meta.env.DEV) {
+			await this.probeProxy();
 		}
 
 		const mcpConfig = this.#buildMcpClientConfig(config(), perChatOverrides);

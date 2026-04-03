@@ -131,3 +131,15 @@ declare global {
 		idxCodeBlock?: number;
 	}
 }
+
+// Vite environment variables interface
+declare interface ImportMetaEnv {
+	readonly DEV: boolean;
+	readonly PROD: boolean;
+	readonly MODE: string;
+	readonly BASE_URL: string;
+}
+
+declare interface ImportMeta {
+	readonly env: ImportMetaEnv;
+}

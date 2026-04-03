@@ -173,6 +173,24 @@
                 }
         }
 
+        async function handleSetMainModel(model) {
+                try {
+                        const response = await fetch(`/api/models/${encodeURIComponent(model.Name)}/set-main`, {
+                                method: 'PATCH'
+                        });
+
+                        if (response.ok) {
+                                // 静默更新，直接重新加载模型列表
+                                await loadModels();
+                        } else {
+                                const error = await response.json();
+                                console.error('设置主模型失败:', error.error || '设置主模型失败');
+                        }
+                } catch (error) {
+                        console.error('设置主模型失败:', error);
+                }
+        }
+
         async function handleEditorSave() {
                 if (!editForm.Name.trim()) {
                         alert('模型名称不能为空');
@@ -506,6 +524,16 @@
                                                                 </div>
                                                         </div>
                                                         <div class="flex flex-wrap gap-2">
+                                                                {#if selectedModel.Name !== 'main'}
+                                                                        <Button
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                class="mr-2"
+                                                                                onclick={() => handleSetMainModel(selectedModel)}
+                                                                        >
+                                                                                设为主模
+                                                                        </Button>
+                                                                {/if}
                                                                 <Button variant="outline" size="sm" onclick={() => handleEdit(selectedModel)}>
                                                                         <Pencil class="mr-1 h-4 w-4" />
                                                                         编辑
@@ -514,7 +542,7 @@
                                                                         <Button
                                                                                 variant="outline"
                                                                                 size="sm"
-                                                                                class="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                                                                class="text-destructive hover:bg-destructive hover:text-white"
                                                                                 onclick={() => handleDeleteClick(selectedModel)}
                                                                         >
                                                                                 <Trash2 class="mr-1 h-4 w-4" />

@@ -21,6 +21,9 @@ cd "$(dirname "$0")"
 rm -rf ghostclaw ghostclaw.exe ghostclaw_*
 rm -rf webui/node_modules webui/.svelte-kit
 
+cp webui/tsconfig.json webui/tsconfig.env.json
+rm -rf webui/tsconfig.json
+
 # 检测操作系统
 detect_os() {
     if [ -f "/etc/os-release" ]; then
@@ -257,6 +260,8 @@ case "$PKG_MANAGER" in
 esac
 
 cd ..
+cp webui/tsconfig.env.json webui/tsconfig.json
+rm -rf webui/tsconfig.env.json
 
 # 2. 编译后端
 printf "\n\033[0;34m[2/2] 编译后端...\033[0m\n"
