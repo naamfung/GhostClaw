@@ -114,22 +114,111 @@ func (fc *FeedbackCollector) ShouldAskForFeedback(messages []Message, turnCount 
 	fc.mu.RLock()
 	defer fc.mu.RUnlock()
 	
+	// 检查是否完成了一个任务
+	if !fc.isTaskCompleted(messages) {
+		return false
+	}
+	
+	// 检查是否已经为当前任务询问过反馈
+	if fc.hasAskedForCurrentTask(messages) {
+		return false
+	}
+	
 	// 消息数不够，不询问
-	if turnCount < fc.minMessagesBeforeAsk {
-		return false
-	}
-	
-	// 距离上次询问太近，不询问
-	if time.Since(fc.lastFeedbackTime) < 5*time.Minute {
-		return false
-	}
-	
-	// 每隔 askInterval 轮询问一次
-	if turnCount%fc.askInterval != 0 {
+	if turnCount < 3 {
 		return false
 	}
 	
 	return true
+}
+
+// isTaskCompleted 检测是否完成了一个任务
+func (fc *FeedbackCollector) isTaskCompleted(messages []Message) bool {
+	if len(messages) < 3 {
+		return false
+	}
+	
+	// 查找最近的助手回复
+	lastAssistantMsg := ""
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			if content, ok := messages[i].Content.(string); ok {
+				lastAssistantMsg = content
+				break
+			}
+		}
+	}
+	
+	// 检查助手回复是否包含任务完成的信号
+	completionSignals := []string{
+		"完成", "完成了", "已完成", "已经完成",
+		"搞定", "解决", "解决了", "已经解决",
+		"好的", "明白了", "知道了", "了解",
+		"可以了", "没问题", "完成任务", "任务完成",
+	}
+	
+	lastAssistantMsg = strings.ToLower(lastAssistantMsg)
+	for _, signal := range completionSignals {
+		if strings.Contains(lastAssistantMsg, strings.ToLower(signal)) {
+			return true
+		}
+	}
+	
+	// 检查是否有明确的总结或结论
+	conclusionSignals := []string{
+		"总结", "综上所述", "总之", "总的来说",
+		"最终", "最后", "结果", "答案",
+	}
+	
+	for _, signal := range conclusionSignals {
+		if strings.Contains(lastAssistantMsg, strings.ToLower(signal)) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// hasAskedForCurrentTask 检查是否已经为当前任务询问过反馈
+func (fc *FeedbackCollector) hasAskedForCurrentTask(messages []Message) bool {
+	if len(messages) < 2 {
+		return false
+	}
+	
+	// 查找最近的用户消息
+	lastUserMsg := ""
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			if content, ok := messages[i].Content.(string); ok {
+				lastUserMsg = content
+				break
+			}
+		}
+	}
+	
+	// 检查最近的助手消息是否是反馈询问
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			if content, ok := messages[i].Content.(string); ok {
+				// 检查是否包含反馈询问的标记
+				if strings.Contains(content, "快速自检") || 
+				   strings.Contains(content, "持续改进") ||
+				   strings.Contains(content, "评分") {
+					// 检查这个反馈询问是否在最近的用户消息之后
+					if i > 0 && messages[i-1].Role == "user" {
+						if userContent, ok := messages[i-1].Content.(string); ok {
+							// 如果反馈询问是在最近的用户消息之后，说明已经询问过了
+							if lastUserMsg == userContent {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return false
 }
 
 // GenerateFeedbackPrompt 生成反馈收集提示
