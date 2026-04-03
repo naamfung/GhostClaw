@@ -25,24 +25,34 @@ cp webui/tsconfig.json webui/tsconfig.env.json
 rm -rf webui/tsconfig.json
 
 # 检测操作系统
+# 返回格式: 系统名称:是否为Windows(0/1)
 detect_os() {
+    # 首先检测 Windows 环境（包括 MSYS2、MinGW、Cygwin）
+    if [ "$OS" = "Windows_NT" ] || [ "$(uname -s)" = "MINGW64_NT" ] || [ "$(uname -s)" = "MSYS_NT" ] || [ "$(uname -s)" = "CYGWIN_NT" ]; then
+        echo "windows:1"
+        return
+    fi
+    
     if [ -f "/etc/os-release" ]; then
         . /etc/os-release
         case "$ID" in
-            ghostbsd) echo "ghostbsd" ;;
-            freebsd)  echo "freebsd" ;;
-            *)        echo "$ID" ;;
+            ghostbsd) echo "ghostbsd:0" ;;
+            freebsd)  echo "freebsd:0" ;;
+            *)        echo "$ID:0" ;;
         esac
     elif [ "$(uname)" = "Darwin" ]; then
-        echo "macos"
+        echo "macos:0"
     elif [ "$(uname)" = "Linux" ]; then
-        echo "linux"
+        echo "linux:0"
     else
-        echo "$(uname)" | tr '[:upper:]' '[:lower:]'
+        echo "$(uname)" | tr '[:upper:]' '[:lower:]':0
     fi
 }
 
-OS=$(detect_os)
+# 解析 detect_os 的返回值
+OS_INFO=$(detect_os)
+OS=$(echo "$OS_INFO" | cut -d: -f1)
+IS_WINDOWS=$(echo "$OS_INFO" | cut -d: -f2)
 printf "检测到系统: %s\n" "$OS"
 
 # 检测可用的包管理器（按优先级：pnpm > npm > bun）
@@ -344,17 +354,22 @@ fi
 if [ -n "$TAG_DESCRIPTIONS" ]; then
     printf "启用扩展渠道:%s\n" "$TAG_DESCRIPTIONS"
 fi
+# 判断系统是否为 Windows，如果是则为程序名加 .exe 后缀
+OUTPUT_NAME="ghostclaw"
+if [ "$IS_WINDOWS" = "1" ]; then
+    OUTPUT_NAME="ghostclaw.exe"
+fi
 
 # 构建
 LDFLAGS="-X 'main.Version=$VERSION' -X 'main.GitCommit=$GIT_COMMIT' -X 'main.BuildTime=$BUILD_TIME'"
 if [ -n "$BUILD_TAGS" ]; then
-    go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o ghostclaw . || {
+    go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "$OUTPUT_NAME" . || {
         printf "\033[0;31mGo 编译失败\033[0m\n"
         printf "请确保已安装 Go 编译器\n"
         exit 1
     }
 else
-    go build -ldflags "$LDFLAGS" -o ghostclaw . || {
+    go build -ldflags "$LDFLAGS" -o "$OUTPUT_NAME" . || {
         printf "\033[0;31mGo 编译失败\033[0m\n"
         printf "请确保已安装 Go 编译器\n"
         exit 1
@@ -362,8 +377,8 @@ else
 fi
 
 printf "\n\033[0;32m=== 构建完成 ===\033[0m\n"
-printf "可执行文件: ./ghostclaw\n\n"
-printf "运行程序: ./ghostclaw\n"
+printf "可执行文件: ./%s\n\n" "$OUTPUT_NAME"
+printf "运行程序: ./%s\n" "$OUTPUT_NAME"
 printf "访问地址: http://localhost:10086\n"
 if [ -n "$TAG_DESCRIPTIONS" ]; then
     printf "\n已启用扩展渠道:%s\n" "$TAG_DESCRIPTIONS"
