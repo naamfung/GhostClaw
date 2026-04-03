@@ -627,6 +627,10 @@ func main() {
         InitMemoryRefactorManager(refactorDataDir)
         log.Println("Memory refactor manager initialized")
 
+        // 初始化记忆评分器
+        InitMemoryScorer()
+        log.Println("Memory scorer initialized")
+
         // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
         log.Println("Session persistence initialized (database-backed)")
