@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "fmt"
     "log"
+    "strconv"
     "strings"
     "time"
 )
@@ -112,14 +113,33 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     // 工具调用配额计数器
     toolCallCount := 0
 
+    // 初始化上下文压缩器
+    compressor := NewContextCompressor()
+
     // 每轮 AgentLoop（用户发新消息）重置循环检测器
     if globalLoopDetector != nil {
         globalLoopDetector.Clear()
     }
 
-    // 注入记忆上下文
+    // 注入记忆上下文（基于最新用户消息的 Prefetch 机制）
     if globalUnifiedMemory != nil {
+        // 找到最新的用户消息
+        var latestUserMessage string
+        for i := len(messages) - 1; i >= 0; i-- {
+            if messages[i].Role == "user" {
+                if content, ok := messages[i].Content.(string); ok && content != "" {
+                    latestUserMessage = content
+                }
+                break
+            }
+        }
+        
+        // 使用最新用户消息作为查询，获取相关记忆
         taskDesc := getCurrentTaskDescriptionFromMessages(messages)
+        if latestUserMessage != "" {
+            taskDesc = latestUserMessage
+        }
+        
         memoryContext := globalUnifiedMemory.GetContextForPrompt(taskDesc)
         if memoryContext != "" {
             if len(messages) > 0 && messages[0].Role == "system" {
@@ -248,20 +268,40 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         default:
         }
 
+        // ========== 每次循环开始前压缩历史（使用上下文压缩器） ==========
+        if len(messages) > MaxHistoryMessages {
+            // 使用上下文压缩器压缩消息历史
+            messages = compressor.Compress(messages)
+        }
+
         // ========== 每次循环开始前截断历史（含时间分隔标记 + user边界切割） ==========
         if len(messages) > MaxHistoryMessages {
             // 1. 计算目标保留数量，找到 user 消息边界（参考 nanobot 的 pick_consolidation_boundary）
-            //    不在 tool-call 链中间截断，而是向前/向后找到最近的 user 消息边界
+//    不在 tool-call 链中间截断，而是向前/向后找到最近的 user 消息边界
             hasSystem := messages[0].Role == "system"
             budgetSlots := MaxHistoryMessages
             if hasSystem {
                 budgetSlots = MaxHistoryMessages - 1 // system 占一个名额
             }
 
-            // 计算理想的起始位置
+            // 首先找到最新的用户消息位置
+            latestUserIndex := -1
+            for i := len(messages) - 1; i >= 0; i-- {
+                if messages[i].Role == "user" {
+                    latestUserIndex = i
+                    break
+                }
+            }
+
+            // 计算理想的起始位置，确保最新用户消息被保留
             idealStart := len(messages) - budgetSlots
             if idealStart < 0 {
                 idealStart = 0
+            }
+
+            // 确保最新用户消息在保留范围内
+            if latestUserIndex > 0 && idealStart > latestUserIndex {
+                idealStart = latestUserIndex
             }
 
             // 从 idealStart 向前搜索最近的 user 消息边界（容忍窗口 ±20条）
@@ -277,16 +317,17 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 }
             }
 
-            // 2. 截断前：从被丢弃的消息中提取最后一条用户消息的时间和内容
+            // 确保边界不超过最新用户消息位置
+            if latestUserIndex > 0 && boundaryStart > latestUserIndex {
+                boundaryStart = latestUserIndex
+            }
+
+            // 2. 截断前：从被丢弃的消息中提取最后一条用户消息的内容
             lastDiscardUserContent := ""
-            lastDiscardUserTime := ""
             for i := 0; i < boundaryStart; i++ {
                 if messages[i].Role == "user" {
                     if content, ok := messages[i].Content.(string); ok && content != "" {
                         lastDiscardUserContent = content
-                        if messages[i].Timestamp > 0 {
-                            lastDiscardUserTime = time.Unix(messages[i].Timestamp, 0).Format("15:04:05")
-                        }
                     }
                 }
             }
@@ -308,21 +349,41 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
             // 5. 构建时间分隔标记消息，插入到 system 消息之后
             var divider strings.Builder
-            divider.WriteString("[对话历史分隔 — 以下为较早的对话记录]\n\n")
-            if lastDiscardUserContent != "" {
-                if lastDiscardUserTime != "" {
-                    divider.WriteString(fmt.Sprintf("[最近被截断的用户请求] (%s)\n", lastDiscardUserTime))
-                } else {
-                    divider.WriteString("[最近被截断的用户请求]\n")
-                }
-                if len(lastDiscardUserContent) > 200 {
-                    divider.WriteString(lastDiscardUserContent[:200] + "...\n\n")
-                } else {
-                    divider.WriteString(lastDiscardUserContent + "\n\n")
+            divider.WriteString("=== 历史对话摘要 ===\n")
+            divider.WriteString("【重要提示】请优先响应该消息之前的最后一条用户消息\n")
+            
+            // 提取最新用户消息内容
+            latestUserContent := ""
+            for i := len(messages) - 1; i >= 0; i-- {
+                if messages[i].Role == "user" {
+                    if content, ok := messages[i].Content.(string); ok && content != "" {
+                        latestUserContent = content
+                        if len(latestUserContent) > 100 {
+                            latestUserContent = latestUserContent[:100] + "..."
+                        }
+                    }
+                    break
                 }
             }
-            divider.WriteString("请注意对话的时间顺序，优先响应下方最新的用户消息。如有指令冲突，以最新用户消息的指令为准。\n")
-            divider.WriteString("[历史消息结束 — 以下为最近对话]")
+            
+            if latestUserContent != "" {
+                divider.WriteString("用户最新请求: " + latestUserContent + "\n")
+            }
+            
+            divider.WriteString("对话轮数: " + strconv.Itoa(len(messages)) + " | 已压缩: " + strconv.Itoa(boundaryStart-1) + " 条消息\n")
+            divider.WriteString("当前时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
+            
+            if lastDiscardUserContent != "" {
+                divider.WriteString("\n[最近被截断的用户请求]\n")
+                if len(lastDiscardUserContent) > 150 {
+                    divider.WriteString(lastDiscardUserContent[:150] + "...\n")
+                } else {
+                    divider.WriteString(lastDiscardUserContent + "\n")
+                }
+            }
+            
+            divider.WriteString("\n请注意：如有指令冲突，以最新用户消息的指令为准\n")
+            divider.WriteString("=== 摘要结束，以下继续对话 ===")
 
             dividerMsg := Message{
                 Role:      "user",
