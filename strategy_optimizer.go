@@ -180,6 +180,11 @@ func (so *StrategyOptimizer) applyOptimizations(report *InsightsReport) []Applie
 		changes = append(changes, *change)
 	}
 	
+	// 6. 优化循环检测配置
+	if change := so.optimizeLoopDetection(); change != nil {
+		changes = append(changes, *change)
+	}
+	
 	return changes
 }
 
@@ -463,4 +468,105 @@ func InitStrategyOptimizer(dataDir string) {
 // GetStrategyOptimizer 获取策略优化器
 func GetStrategyOptimizer() *StrategyOptimizer {
 	return globalStrategyOptimizer
+}
+
+// optimizeLoopDetection 优化循环检测配置
+func (so *StrategyOptimizer) optimizeLoopDetection() *AppliedChange {
+	// 获取循环检测优化器
+	ldo := GetLoopDetectionOptimizer()
+	if ldo == nil {
+		return nil
+	}
+
+	// 获取事件收集器中的事件
+	var events []LoopDetectionEvent
+	if ldo.eventCollector != nil {
+		events = ldo.eventCollector.GetEvents()
+	}
+
+	// 如果事件不足，尝试从文件读取
+	if len(events) < 10 {
+		events = so.loadLoopDetectionEventsFromFile()
+	}
+
+	if len(events) < 10 {
+		return nil // 数据不足
+	}
+
+	// 分析事件数据并生成优化建议
+	proposals := ldo.AnalyzeEventData(events)
+	if len(proposals) == 0 {
+		return nil
+	}
+
+	// 应用最高优先级的优化建议
+	var bestProposal *OptimizationProposal
+	for i := range proposals {
+		if proposals[i].Priority == "high" {
+			bestProposal = &proposals[i]
+			break
+		}
+	}
+
+	// 如果没有高优先级，选择预期影响最大的
+	if bestProposal == nil {
+		maxImpact := 0.0
+		for i := range proposals {
+			if proposals[i].ExpectedImpact > maxImpact {
+				maxImpact = proposals[i].ExpectedImpact
+				bestProposal = &proposals[i]
+			}
+		}
+	}
+
+	if bestProposal == nil {
+		return nil
+	}
+
+	// 应用优化
+	if err := ldo.ApplyOptimization(*bestProposal); err != nil {
+		log.Printf("[StrategyOptimizer] Failed to apply loop detection optimization: %v", err)
+		return &AppliedChange{
+			Type:        "loop_detection",
+			Description: fmt.Sprintf("尝试优化循环检测配置但失败: %v", err),
+			Priority:    "medium",
+			Success:     false,
+		}
+	}
+
+	return &AppliedChange{
+		Type:        "loop_detection",
+		Description: fmt.Sprintf("优化循环检测配置: %s", bestProposal.Description),
+		Priority:    bestProposal.Priority,
+		Success:     true,
+	}
+}
+
+// loadLoopDetectionEventsFromFile 从文件加载循环检测事件
+func (so *StrategyOptimizer) loadLoopDetectionEventsFromFile() []LoopDetectionEvent {
+	var events []LoopDetectionEvent
+
+	// 尝试读取事件文件
+	eventFile := filepath.Join(so.dataDir, "..", "data", "loop_detection_events.jsonl")
+	data, err := os.ReadFile(eventFile)
+	if err != nil {
+		return events
+	}
+
+	// 解析 JSONL
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		var event LoopDetectionEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		events = append(events, event)
+	}
+
+	return events
 }

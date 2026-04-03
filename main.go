@@ -429,6 +429,10 @@ func main() {
         InitGlobalLoopDetector()
         log.Println("Loop detector initialized.")
 
+        // 初始化循环检测配置优化器
+        InitLoopDetectionOptimizer()
+        log.Println("Loop detection optimizer initialized.")
+
         // 初始化后台任务管理器
         globalTaskManager = NewTaskManager()
         globalTaskManager.SetWakeHandler(func(task *BackgroundTask) {

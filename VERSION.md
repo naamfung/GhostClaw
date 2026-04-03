@@ -1,5 +1,75 @@
 # 版本历史
 
+## v0.1.6 (2026-04-04)
+
+### 循环检测配置外放与自我进化集成
+
+**核心实现**：
+
+1. **循环检测配置外放**：
+   - 新增 `data/loop_detection_config.toon` 配置文件
+   - 支持自定义警告消息模板（使用 Go template 语法）
+   - 支持配置检测阈值（MaxHistory、InterruptThreshold、WarningThreshold、PatternWindow）
+   - 支持数据收集配置（Enabled、DetailLevel、OutputPath）
+   - 支持自我进化集成配置（AutoOptimize、OptimizationInterval、MinSamples）
+
+2. **循环检测事件收集**：
+   - 新增 `LoopDetectionEvent` 结构体记录循环检测事件
+   - 新增 `LoopEventCollector` 事件收集器
+   - 事件数据保存到 `data/loop_detection_events.jsonl`
+   - 记录警告消息、建议信息、循环模式等详细数据
+
+3. **循环检测配置优化器**：
+   - 新增 `LoopDetectionOptimizer` 结构体
+   - 提供函数式接口供自我进化系统内部使用
+   - 所有配置修改都经过验证，避免无效或危险配置
+   - 支持阈值更新、警告消息更新、完整配置更新
+   - 提供配置验证功能，确保配置有效性
+
+4. **自我进化系统集成**：
+   - 在 `StrategyOptimizer` 中集成循环检测优化
+   - 新增 `optimizeLoopDetection()` 方法
+   - 自动分析事件数据并生成优化建议
+   - 支持三种优化类型：
+     - 警告改进（高优先级）：当警告有效性 < 30%
+     - 阈值调整（中优先级）：当警告后仍然频繁中断
+     - 敏感度调整（低优先级）：当循环检测过于敏感
+
+**函数式接口**：
+
+```go
+// 获取优化器
+ldo := GetLoopDetectionOptimizer()
+
+// 更新阈值（带验证）
+ldo.UpdateThresholds(maxHistory, interruptThreshold, warningThreshold, patternWindow)
+
+// 更新警告消息（带验证）
+ldo.UpdateWarningMessage(warningType, title, message, suggestion)
+
+// 分析事件并生成优化建议
+proposals := ldo.AnalyzeEventData(events)
+
+// 应用优化建议
+ldo.ApplyOptimization(proposal)
+```
+
+**配置验证规则**：
+- MaxHistory: 10-1000
+- InterruptThreshold: 2-20
+- WarningThreshold: 必须小于 InterruptThreshold
+- PatternWindow: 2-20
+- 警告消息模板：验证 Go template 语法
+
+**技术亮点**：
+- 配置外放允许自我进化系统优化提示词
+- 事件收集提供真实数据基础
+- 函数式接口确保内部验证
+- 自动优化闭环，无需人工干预
+- 向后兼容，配置文件缺失时使用默认值
+
+这标志着 GhostClaw 循环检测系统的完整进化，现在系统能够基于真实数据自动优化循环检测配置和警告提示信息。
+
 ## v0.1.5 (2026-04-04)
 
 ### 系统完善与前后端适配

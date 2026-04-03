@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -11,9 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/toon-format/toon-go"
 )
 
 // BackgroundTaskStatus 后台任务状态类型
@@ -682,6 +685,139 @@ func DetectCommandType(command string) CommandSuggestion {
 
 // ==================== 循环检测器 ====================
 
+// LoopDetectionConfig 循环检测配置（从 TOON 文件加载）
+type LoopDetectionConfig struct {
+	Thresholds struct {
+		MaxHistory         int `toon:"MaxHistory" json:"MaxHistory"`
+		InterruptThreshold int `toon:"InterruptThreshold" json:"InterruptThreshold"`
+		WarningThreshold   int `toon:"WarningThreshold" json:"WarningThreshold"`
+		PatternWindow      int `toon:"PatternWindow" json:"PatternWindow"`
+	} `toon:"Thresholds" json:"Thresholds"`
+	Warnings struct {
+		LoopInterrupt struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"LoopInterrupt" json:"LoopInterrupt"`
+		LoopWarning struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"LoopWarning" json:"LoopWarning"`
+		FailureInterrupt struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"FailureInterrupt" json:"FailureInterrupt"`
+		FailureWarning struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"FailureWarning" json:"FailureWarning"`
+		SequenceInterrupt struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"SequenceInterrupt" json:"SequenceInterrupt"`
+		SequenceWarning struct {
+			Title      string `toon:"Title" json:"Title"`
+			Message    string `toon:"Message" json:"Message"`
+			Suggestion string `toon:"Suggestion" json:"Suggestion"`
+		} `toon:"SequenceWarning" json:"SequenceWarning"`
+	} `toon:"Warnings" json:"Warnings"`
+	DataCollection struct {
+		Enabled       bool   `toon:"Enabled" json:"Enabled"`
+		DetailLevel   string `toon:"DetailLevel" json:"DetailLevel"`
+		CollectArgs   bool   `toon:"CollectArgs" json:"CollectArgs"`
+		CollectResult bool   `toon:"CollectResult" json:"CollectResult"`
+		OutputPath    string `toon:"OutputPath" json:"OutputPath"`
+	} `toon:"DataCollection" json:"DataCollection"`
+	Evolution struct {
+		AutoOptimize         bool `toon:"AutoOptimize" json:"AutoOptimize"`
+		OptimizationInterval int  `toon:"OptimizationInterval" json:"OptimizationInterval"`
+		MinSamples           int  `toon:"MinSamples" json:"MinSamples"`
+	} `toon:"Evolution" json:"Evolution"`
+}
+
+// LoopDetectionEvent 循环检测事件（用于数据收集）
+type LoopDetectionEvent struct {
+	Timestamp       time.Time `json:"timestamp"`
+	EventType       string    `json:"event_type"`
+	ToolName        string    `json:"tool_name"`
+	Fingerprint     string    `json:"fingerprint"`
+	LoopCount       int       `json:"loop_count"`
+	LoopPattern     []string  `json:"loop_pattern,omitempty"`
+	WarningMessage  string    `json:"warning_message"`
+	Suggestion      string    `json:"suggestion"`
+	ShouldInterrupt bool      `json:"should_interrupt"`
+	SessionID       string    `json:"session_id,omitempty"`
+	ActorName       string    `json:"actor_name,omitempty"`
+}
+
+// LoopEventCollector 循环事件收集器
+type LoopEventCollector struct {
+	events     []LoopDetectionEvent
+	mu         sync.RWMutex
+	outputPath string
+	enabled    bool
+}
+
+// NewLoopEventCollector 创建事件收集器
+func NewLoopEventCollector(outputPath string, enabled bool) *LoopEventCollector {
+	return &LoopEventCollector{
+		events:     make([]LoopDetectionEvent, 0),
+		outputPath: outputPath,
+		enabled:    enabled,
+	}
+}
+
+// RecordEvent 记录事件
+func (lec *LoopEventCollector) RecordEvent(event LoopDetectionEvent) {
+	if !lec.enabled {
+		return
+	}
+
+	lec.mu.Lock()
+	lec.events = append(lec.events, event)
+	lec.mu.Unlock()
+
+	go lec.saveEventToFile(event)
+}
+
+// saveEventToFile 将事件保存到文件
+func (lec *LoopEventCollector) saveEventToFile(event LoopDetectionEvent) {
+	if lec.outputPath == "" {
+		return
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[LoopEventCollector] Failed to marshal event: %v", err)
+		return
+	}
+
+	f, err := os.OpenFile(lec.outputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("[LoopEventCollector] Failed to open event file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		log.Printf("[LoopEventCollector] Failed to write event: %v", err)
+	}
+}
+
+// GetEvents 获取所有事件
+func (lec *LoopEventCollector) GetEvents() []LoopDetectionEvent {
+	lec.mu.RLock()
+	defer lec.mu.RUnlock()
+
+	result := make([]LoopDetectionEvent, len(lec.events))
+	copy(result, lec.events)
+	return result
+}
+
 // 需要循环检测的工具列表（只有列表中的工具才进行检测，避免误报）
 var monitoredTools = map[string]bool{
 	"shell":                  true,
@@ -710,6 +846,8 @@ type LoopDetector struct {
 	warningThreshold   int // 警告阈值（达到此次数则警告）
 	patternWindow      int // 模式检测窗口大小
 	mu                 sync.RWMutex
+	config             *LoopDetectionConfig   // 配置（可选）
+	eventCollector     *LoopEventCollector    // 事件收集器（可选）
 }
 
 // LoopToolCallRecord 循环检测用的工具调用记录
@@ -732,6 +870,33 @@ type LoopDetectionResult struct {
 	ShouldInterrupt bool     `json:"should_interrupt"` // 是否应该中断
 }
 
+// LoadLoopDetectionConfig 从文件加载循环检测配置
+func LoadLoopDetectionConfig(configPath string) (*LoopDetectionConfig, error) {
+	if configPath == "" {
+		configPath = "data/loop_detection_config.toon"
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read loop detection config: %w", err)
+	}
+
+	var config LoopDetectionConfig
+	if err := toon.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse loop detection config: %w", err)
+	}
+
+	return &config, nil
+}
+
+// getLoopDetectionConfigPath 获取配置文件路径
+func getLoopDetectionConfigPath() string {
+	if globalExecDir != "" {
+		return filepath.Join(globalExecDir, "data", "loop_detection_config.toon")
+	}
+	return "data/loop_detection_config.toon"
+}
+
 // NewLoopDetector 创建循环检测器
 func NewLoopDetector(maxHistory, interruptThreshold, warningThreshold int) *LoopDetector {
 	if maxHistory < 10 {
@@ -750,6 +915,36 @@ func NewLoopDetector(maxHistory, interruptThreshold, warningThreshold int) *Loop
 		warningThreshold:   warningThreshold,
 		patternWindow:      5,
 	}
+}
+
+// NewLoopDetectorWithConfig 使用配置创建循环检测器
+func NewLoopDetectorWithConfig(config *LoopDetectionConfig) *LoopDetector {
+	if config == nil {
+		return NewLoopDetector(100, 3, 2)
+	}
+
+	ld := &LoopDetector{
+		history:            make([]LoopToolCallRecord, 0, config.Thresholds.MaxHistory),
+		maxHistory:         config.Thresholds.MaxHistory,
+		interruptThreshold: config.Thresholds.InterruptThreshold,
+		warningThreshold:   config.Thresholds.WarningThreshold,
+		patternWindow:      config.Thresholds.PatternWindow,
+		config:             config,
+	}
+
+	if config.DataCollection.Enabled {
+		outputPath := config.DataCollection.OutputPath
+		if outputPath != "" && !filepath.IsAbs(outputPath) {
+			if globalExecDir != "" {
+				outputPath = filepath.Join(globalExecDir, "data", outputPath)
+			} else {
+				outputPath = filepath.Join("data", outputPath)
+			}
+		}
+		ld.eventCollector = NewLoopEventCollector(outputPath, true)
+	}
+
+	return ld
 }
 
 // generateFingerprint 生成工具调用的指纹（用于快速比较）
@@ -827,6 +1022,61 @@ func (ld *LoopDetector) RecordAndCheck(toolName string, args map[string]interfac
 	return ld.detectLoop()
 }
 
+// formatMessage 格式化警告消息（使用配置模板）
+func (ld *LoopDetector) formatMessage(templateStr, fingerprint string, count int, pattern []string) string {
+	if ld.config == nil {
+		return templateStr
+	}
+
+	tmpl, err := template.New("warning").Parse(templateStr)
+	if err != nil {
+		return templateStr
+	}
+
+	data := struct {
+		Fingerprint string
+		Count       int
+		Pattern     string
+	}{
+		Fingerprint: fingerprint,
+		Count:       count,
+		Pattern:     strings.Join(pattern, " -> "),
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return templateStr
+	}
+
+	return buf.String()
+}
+
+// getSuggestion 获取建议信息
+func (ld *LoopDetector) getSuggestion(defaultSuggestion string) string {
+	return defaultSuggestion
+}
+
+// recordEvent 记录循环检测事件
+func (ld *LoopDetector) recordEvent(eventType, toolName, fingerprint string, count int, pattern []string, warningMsg, suggestion string, shouldInterrupt bool) {
+	if ld.eventCollector == nil {
+		return
+	}
+
+	event := LoopDetectionEvent{
+		Timestamp:       time.Now(),
+		EventType:       eventType,
+		ToolName:        toolName,
+		Fingerprint:     fingerprint,
+		LoopCount:       count,
+		LoopPattern:     pattern,
+		WarningMessage:  warningMsg,
+		Suggestion:      suggestion,
+		ShouldInterrupt: shouldInterrupt,
+	}
+
+	ld.eventCollector.RecordEvent(event)
+}
+
 // detectLoop 检测循环模式
 func (ld *LoopDetector) detectLoop() LoopDetectionResult {
 	result := LoopDetectionResult{
@@ -856,25 +1106,41 @@ func (ld *LoopDetector) detectLoop() LoopDetectionResult {
 			result.IsLoop = true
 			result.LoopCount = count
 			result.LoopPattern = []string{fingerprint}
-			result.WarningMessage = fmt.Sprintf(
-				"🚫 ⚠️ **循环检测警告**\n\n检测到相同操作「%s」已重复执行 %d 次。\n\n这可能表明陷入了死循环，建议：\n"+
-					"1. 分析操作失败的根本原因\n"+
-					"2. 尝试不同的解决方案\n"+
-					"3. 检查相关配置或日志文件\n"+
-					"4. 考虑请求人工协助\n\n任务已被系统终止，因为检测到重复循环。",
-				fingerprint, count)
-			result.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
 			result.ShouldInterrupt = true
+
+			if ld.config != nil {
+				result.WarningMessage = ld.formatMessage(ld.config.Warnings.LoopInterrupt.Message, fingerprint, count, nil)
+				result.Suggestion = ld.config.Warnings.LoopInterrupt.Suggestion
+			} else {
+				result.WarningMessage = fmt.Sprintf(
+					"🚫 ⚠️ **循环检测警告**\n\n检测到相同操作「%s」已重复执行 %d 次。\n\n这可能表明陷入了死循环，建议：\n"+
+						"1. 分析操作失败的根本原因\n"+
+						"2. 尝试不同的解决方案\n"+
+						"3. 检查相关配置或日志文件\n"+
+						"4. 考虑请求人工协助\n\n任务已被系统终止，因为检测到重复循环。",
+					fingerprint, count)
+				result.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
+			}
+
+			ld.recordEvent("loop_interrupt", "", fingerprint, count, nil, result.WarningMessage, result.Suggestion, true)
 			return result
 		} else if count >= ld.warningThreshold {
 			result.IsLoop = true
 			result.LoopCount = count
 			result.LoopPattern = []string{fingerprint}
-			result.WarningMessage = fmt.Sprintf(
-				"⚠️ **循环检测警告**\n\n检测到相同操作「%s」已重复执行 %d 次。\n\n请调整策略，避免继续重复相同的操作。",
-				fingerprint, count)
-			result.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
 			result.ShouldInterrupt = false
+
+			if ld.config != nil {
+				result.WarningMessage = ld.formatMessage(ld.config.Warnings.LoopWarning.Message, fingerprint, count, nil)
+				result.Suggestion = ld.config.Warnings.LoopWarning.Suggestion
+			} else {
+				result.WarningMessage = fmt.Sprintf(
+					"⚠️ **循环检测警告**\n\n检测到相同操作「%s」已重复执行 %d 次。\n\n请调整策略，避免继续重复相同的操作。",
+					fingerprint, count)
+				result.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
+			}
+
+			ld.recordEvent("loop_warning", "", fingerprint, count, nil, result.WarningMessage, result.Suggestion, false)
 			return result
 		}
 	}
@@ -911,24 +1177,40 @@ func (ld *LoopDetector) detectLoop() LoopDetectionResult {
 	if consecutiveFailures >= ld.interruptThreshold {
 		result.IsLoop = true
 		result.LoopCount = consecutiveFailures
-		result.WarningMessage = fmt.Sprintf(
-			"🚫 ⚠️ **连续失败警告**\n\n检测到相同操作「%s」连续失败 %d 次。\n\n建议：\n"+
-				"1. 仔细分析错误信息\n"+
-				"2. 检查是否有权限、路径或配置问题\n"+
-				"3. 尝试简化的操作步骤\n"+
-				"4. 考虑换一种方法解决问题\n\n任务已被系统终止。",
-			lastFingerprint, consecutiveFailures)
-		result.Suggestion = "连续失败表明当前方法可能不可行，建议尝试其他方案。"
 		result.ShouldInterrupt = true
+
+		if ld.config != nil {
+			result.WarningMessage = ld.formatMessage(ld.config.Warnings.FailureInterrupt.Message, lastFingerprint, consecutiveFailures, nil)
+			result.Suggestion = ld.config.Warnings.FailureInterrupt.Suggestion
+		} else {
+			result.WarningMessage = fmt.Sprintf(
+				"🚫 ⚠️ **连续失败警告**\n\n检测到相同操作「%s」连续失败 %d 次。\n\n建议：\n"+
+					"1. 仔细分析错误信息\n"+
+					"2. 检查是否有权限、路径或配置问题\n"+
+					"3. 尝试简化的操作步骤\n"+
+					"4. 考虑换一种方法解决问题\n\n任务已被系统终止。",
+				lastFingerprint, consecutiveFailures)
+			result.Suggestion = "连续失败表明当前方法可能不可行，建议尝试其他方案。"
+		}
+
+		ld.recordEvent("failure_interrupt", "", lastFingerprint, consecutiveFailures, nil, result.WarningMessage, result.Suggestion, true)
 		return result
 	} else if consecutiveFailures >= ld.warningThreshold {
 		result.IsLoop = true
 		result.LoopCount = consecutiveFailures
-		result.WarningMessage = fmt.Sprintf(
-			"⚠️ **连续失败警告**\n\n检测到相同操作「%s」连续失败 %d 次。请调整策略，避免继续重复。",
-			lastFingerprint, consecutiveFailures)
-		result.Suggestion = "连续失败表明当前方法可能不可行，建议尝试其他方案。"
 		result.ShouldInterrupt = false
+
+		if ld.config != nil {
+			result.WarningMessage = ld.formatMessage(ld.config.Warnings.FailureWarning.Message, lastFingerprint, consecutiveFailures, nil)
+			result.Suggestion = ld.config.Warnings.FailureWarning.Suggestion
+		} else {
+			result.WarningMessage = fmt.Sprintf(
+				"⚠️ **连续失败警告**\n\n检测到相同操作「%s」连续失败 %d 次。请调整策略，避免继续重复。",
+				lastFingerprint, consecutiveFailures)
+			result.Suggestion = "连续失败表明当前方法可能不可行，建议尝试其他方案。"
+		}
+
+		ld.recordEvent("failure_warning", "", lastFingerprint, consecutiveFailures, nil, result.WarningMessage, result.Suggestion, false)
 		return result
 	}
 
@@ -993,24 +1275,40 @@ func (ld *LoopDetector) detectPatternSequence() LoopDetectionResult {
 				result.IsLoop = true
 				result.LoopCount = repeatCount
 				result.LoopPattern = pattern
-				result.WarningMessage = fmt.Sprintf(
-					"🚫 ⚠️ **序列循环警告**\n\n检测到操作序列已重复 %d 次：\n%v\n\n建议：\n"+
-						"1. 这个操作序列似乎没有解决问题\n"+
-						"2. 请分析每次操作的结果\n"+
-						"3. 尝试打破这个循环，采用不同的策略\n\n任务已被系统终止。",
-					repeatCount, pattern)
-				result.Suggestion = "操作序列形成循环，请尝试不同的解决方法。"
 				result.ShouldInterrupt = true
+
+				if ld.config != nil {
+					result.WarningMessage = ld.formatMessage(ld.config.Warnings.SequenceInterrupt.Message, "", repeatCount, pattern)
+					result.Suggestion = ld.config.Warnings.SequenceInterrupt.Suggestion
+				} else {
+					result.WarningMessage = fmt.Sprintf(
+						"🚫 ⚠️ **序列循环警告**\n\n检测到操作序列已重复 %d 次：\n%v\n\n建议：\n"+
+							"1. 这个操作序列似乎没有解决问题\n"+
+							"2. 请分析每次操作的结果\n"+
+							"3. 尝试打破这个循环，采用不同的策略\n\n任务已被系统终止。",
+						repeatCount, pattern)
+					result.Suggestion = "操作序列形成循环，请尝试不同的解决方法。"
+				}
+
+				ld.recordEvent("sequence_interrupt", "", "", repeatCount, pattern, result.WarningMessage, result.Suggestion, true)
 				return result
 			} else if repeatCount >= ld.warningThreshold {
 				result.IsLoop = true
 				result.LoopCount = repeatCount
 				result.LoopPattern = pattern
-				result.WarningMessage = fmt.Sprintf(
-					"⚠️ **序列循环警告**\n\n检测到操作序列已重复 %d 次：\n%v\n\n请尝试打破这个循环。",
-					repeatCount, pattern)
-				result.Suggestion = "操作序列形成循环，请尝试不同的解决方法。"
 				result.ShouldInterrupt = false
+
+				if ld.config != nil {
+					result.WarningMessage = ld.formatMessage(ld.config.Warnings.SequenceWarning.Message, "", repeatCount, pattern)
+					result.Suggestion = ld.config.Warnings.SequenceWarning.Suggestion
+				} else {
+					result.WarningMessage = fmt.Sprintf(
+						"⚠️ **序列循环警告**\n\n检测到操作序列已重复 %d 次：\n%v\n\n请尝试打破这个循环。",
+						repeatCount, pattern)
+					result.Suggestion = "操作序列形成循环，请尝试不同的解决方法。"
+				}
+
+				ld.recordEvent("sequence_warning", "", "", repeatCount, pattern, result.WarningMessage, result.Suggestion, false)
 				return result
 			}
 		}
@@ -1062,9 +1360,15 @@ var globalLoopDetector *LoopDetector
 // InitGlobalLoopDetector 初始化全局循环检测器
 func InitGlobalLoopDetector() {
 	if globalLoopDetector == nil {
-		// 中断阈值 3，警告阈值 2
-		globalLoopDetector = NewLoopDetector(100, 3, 2)
-		log.Println("[LoopDetector] Initialized with max_history=100, interrupt=3, warning=2")
+		configPath := getLoopDetectionConfigPath()
+		config, err := LoadLoopDetectionConfig(configPath)
+		if err != nil {
+			log.Printf("[LoopDetector] Failed to load config from %s: %v, using defaults", configPath, err)
+			globalLoopDetector = NewLoopDetector(100, 3, 2)
+		} else {
+			globalLoopDetector = NewLoopDetectorWithConfig(config)
+			log.Printf("[LoopDetector] Initialized with config from %s", configPath)
+		}
 	}
 }
 
@@ -1079,4 +1383,436 @@ func CheckLoop(toolName string, args map[string]interface{}, result string, isEr
 		return &detectionResult
 	}
 	return nil
+}
+
+// ==================== 循环检测配置优化器 ====================
+
+// LoopDetectionOptimizer 循环检测配置优化器
+// 供自我进化系统内部使用，通过函数式接口安全地优化配置
+type LoopDetectionOptimizer struct {
+	mu             sync.RWMutex
+	currentConfig  *LoopDetectionConfig
+	eventCollector *LoopEventCollector
+
+	// 优化统计
+	optimizationStats LoopDetectionOptimizationStats
+}
+
+// LoopDetectionOptimizationStats 循环检测优化统计
+type LoopDetectionOptimizationStats struct {
+	TotalOptimizations   int       `json:"total_optimizations"`
+	LastOptimizationTime time.Time `json:"last_optimization_time"`
+	ConfigChanges        int       `json:"config_changes"`
+	WarningImprovements  int       `json:"warning_improvements"`
+}
+
+// ConfigValidationError 配置验证错误
+type ConfigValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// OptimizationProposal 优化建议
+type OptimizationProposal struct {
+	Type        string  `json:"type"`
+	Description string  `json:"description"`
+	Priority    string  `json:"priority"`
+	ExpectedImpact float64 `json:"expected_impact"`
+	Apply       func() error `json:"-"`
+}
+
+// NewLoopDetectionOptimizer 创建循环检测配置优化器
+func NewLoopDetectionOptimizer(config *LoopDetectionConfig, collector *LoopEventCollector) *LoopDetectionOptimizer {
+	if config == nil {
+		config = getDefaultLoopDetectionConfig()
+	}
+
+	return &LoopDetectionOptimizer{
+		currentConfig:  config,
+		eventCollector: collector,
+		optimizationStats: LoopDetectionOptimizationStats{
+			TotalOptimizations: 0,
+		},
+	}
+}
+
+// getDefaultLoopDetectionConfig 获取默认配置
+func getDefaultLoopDetectionConfig() *LoopDetectionConfig {
+	config := &LoopDetectionConfig{}
+	config.Thresholds.MaxHistory = 100
+	config.Thresholds.InterruptThreshold = 3
+	config.Thresholds.WarningThreshold = 2
+	config.Thresholds.PatternWindow = 5
+
+	config.Warnings.LoopInterrupt.Title = "🚫 ⚠️ **循环检测警告**"
+	config.Warnings.LoopInterrupt.Message = "检测到相同操作「{{.Fingerprint}}」已重复执行 {{.Count}} 次。\n\n这可能表明陷入了死循环。"
+	config.Warnings.LoopInterrupt.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
+
+	config.DataCollection.Enabled = true
+	config.DataCollection.OutputPath = "loop_detection_events.jsonl"
+
+	return config
+}
+
+// GetCurrentConfig 获取当前配置（只读副本）
+func (ldo *LoopDetectionOptimizer) GetCurrentConfig() LoopDetectionConfig {
+	ldo.mu.RLock()
+	defer ldo.mu.RUnlock()
+
+	// 返回副本，防止外部修改
+	configCopy := *ldo.currentConfig
+	return configCopy
+}
+
+// ValidateConfig 验证配置有效性
+func (ldo *LoopDetectionOptimizer) ValidateConfig(config *LoopDetectionConfig) []ConfigValidationError {
+	var errors []ConfigValidationError
+
+	if config == nil {
+		errors = append(errors, ConfigValidationError{Field: "config", Message: "配置不能为空"})
+		return errors
+	}
+
+	// 验证阈值
+	if config.Thresholds.MaxHistory < 10 || config.Thresholds.MaxHistory > 1000 {
+		errors = append(errors, ConfigValidationError{
+			Field:   "Thresholds.MaxHistory",
+			Message: "MaxHistory 必须在 10-1000 之间",
+		})
+	}
+
+	if config.Thresholds.InterruptThreshold < 2 || config.Thresholds.InterruptThreshold > 20 {
+		errors = append(errors, ConfigValidationError{
+			Field:   "Thresholds.InterruptThreshold",
+			Message: "InterruptThreshold 必须在 2-20 之间",
+		})
+	}
+
+	if config.Thresholds.WarningThreshold < 1 || config.Thresholds.WarningThreshold >= config.Thresholds.InterruptThreshold {
+		errors = append(errors, ConfigValidationError{
+			Field:   "Thresholds.WarningThreshold",
+			Message: "WarningThreshold 必须小于 InterruptThreshold",
+		})
+	}
+
+	if config.Thresholds.PatternWindow < 2 || config.Thresholds.PatternWindow > 20 {
+		errors = append(errors, ConfigValidationError{
+			Field:   "Thresholds.PatternWindow",
+			Message: "PatternWindow 必须在 2-20 之间",
+		})
+	}
+
+	// 验证警告消息模板
+	warningTypes := []struct {
+		name    string
+		message string
+	}{
+		{"LoopInterrupt.Message", config.Warnings.LoopInterrupt.Message},
+		{"LoopWarning.Message", config.Warnings.LoopWarning.Message},
+		{"FailureInterrupt.Message", config.Warnings.FailureInterrupt.Message},
+		{"FailureWarning.Message", config.Warnings.FailureWarning.Message},
+		{"SequenceInterrupt.Message", config.Warnings.SequenceInterrupt.Message},
+		{"SequenceWarning.Message", config.Warnings.SequenceWarning.Message},
+	}
+
+	for _, wt := range warningTypes {
+		if wt.message == "" {
+			errors = append(errors, ConfigValidationError{
+				Field:   wt.name,
+				Message: "警告消息不能为空",
+			})
+			continue
+		}
+		// 验证模板语法
+		if _, err := template.New("test").Parse(wt.message); err != nil {
+			errors = append(errors, ConfigValidationError{
+				Field:   wt.name,
+				Message: fmt.Sprintf("模板语法错误: %v", err),
+			})
+		}
+	}
+
+	return errors
+}
+
+// UpdateThresholds 更新阈值（带验证）
+func (ldo *LoopDetectionOptimizer) UpdateThresholds(maxHistory, interruptThreshold, warningThreshold, patternWindow int) error {
+	ldo.mu.Lock()
+	defer ldo.mu.Unlock()
+
+	// 创建新配置进行验证
+	newConfig := *ldo.currentConfig
+	newConfig.Thresholds.MaxHistory = maxHistory
+	newConfig.Thresholds.InterruptThreshold = interruptThreshold
+	newConfig.Thresholds.WarningThreshold = warningThreshold
+	newConfig.Thresholds.PatternWindow = patternWindow
+
+	// 验证
+	if errors := ldo.ValidateConfig(&newConfig); len(errors) > 0 {
+		return fmt.Errorf("配置验证失败: %v", errors)
+	}
+
+	// 应用更改
+	ldo.currentConfig = &newConfig
+	ldo.optimizationStats.ConfigChanges++
+
+	// 如果全局检测器存在，更新其配置
+	if globalLoopDetector != nil {
+		globalLoopDetector.mu.Lock()
+		globalLoopDetector.maxHistory = maxHistory
+		globalLoopDetector.interruptThreshold = interruptThreshold
+		globalLoopDetector.warningThreshold = warningThreshold
+		globalLoopDetector.patternWindow = patternWindow
+		globalLoopDetector.config = &newConfig
+		globalLoopDetector.mu.Unlock()
+	}
+
+	log.Printf("[LoopDetectionOptimizer] Thresholds updated: maxHistory=%d, interrupt=%d, warning=%d, patternWindow=%d",
+		maxHistory, interruptThreshold, warningThreshold, patternWindow)
+
+	return nil
+}
+
+// UpdateWarningMessage 更新警告消息（带验证）
+func (ldo *LoopDetectionOptimizer) UpdateWarningMessage(warningType, title, message, suggestion string) error {
+	ldo.mu.Lock()
+	defer ldo.mu.Unlock()
+
+	// 验证模板
+	if _, err := template.New("warning").Parse(message); err != nil {
+		return fmt.Errorf("消息模板语法错误: %w", err)
+	}
+
+	// 创建新配置
+	newConfig := *ldo.currentConfig
+
+	switch warningType {
+	case "loop_interrupt":
+		newConfig.Warnings.LoopInterrupt.Title = title
+		newConfig.Warnings.LoopInterrupt.Message = message
+		newConfig.Warnings.LoopInterrupt.Suggestion = suggestion
+	case "loop_warning":
+		newConfig.Warnings.LoopWarning.Title = title
+		newConfig.Warnings.LoopWarning.Message = message
+		newConfig.Warnings.LoopWarning.Suggestion = suggestion
+	case "failure_interrupt":
+		newConfig.Warnings.FailureInterrupt.Title = title
+		newConfig.Warnings.FailureInterrupt.Message = message
+		newConfig.Warnings.FailureInterrupt.Suggestion = suggestion
+	case "failure_warning":
+		newConfig.Warnings.FailureWarning.Title = title
+		newConfig.Warnings.FailureWarning.Message = message
+		newConfig.Warnings.FailureWarning.Suggestion = suggestion
+	case "sequence_interrupt":
+		newConfig.Warnings.SequenceInterrupt.Title = title
+		newConfig.Warnings.SequenceInterrupt.Message = message
+		newConfig.Warnings.SequenceInterrupt.Suggestion = suggestion
+	case "sequence_warning":
+		newConfig.Warnings.SequenceWarning.Title = title
+		newConfig.Warnings.SequenceWarning.Message = message
+		newConfig.Warnings.SequenceWarning.Suggestion = suggestion
+	default:
+		return fmt.Errorf("未知的警告类型: %s", warningType)
+	}
+
+	// 应用更改
+	ldo.currentConfig = &newConfig
+	ldo.optimizationStats.WarningImprovements++
+
+	// 更新全局检测器配置
+	if globalLoopDetector != nil {
+		globalLoopDetector.mu.Lock()
+		globalLoopDetector.config = &newConfig
+		globalLoopDetector.mu.Unlock()
+	}
+
+	log.Printf("[LoopDetectionOptimizer] Warning message updated for type: %s", warningType)
+
+	return nil
+}
+
+// AnalyzeEventData 分析事件数据并生成优化建议
+func (ldo *LoopDetectionOptimizer) AnalyzeEventData(events []LoopDetectionEvent) []OptimizationProposal {
+	var proposals []OptimizationProposal
+
+	if len(events) < 10 {
+		return proposals // 数据不足
+	}
+
+	// 统计警告有效性
+	warningCount := 0
+	interruptAfterWarning := 0
+	warningEffectiveness := make(map[string]int)
+
+	for _, event := range events {
+		if !event.ShouldInterrupt {
+			warningCount++
+			// 检查后续是否有中断
+			for _, nextEvent := range events {
+				if nextEvent.Timestamp.After(event.Timestamp) &&
+					nextEvent.Fingerprint == event.Fingerprint &&
+					nextEvent.ShouldInterrupt {
+					interruptAfterWarning++
+					break
+				}
+			}
+		}
+		warningEffectiveness[event.EventType]++
+	}
+
+	// 分析1：警告有效性
+	if warningCount > 0 {
+		effectivenessRate := float64(warningCount-interruptAfterWarning) / float64(warningCount)
+		if effectivenessRate < 0.3 {
+			// 警告效果不佳，建议改进
+			proposals = append(proposals, OptimizationProposal{
+				Type:        "warning_improvement",
+				Description: fmt.Sprintf("警告有效性仅 %.1f%%，建议改进警告提示信息", effectivenessRate*100),
+				Priority:    "high",
+				ExpectedImpact: 0.8,
+				Apply: func() error {
+					// 建议添加更具体的指导
+					newMessage := ldo.currentConfig.Warnings.LoopWarning.Message + "\n\n请尝试：\n1. 检查之前的操作结果\n2. 思考失败原因\n3. 采用不同的方法"
+					return ldo.UpdateWarningMessage("loop_warning",
+						ldo.currentConfig.Warnings.LoopWarning.Title,
+						newMessage,
+						ldo.currentConfig.Warnings.LoopWarning.Suggestion)
+				},
+			})
+		}
+	}
+
+	// 分析2：阈值调整建议
+	if interruptAfterWarning > warningCount/2 {
+		// 太多警告后仍然中断，可能需要降低警告阈值
+		currentWarningThreshold := ldo.currentConfig.Thresholds.WarningThreshold
+		if currentWarningThreshold > 1 {
+			proposals = append(proposals, OptimizationProposal{
+				Type:        "threshold_adjustment",
+				Description: fmt.Sprintf("建议降低 WarningThreshold 从 %d 到 %d", currentWarningThreshold, currentWarningThreshold-1),
+				Priority:    "medium",
+				ExpectedImpact: 0.6,
+				Apply: func() error {
+					return ldo.UpdateThresholds(
+						ldo.currentConfig.Thresholds.MaxHistory,
+						ldo.currentConfig.Thresholds.InterruptThreshold,
+						currentWarningThreshold-1,
+						ldo.currentConfig.Thresholds.PatternWindow,
+					)
+				},
+			})
+		}
+	}
+
+	// 分析3：频繁循环检测
+	if warningCount > len(events)/3 {
+		proposals = append(proposals, OptimizationProposal{
+			Type:        "sensitivity_adjustment",
+			Description: "循环检测过于敏感，建议增加阈值",
+			Priority:    "low",
+			ExpectedImpact: 0.4,
+			Apply: func() error {
+				return ldo.UpdateThresholds(
+					ldo.currentConfig.Thresholds.MaxHistory,
+					ldo.currentConfig.Thresholds.InterruptThreshold+1,
+					ldo.currentConfig.Thresholds.WarningThreshold+1,
+					ldo.currentConfig.Thresholds.PatternWindow,
+				)
+			},
+		})
+	}
+
+	return proposals
+}
+
+// ApplyOptimization 应用优化建议
+func (ldo *LoopDetectionOptimizer) ApplyOptimization(proposal OptimizationProposal) error {
+	if proposal.Apply == nil {
+		return fmt.Errorf("优化建议没有实现 Apply 函数")
+	}
+
+	if err := proposal.Apply(); err != nil {
+		return fmt.Errorf("应用优化失败: %w", err)
+	}
+
+	ldo.mu.Lock()
+	ldo.optimizationStats.TotalOptimizations++
+	ldo.optimizationStats.LastOptimizationTime = time.Now()
+	ldo.mu.Unlock()
+
+	log.Printf("[LoopDetectionOptimizer] Applied optimization: %s (priority: %s, impact: %.2f)",
+		proposal.Description, proposal.Priority, proposal.ExpectedImpact)
+
+	return nil
+}
+
+// GetOptimizationStats 获取优化统计
+func (ldo *LoopDetectionOptimizer) GetOptimizationStats() LoopDetectionOptimizationStats {
+	ldo.mu.RLock()
+	defer ldo.mu.RUnlock()
+	return ldo.optimizationStats
+}
+
+// ResetToDefaults 重置为默认配置
+func (ldo *LoopDetectionOptimizer) ResetToDefaults() error {
+	return ldo.UpdateConfig(getDefaultLoopDetectionConfig())
+}
+
+// UpdateConfig 完整更新配置（带完整验证）
+func (ldo *LoopDetectionOptimizer) UpdateConfig(config *LoopDetectionConfig) error {
+	if config == nil {
+		return fmt.Errorf("配置不能为空")
+	}
+
+	// 验证
+	if errors := ldo.ValidateConfig(config); len(errors) > 0 {
+		return fmt.Errorf("配置验证失败: %v", errors)
+	}
+
+	ldo.mu.Lock()
+	defer ldo.mu.Unlock()
+
+	// 应用新配置
+	ldo.currentConfig = config
+	ldo.optimizationStats.ConfigChanges++
+
+	// 更新全局检测器
+	if globalLoopDetector != nil {
+		globalLoopDetector.mu.Lock()
+		globalLoopDetector.maxHistory = config.Thresholds.MaxHistory
+		globalLoopDetector.interruptThreshold = config.Thresholds.InterruptThreshold
+		globalLoopDetector.warningThreshold = config.Thresholds.WarningThreshold
+		globalLoopDetector.patternWindow = config.Thresholds.PatternWindow
+		globalLoopDetector.config = config
+		globalLoopDetector.mu.Unlock()
+	}
+
+	log.Println("[LoopDetectionOptimizer] Config fully updated")
+	return nil
+}
+
+// 全局优化器实例
+var globalLoopDetectionOptimizer *LoopDetectionOptimizer
+
+// InitLoopDetectionOptimizer 初始化循环检测配置优化器
+func InitLoopDetectionOptimizer() {
+	if globalLoopDetectionOptimizer == nil {
+		var config *LoopDetectionConfig
+		var collector *LoopEventCollector
+
+		if globalLoopDetector != nil {
+			globalLoopDetector.mu.RLock()
+			config = globalLoopDetector.config
+			collector = globalLoopDetector.eventCollector
+			globalLoopDetector.mu.RUnlock()
+		}
+
+		globalLoopDetectionOptimizer = NewLoopDetectionOptimizer(config, collector)
+		log.Println("[LoopDetectionOptimizer] Initialized")
+	}
+}
+
+// GetLoopDetectionOptimizer 获取循环检测配置优化器
+func GetLoopDetectionOptimizer() *LoopDetectionOptimizer {
+	return globalLoopDetectionOptimizer
 }

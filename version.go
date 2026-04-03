@@ -9,7 +9,7 @@ import (
 // 版本信息，通过编译时 -ldflags 注入
 var (
         // 版本号，如 v2.6.2
-Version = "v0.1.5"
+Version = "v0.1.6"
         // Git 提交哈希，如 abc1234
         GitCommit = "unknown"
         // 构建时间
