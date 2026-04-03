@@ -1070,6 +1070,19 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     }
     // =============================
 
+    // ========== 记忆重构 ==========
+    if globalMemoryRefactorManager != nil {
+        go func() {
+            // 每 20 轮对话执行一次记忆重构
+            if iteration%20 == 0 {
+                if result, err := globalMemoryRefactorManager.Refactor(); err == nil && result != nil {
+                    log.Printf("[MemoryRefactorManager] Refactoring completed with score: %.2f", result.ImprovementScore)
+                }
+            }
+        }()
+    }
+    // =============================
+
     return messages, nil
 }
 
