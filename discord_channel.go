@@ -317,8 +317,14 @@ func (dc *DiscordChannel) handleDispatch(eventType string, data json.RawMessage)
                 session := GetGlobalSession()
                 if HandleSlashCommandWithDefaults(msg.Content,
                         func(resp string) {
-                                // 发送响应
-                                dc.sendMessage(msg.ChannelID, resp)
+                                // 流式輸出命令回應
+                                lines := strings.Split(resp, "\n")
+                                for i, line := range lines {
+                                        if i > 0 {
+                                                dc.sendMessage(msg.ChannelID, "\n")
+                                        }
+                                        dc.sendMessage(msg.ChannelID, line)
+                                }
                         },
                         func() {
                                 session.CancelTask()

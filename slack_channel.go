@@ -304,7 +304,14 @@ func (sc *SlackChannel) handleSocketMessage(msg *SlackSocketMessage) {
         session := GetGlobalSession()
         if HandleSlashCommandWithDefaults(text,
                 func(resp string) {
-                        sc.sendMessage(event.Channel, resp)
+                        // 流式輸出命令回應
+                        lines := strings.Split(resp, "\n")
+                        for i, line := range lines {
+                                if i > 0 {
+                                        sc.sendMessage(event.Channel, "\n")
+                                }
+                                sc.sendMessage(event.Channel, line)
+                        }
                 },
                 func() {
                         session.CancelTask()

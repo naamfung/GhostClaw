@@ -221,7 +221,14 @@ func (tc *TelegramChannel) handleTextMessage(c tele.Context) error {
         session := GetGlobalSession()
         if HandleSlashCommandWithDefaults(content,
                 func(resp string) {
-                        c.Send(resp)
+                        // 流式輸出命令回應
+                        lines := strings.Split(resp, "\n")
+                        for i, line := range lines {
+                                if i > 0 {
+                                        c.Send("\n")
+                                }
+                                c.Send(line)
+                        }
                 },
                 func() {
                         session.CancelTask()

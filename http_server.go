@@ -160,7 +160,15 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if HandleSlashCommandWithDefaults(trimmed,
 			func(resp string) {
-				wsChannel.WriteChunk(StreamChunk{Content: resp + "\n", Done: true})
+				// 流式发送命令响应，逐行输出
+				lines := strings.Split(resp, "\n")
+				for i, line := range lines {
+					if i > 0 {
+						wsChannel.WriteChunk(StreamChunk{Content: "\n"})
+					}
+					wsChannel.WriteChunk(StreamChunk{Content: line})
+				}
+				wsChannel.WriteChunk(StreamChunk{Content: "\n", Done: true})
 			},
 			func() {
 				session.CancelTask()
