@@ -122,6 +122,24 @@ func NewInsightsEngine(dataDir string, trajectoryManager *TrajectoryManager, fee
 	return engine
 }
 
+// GetMemoryStats 获取记忆统计
+func (ie *InsightsEngine) GetMemoryStats() map[string]interface{} {
+	memoryStats := make(map[string]interface{})
+	
+	// 获取全局记忆系统
+	if globalUnifiedMemory != nil {
+		// 这里可以实现记忆统计逻辑
+		// 例如获取不同类别的记忆数量、使用频率等
+		memoryStats["available"] = true
+		memoryStats["message"] = "Memory system integrated"
+	} else {
+		memoryStats["available"] = false
+		memoryStats["message"] = "Memory system not initialized"
+	}
+	
+	return memoryStats
+}
+
 // GenerateReport 生成分析报告
 func (ie *InsightsEngine) GenerateReport(days int) *InsightsReport {
 	ie.mu.Lock()
