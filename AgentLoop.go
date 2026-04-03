@@ -1057,6 +1057,19 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     }
     // =============================
 
+    // ========== 策略优化 ==========
+    if globalStrategyOptimizer != nil {
+        go func() {
+            // 每 10 轮对话执行一次优化
+            if iteration%10 == 0 {
+                if result, err := globalStrategyOptimizer.Optimize(); err == nil && result != nil {
+                    log.Printf("[StrategyOptimizer] Optimization completed with score: %.2f", result.ImprovementScore)
+                }
+            }
+        }()
+    }
+    // =============================
+
     return messages, nil
 }
 

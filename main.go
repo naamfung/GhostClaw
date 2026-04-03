@@ -617,6 +617,11 @@ func main() {
         InitInsightsEngine(insightsDataDir)
         log.Println("Insights engine initialized")
 
+        // 初始化策略优化器
+        optimizationDataDir := filepath.Join(globalExecDir, "data", "optimization")
+        InitStrategyOptimizer(optimizationDataDir)
+        log.Println("Strategy optimizer initialized")
+
         // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
         log.Println("Session persistence initialized (database-backed)")
