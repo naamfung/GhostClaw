@@ -90,17 +90,56 @@
 	let isOpen = $state(false);
 	let showModelDialog = $state(false);
 	let infoModelId = $state<string | null>(null);
+	let configModels = $state<any[]>([]);
+	let configModelsLoading = $state(false);
+	let mainModelName = $state<string>('main');
 
 	function handleInfoClick(modelName: string) {
 		infoModelId = modelName;
 		showModelDialog = true;
 	}
 
+	async function loadConfigModels() {
+		try {
+			configModelsLoading = true;
+			const response = await fetch('/api/models');
+			if (response.ok) {
+				const data = await response.json();
+				configModels = data.Models || [];
+				if (data.MainModel) {
+					mainModelName = data.MainModel;
+				}
+			}
+		} catch (error) {
+			console.error('Unable to load config models:', error);
+		} finally {
+			configModelsLoading = false;
+		}
+	}
+
 	onMount(() => {
 		modelsStore.fetch().catch((error) => {
 			console.error('Unable to load models:', error);
 		});
+		if (!isRouter) {
+			loadConfigModels();
+		}
 	});
+
+	async function handleSetMainModel(modelName: string) {
+		try {
+			const response = await fetch(`/api/models/${encodeURIComponent(modelName)}/set-main`, {
+				method: 'PATCH'
+			});
+			if (response.ok) {
+				mainModelName = modelName;
+				await loadConfigModels();
+				await serverStore.fetch();
+			}
+		} catch (error) {
+			console.error('Failed to set main model:', error);
+		}
+	}
 
 	function handleOpenChange(open: boolean) {
 		if (loading || updating) return;
@@ -120,7 +159,14 @@
 				highlightedIndex = -1;
 			}
 		} else {
-			showModelDialog = open;
+			if (open) {
+				isOpen = true;
+				searchTerm = '';
+				loadConfigModels();
+			} else {
+				isOpen = false;
+				searchTerm = '';
+			}
 		}
 	}
 
@@ -202,6 +248,17 @@
 
 	function getDisplayOption(): ModelOption | undefined {
 		if (!isRouter) {
+			// 查找主模型配置
+			const mainModel = configModels.find((m) => m.Name === mainModelName);
+			if (mainModel) {
+				return {
+					id: mainModel.Name,
+					model: mainModel.Model || mainModel.Name,
+					name: mainModel.Name,
+					capabilities: []
+				};
+			}
+			// 如果找不到主模型，使用 serverModel 或 currentModel
 			const displayModel = serverModel || currentModel;
 			if (displayModel) {
 				return {
@@ -387,40 +444,90 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		{:else}
-			<button
-				class={cn(
-					`inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-muted-foreground/10 px-1.5 py-1 text-xs transition hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60`,
-					!isCurrentModelInCache
-						? 'bg-red-400/10 !text-red-400 hover:bg-red-400/20 hover:text-red-400'
-						: forceForegroundText
-							? 'text-foreground'
-							: isHighlightedCurrentModelActive
-								? 'text-foreground'
-								: 'text-muted-foreground',
-					isOpen ? 'text-foreground' : ''
-				)}
-				style="max-width: min(calc(100cqw - 6.5rem), 32rem)"
-				onclick={() => handleOpenChange(true)}
-				disabled={disabled || updating}
-			>
-				<Package class="h-3.5 w-3.5" />
+			<DropdownMenu.Root bind:open={isOpen} onOpenChange={handleOpenChange}>
+				<DropdownMenu.Trigger
+					disabled={disabled || updating}
+					onclick={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					}}
+				>
+					<button
+						type="button"
+						class={cn(
+							`inline-grid cursor-pointer grid-cols-[1fr_auto_1fr] items-center gap-1.5 rounded-sm bg-muted-foreground/10 px-1.5 py-1 text-xs transition hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60`,
+							!isCurrentModelInCache
+								? 'bg-red-400/10 !text-red-400 hover:bg-red-400/20 hover:text-red-400'
+								: forceForegroundText
+									? 'text-foreground'
+									: isHighlightedCurrentModelActive
+										? 'text-foreground'
+										: 'text-muted-foreground',
+							isOpen ? 'text-foreground' : ''
+						)}
+						style="max-width: min(calc(100cqw - 9rem), 20rem)"
+						disabled={disabled || updating}
+					>
+						<Package class="h-3.5 w-3.5" />
 
-				{#if selectedOption}
-					<Tooltip.Root>
-						<Tooltip.Trigger class="min-w-0 overflow-hidden">
-							<ModelId modelId={selectedOption.model} class="min-w-0" showOrgName />
-						</Tooltip.Trigger>
+						{#if selectedOption}
+							<Tooltip.Root>
+								<Tooltip.Trigger class="min-w-0 overflow-hidden">
+									<ModelId modelId={selectedOption.model} class="min-w-0" showOrgName />
+								</Tooltip.Trigger>
 
-						<Tooltip.Content>
-							<p class="font-mono">{selectedOption.model}</p>
-						</Tooltip.Content>
-					</Tooltip.Root>
-				{/if}
+								<Tooltip.Content>
+									<p class="font-mono">{selectedOption.model}</p>
+								</Tooltip.Content>
+							</Tooltip.Root>
+						{:else}
+							<span class="min-w-0 font-medium">选择模型</span>
+						{/if}
 
-				{#if updating}
-					<Loader2 class="h-3 w-3.5 animate-spin" />
-				{/if}
-			</button>
+						{#if updating || configModelsLoading}
+							<Loader2 class="h-3 w-3.5 animate-spin" />
+						{:else}
+							<ChevronDown class="h-3 w-3.5" />
+						{/if}
+					</button>
+				</DropdownMenu.Trigger>
+
+				<DropdownMenu.Content
+					align="end"
+					class="w-full max-w-[100vw] pt-0 sm:w-max sm:max-w-[calc(100vw-2rem)]"
+				>
+					<div class="models-list max-h-80 overflow-y-auto">
+						{#if configModelsLoading}
+							<div class="flex items-center justify-center p-4">
+								<span class="text-muted-foreground">加载中...</span>
+							</div>
+						{:else if configModels.length === 0}
+							<p class="px-4 py-3 text-sm text-muted-foreground">未找到模型。</p>
+						{:else}
+							{#each configModels as model (model.Name)}
+								<button
+									type="button"
+									class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-accent {model.Name === mainModelName ? 'bg-accent' : ''}"
+									onclick={() => {
+										handleSetMainModel(model.Name);
+										handleOpenChange(false);
+									}}
+								>
+									<div class="flex-1">
+										<div class="flex items-center gap-2">
+											<span class="font-medium">{model.Name}</span>
+											{#if model.Name === mainModelName}
+												<span class="text-xs text-muted-foreground">(默认)</span>
+											{/if}
+										</div>
+										<p class="text-xs text-muted-foreground">{model.Model || '未配置'}</p>
+									</div>
+								</button>
+							{/each}
+						{/if}
+					</div>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		{/if}
 	{/if}
 </div>
