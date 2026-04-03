@@ -602,6 +602,11 @@ func main() {
                 consolidatorConfig.MinMessagesToConsolidate,
                 consolidatorConfig.ConsolidationRatio*100)
 
+        // 初始化反馈收集器
+        feedbackDataDir := filepath.Join(globalExecDir, "data", "feedback")
+        InitFeedbackCollector(feedbackDataDir)
+        log.Println("Feedback collector initialized")
+
         // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
         log.Println("Session persistence initialized (database-backed)")

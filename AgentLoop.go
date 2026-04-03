@@ -973,6 +973,69 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         }()
     }
 
+    // ========== 智能反馈收集 ==========
+    if globalFeedbackCollector != nil && iteration > 0 {
+        go func() {
+            // 检查是否应该询问反馈
+            if globalFeedbackCollector.ShouldAskForFeedback(messages, iteration) {
+                // 生成反馈收集提示并添加到对话中
+                feedbackPrompt := globalFeedbackCollector.GenerateFeedbackPrompt("")
+                
+                // 创建反馈收集消息
+                feedbackMsg := Message{
+                    Role:      "assistant",
+                    Content:   feedbackPrompt,
+                    Timestamp: time.Now().Unix(),
+                }
+                
+                // 发送反馈收集提示给用户
+                ch.WriteChunk(StreamChunk{
+                    Content: feedbackPrompt,
+                    Done:    false,
+                })
+                
+                // 记录到消息历史
+                messages = append(messages, feedbackMsg)
+                
+                log.Printf("[FeedbackCollector] Asked for feedback at iteration %d", iteration)
+            }
+            
+            // 尝试从最近的对话中解析隐式反馈
+            if len(messages) >= 2 {
+                lastUserMsg := ""
+                lastBotMsg := ""
+                
+                // 找到最近的用户消息和助手回复
+                for i := len(messages) - 1; i >= 0; i-- {
+                    if lastUserMsg == "" && messages[i].Role == "user" {
+                        if content, ok := messages[i].Content.(string); ok {
+                            lastUserMsg = content
+                        }
+                    }
+                    if lastBotMsg == "" && messages[i].Role == "assistant" {
+                        if content, ok := messages[i].Content.(string); ok {
+                            lastBotMsg = content
+                        }
+                    }
+                    if lastUserMsg != "" && lastBotMsg != "" {
+                        break
+                    }
+                }
+                
+                // 解析反馈
+                if lastUserMsg != "" && lastBotMsg != "" {
+                    if feedback := globalFeedbackCollector.ParseFeedbackFromMessage(lastUserMsg, lastBotMsg, messages); feedback != nil {
+                        feedback.SessionID = "default"
+                        if err := globalFeedbackCollector.SaveFeedback(feedback); err != nil {
+                            log.Printf("[FeedbackCollector] Failed to save feedback: %v", err)
+                        }
+                    }
+                }
+            }
+        }()
+    }
+    // ===================================
+
     return messages, nil
 }
 
