@@ -336,10 +336,9 @@ func (m *SessionPersistManager) ExportSession(sessionID string, exportPath strin
                 return fmt.Errorf("会话 %s 不存在", sessionID)
         }
 
-        // 如果是相对路径，使用当前工作目录
+        // 如果是相对路径，使用程序自身目录
         if !filepath.IsAbs(exportPath) {
-                wd, _ := os.Getwd()
-                exportPath = filepath.Join(wd, exportPath)
+                exportPath = filepath.Join(globalExecDir, exportPath)
         }
 
         // 确保文件扩展名是 .toon
@@ -358,11 +357,10 @@ func (m *SessionPersistManager) ExportSession(sessionID string, exportPath strin
 
 // ImportSession 从 TOON 文件导入会话到数据库
 func (m *SessionPersistManager) ImportSession(importPath string) (*SavedSession, error) {
-        // 如果是相对路径，使用当前工作目录
-        if !filepath.IsAbs(importPath) {
-                wd, _ := os.Getwd()
-                importPath = filepath.Join(wd, importPath)
-        }
+	// 如果是相对路径，使用程序自身目录
+	if !filepath.IsAbs(importPath) {
+		importPath = filepath.Join(globalExecDir, importPath)
+	}
 
         data, err := os.ReadFile(importPath)
         if err != nil {

@@ -546,8 +546,8 @@ func (so *StrategyOptimizer) optimizeLoopDetection() *AppliedChange {
 func (so *StrategyOptimizer) loadLoopDetectionEventsFromFile() []LoopDetectionEvent {
 	var events []LoopDetectionEvent
 
-	// 尝试读取事件文件
-	eventFile := filepath.Join(so.dataDir, "..", "data", "loop_detection_events.jsonl")
+	// 尝试读取事件文件（使用程序自身目录下的 data 目录）
+	eventFile := filepath.Join(globalExecDir, "data", "loop_detection_events.jsonl")
 	data, err := os.ReadFile(eventFile)
 	if err != nil {
 		return events

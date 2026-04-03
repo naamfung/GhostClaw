@@ -78,8 +78,9 @@ var (
         cmdModeActive bool = false
 )
 
-func init() {
-        globalUploadDir = filepath.Join(globalExecDir, "uploads")
+// initUploadDir 初始化上传目录（在 main 中调用，确保 globalExecDir 已设置）
+func initUploadDir() {
+	globalUploadDir = filepath.Join(globalExecDir, "uploads")
 }
 
 // cliLogWriter 是自定义的日志写入器
@@ -323,6 +324,9 @@ func main() {
         if globalDataDir == "" {
                 globalDataDir = globalExecDir
         }
+
+        // 初始化上传目录（globalExecDir 已设置）
+        initUploadDir()
 
         // 检查是否需要配置向导
         if NeedsSetup(config) {
