@@ -44,6 +44,7 @@ type CronManager struct {
     mu          sync.RWMutex
     file        string
     stopChan    chan struct{}
+    stopped     bool // 防止重复关闭
     runningJobs map[string]context.CancelFunc // 正在运行的任务及其取消函数
 }
 
@@ -247,6 +248,14 @@ func (cm *CronManager) GetJobStatus(name string) (map[string]interface{}, error)
 
 // Stop 停止调度器，等待所有运行中任务完成
 func (cm *CronManager) Stop() {
+    cm.mu.Lock()
+    if cm.stopped {
+        cm.mu.Unlock()
+        return
+    }
+    cm.stopped = true
+    cm.mu.Unlock()
+    
     close(cm.stopChan)
     ctx := cm.cron.Stop() // 返回一个 context.Context
     <-ctx.Done()          // 等待所有正在执行的任务完成
