@@ -50,6 +50,9 @@ vendor/
 .DS_Store
 Thumbs.db
 
+# Memory folder (private data)
+memory/
+
 # Environment variables
 .env
 .env.local
