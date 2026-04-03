@@ -1036,6 +1036,27 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     }
     // ===================================
 
+    // ========== 轨迹记录 ==========
+    if globalTrajectoryManager != nil {
+        go func() {
+            // 提取模型使用信息
+            modelUsed := effectiveModelID
+            
+            // 提取 Token 使用情况（如果有）
+            tokenUsage := TokenUsage{}
+            
+            // 判断对话是否成功完成
+            success := true
+            if toolCallCount > MaxToolCallsPerSession {
+                success = false
+            }
+            
+            // 记录轨迹
+            globalTrajectoryManager.RecordTrajectory(messages, success, modelUsed, tokenUsage)
+        }()
+    }
+    // =============================
+
     return messages, nil
 }
 

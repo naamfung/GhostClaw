@@ -607,6 +607,11 @@ func main() {
         InitFeedbackCollector(feedbackDataDir)
         log.Println("Feedback collector initialized")
 
+        // 初始化轨迹管理器
+        trajectoryDataDir := filepath.Join(globalExecDir, "data", "trajectories")
+        InitTrajectoryManager(trajectoryDataDir)
+        log.Println("Trajectory manager initialized")
+
         // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
         log.Println("Session persistence initialized (database-backed)")
