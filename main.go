@@ -612,6 +612,11 @@ func main() {
         InitTrajectoryManager(trajectoryDataDir)
         log.Println("Trajectory manager initialized")
 
+        // 初始化分析引擎
+        insightsDataDir := filepath.Join(globalExecDir, "data", "insights")
+        InitInsightsEngine(insightsDataDir)
+        log.Println("Insights engine initialized")
+
         // 初始化会话持久化管理器（基于数据库）
         InitSessionPersist()
         log.Println("Session persistence initialized (database-backed)")
