@@ -165,6 +165,15 @@ type GroupChatConfig struct {
     AllowList     []string `toon:"AllowList" json:"AllowList"`
 }
 
+// SystemInfoConfig 系统信息配置
+type SystemInfoConfig struct {
+    Enabled           bool `toon:"Enabled" json:"Enabled"`                     // 是否启用系统信息注入
+    IncludeMemory     bool `toon:"IncludeMemory" json:"IncludeMemory"`         // 包含内存信息
+    IncludeCPU        bool `toon:"IncludeCPU" json:"IncludeCPU"`               // 包含 CPU 信息
+    IncludeGPU        bool `toon:"IncludeGPU" json:"IncludeGPU"`               // 包含 GPU 信息
+    IncludeOSDetails  bool `toon:"IncludeOSDetails" json:"IncludeOSDetails"`   // 包含详细操作系统信息
+}
+
 // 主配置结构
 type Config struct {
     APIConfig      APIConfig        `toon:"APIConfig" json:"APIConfig"`
@@ -190,8 +199,9 @@ type Config struct {
     Hooks          *HooksConfig     `toon:"Hooks,omitempty" json:"Hooks,omitempty"`
     Tools          ToolsConfig      `toon:"Tools" json:"Tools"`
     Memory         *MemoryConfig    `toon:"Memory,omitempty" json:"Memory,omitempty"`
-    ProfileConfig  ProfileConfig    `toon:"Profile,omitempty" json:"Profile,omitempty"`
-    GroupChatConfig *GroupChatConfig `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
+    ProfileConfig   ProfileConfig     `toon:"Profile,omitempty" json:"Profile,omitempty"`
+    GroupChatConfig *GroupChatConfig  `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
+    SystemInfo      SystemInfoConfig  `toon:"SystemInfo" json:"SystemInfo"`
 }
 
 // 加载配置文件
@@ -318,6 +328,17 @@ func loadConfig() (Config, error) {
         config.Tools.SmartShell.DefaultWakeMins = 5
     }
     // Shell 和 ShellDelayed 默认禁用（零值 false 即为禁用）
+
+    // 设置系统信息配置默认值
+    // 默认启用系统信息，包含 CPU 和内存信息，不包含 GPU
+    if !config.SystemInfo.Enabled {
+        // 如果 Enabled 为 false（零值），保持 false，让用户显式启用
+        // 但设置其他字段的默认值
+        config.SystemInfo.IncludeCPU = true
+        config.SystemInfo.IncludeMemory = true
+        config.SystemInfo.IncludeGPU = false
+        config.SystemInfo.IncludeOSDetails = true
+    }
 
     // 如果启用了认证但没有设置密码，生成随机密码并提示
     if config.Auth.Enabled && config.Auth.Password == "" {

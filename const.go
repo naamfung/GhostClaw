@@ -182,17 +182,27 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
         }
 
         // === 9. 静态环境信息（进程生命周期内不变，不影响 prompt cache 命中率）===
-        osInfo := runtime.GOOS + "/" + runtime.GOARCH
-        hostname, _ := os.Hostname()
-        if hostname == "" {
-                hostname = "unknown"
-        }
-        prompt.WriteString("\n\n# 系统环境\n\n")
-        prompt.WriteString(fmt.Sprintf("- **操作系统**：%s\n", osInfo))
-        prompt.WriteString("- **宿主程序**：GhostClaw\n")
-        prompt.WriteString(fmt.Sprintf("- **主机名**：%s\n", hostname))
+	// 使用新的系统信息收集模块
+	if globalConfig.SystemInfo.Enabled {
+		sysInfo := GetSystemInfo()
+		sysInfoStr := FormatSystemInfoForPrompt(sysInfo, globalConfig.SystemInfo)
+		if sysInfoStr != "" {
+			prompt.WriteString(sysInfoStr)
+		}
+	} else {
+		// 使用简化的系统信息（向后兼容）
+		osInfo := runtime.GOOS + "/" + runtime.GOARCH
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = "unknown"
+		}
+		prompt.WriteString("\n\n# 系统环境\n\n")
+		prompt.WriteString(fmt.Sprintf("- **操作系统**：%s\n", osInfo))
+		prompt.WriteString("- **宿主程序**：GhostClaw\n")
+		prompt.WriteString(fmt.Sprintf("- **主机名**：%s\n", hostname))
+	}
 
-        return prompt.String()
+	return prompt.String()
 }
 
 // buildAvailableSkillsIndex 构建可用技能索引（排除已绑定的技能）

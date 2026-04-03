@@ -70,6 +70,7 @@ var (
         globalExecDir          string // 程序自身目录（embed、uploads、download、output 等运行时文件）
         globalDataDir          string // 数据目录（plugins、skills、memory、数据库等资产/配置文件）
         globalUploadDir        string
+        globalConfig           Config   // 全局配置对象
 
         // cmdModeActive 控制日志是否输出到终端
         // true = CMD REPL 模式，日志静默（只显示模型对话流）
@@ -359,6 +360,7 @@ func main() {
         defaultRole = config.DefaultRole
         globalAuthConfig = config.Auth
         globalGroupChatConfig = config.GroupChatConfig
+        globalConfig = config  // 保存完整配置对象
 
         // 初始化安全配置
         SetSecurityConfig(config.Security)
