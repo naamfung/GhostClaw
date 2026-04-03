@@ -71,10 +71,13 @@ func (irc *IRCChannel) Start(messageHandler func(chatID, senderID, content strin
 		Nick:        irc.config.Nick,
 		User:        irc.config.Nick,
 		Name:        "GhostClaw AI Agent",
-		Password:    irc.config.Password,
 		SSL:         irc.config.UseTLS,
-		SSLVerify:   !irc.config.UseTLS, // 暂时不验证证书
 	})
+	
+	// 设置服务器密码（如果需要）
+	if irc.config.Password != "" {
+		client.Config.ServerPass = irc.config.Password
+	}
 
 	// 注册消息处理
 	client.Handlers.Add(girc.PRIVMSG, irc.handleIRCMessage)
@@ -109,7 +112,7 @@ func (irc *IRCChannel) Start(messageHandler func(chatID, senderID, content strin
 	go func() {
 		<-irc.stopCh
 		if irc.client != nil {
-			irc.client.Disconnect()
+			irc.client.Quit("GhostClaw shutting down")
 		}
 		irc.connected = false
 		log.Println("[IRC] Stopped.")
@@ -127,7 +130,7 @@ func (irc *IRCChannel) handleIRCMessage(c *girc.Client, e girc.Event) {
 
 	chatID := e.Params[0]
 	senderID := e.Source.Name
-	content := e.Trailing
+	content := e.Last() // 获取消息内容（Params 的最后一个元素）
 
 	// 检查是否是私聊
 	if !strings.HasPrefix(chatID, "#") {

@@ -640,3 +640,25 @@ func (woc *webhookOutputCollector) WriteChunk(chunk StreamChunk) error {
 	woc.buf.WriteString(chunk.Content)
 	return nil
 }
+
+// Close 实现 Channel 接口的 Close 方法
+func (woc *webhookOutputCollector) Close() error {
+	return nil
+}
+
+// GetSessionID 实现 Channel 接口的 GetSessionID 方法
+func (woc *webhookOutputCollector) GetSessionID() string {
+	return ""
+}
+
+// HealthCheck 实现 Channel 接口的 HealthCheck 方法
+func (woc *webhookOutputCollector) HealthCheck() map[string]interface{} {
+	return map[string]interface{}{
+		"status": "ok",
+	}
+}
+
+// ID 实现 Channel 接口的 ID 方法
+func (woc *webhookOutputCollector) ID() string {
+	return ""
+}

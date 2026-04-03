@@ -530,7 +530,7 @@ func (dc *DiscordChannel) RegisterToBus() {
 // HealthCheck 健康检查
 func (dc *DiscordChannel) HealthCheck() map[string]interface{} {
 	status := "disconnected"
-	if dc.bot != nil {
+	if dc.ws != nil {
 		status = "connected"
 	}
 	return map[string]interface{}{
@@ -547,7 +547,7 @@ func (dc *DiscordChannel) GetSessionID() string {
 
 // IsConnected 检查 Discord 连接状态
 func (dc *DiscordChannel) IsConnected() bool {
-	return dc.bot != nil
+	return dc.ws != nil
 }
 
 func init() {

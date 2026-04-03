@@ -546,7 +546,7 @@ func (sc *SlackChannel) RegisterToBus() {
 // HealthCheck 健康检查
 func (sc *SlackChannel) HealthCheck() map[string]interface{} {
 	status := "disconnected"
-	if sc.client != nil {
+	if sc.ws != nil {
 		status = "connected"
 	}
 	return map[string]interface{}{
@@ -563,7 +563,7 @@ func (sc *SlackChannel) GetSessionID() string {
 
 // IsConnected 检查 Slack 连接状态
 func (sc *SlackChannel) IsConnected() bool {
-	return sc.client != nil
+	return sc.ws != nil
 }
 
 func init() {

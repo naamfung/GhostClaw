@@ -71,13 +71,8 @@ func (mc *MatrixChannel) Start(messageHandler func(chatID, senderID, content str
 	mc.messageHandler = messageHandler
 	log.Printf("[Matrix] Starting Matrix bot: %s on %s", mc.config.UserID, mc.config.HomeserverURL)
 
-	// 解析用户 ID
-	userID, err := id.ParseUserID(mc.config.UserID)
-	if err != nil {
-		return fmt.Errorf("invalid user ID: %w", err)
-	}
-
-	// 创建客户端
+	// 创建客户端（UserID 直接使用字符串转换）
+	userID := id.UserID(mc.config.UserID)
 	client, err := mautrix.NewClient(mc.config.HomeserverURL, userID, mc.config.AccessToken)
 	if err != nil {
 		return fmt.Errorf("failed to create Matrix client: %w", err)
@@ -97,11 +92,7 @@ func (mc *MatrixChannel) Start(messageHandler func(chatID, senderID, content str
 
 	// 加入房间
 	for _, roomIDStr := range mc.config.Rooms {
-		roomID, err := id.ParseRoomID(roomIDStr)
-		if err != nil {
-			log.Printf("[Matrix] Invalid room ID %s: %v", roomIDStr, err)
-			continue
-		}
+		roomID := id.RoomID(roomIDStr)
 		log.Printf("[Matrix] Joining room: %s", roomIDStr)
 		if _, err := client.JoinRoomByID(context.Background(), roomID); err != nil {
 			log.Printf("[Matrix] Failed to join room %s: %v", roomIDStr, err)
@@ -134,7 +125,7 @@ func (mc *MatrixChannel) Start(messageHandler func(chatID, senderID, content str
 }
 
 // handleMatrixMessage 处理 Matrix 消息
-func (mc *MatrixChannel) handleMatrixMessage(evt *event.Event) {
+func (mc *MatrixChannel) handleMatrixMessage(ctx context.Context, evt *event.Event) {
 	if evt.Type != event.EventMessage {
 		return
 	}
@@ -145,8 +136,8 @@ func (mc *MatrixChannel) handleMatrixMessage(evt *event.Event) {
 	}
 
 	// 解析消息内容
-	msgContent, ok := evt.Content.(*event.MessageEventContent)
-	if !ok || msgContent.Body == "" {
+	msgContent := evt.Content.AsMessage()
+	if msgContent == nil || msgContent.Body == "" {
 		return
 	}
 
@@ -189,15 +180,12 @@ func (mc *MatrixChannel) WriteChunk(chunk StreamChunk) error {
 	}
 
 	// 解析房间 ID
-	roomID, err := id.ParseRoomID(chunk.SessionID)
-	if err != nil {
-		return fmt.Errorf("invalid session ID (room ID): %w", err)
-	}
+	roomID := id.RoomID(chunk.SessionID)
 
 	// 创建消息内容
 	content := &event.MessageEventContent{
 		Body:    chunk.Content,
-		MsgType: event.MsgTypeText,
+		MsgType: event.MsgText,
 	}
 
 	// 发送消息
@@ -218,15 +206,12 @@ func (mc *MatrixChannel) SendToUser(roomID string, message string) error {
 	}
 
 	// 解析房间 ID
-	rid, err := id.ParseRoomID(roomID)
-	if err != nil {
-		return fmt.Errorf("invalid room ID: %w", err)
-	}
+	rid := id.RoomID(roomID)
 
 	// 创建消息内容
 	content := &event.MessageEventContent{
 		Body:    message,
-		MsgType: event.MsgTypeText,
+		MsgType: event.MsgText,
 	}
 
 	// 发送消息

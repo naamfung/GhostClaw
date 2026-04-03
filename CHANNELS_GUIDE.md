@@ -10,8 +10,11 @@
 2. [Discord 配置](#discord-配置)
 3. [Slack 配置](#slack-配置)
 4. [飞书/Lark 配置](#飞书lark-配置)
-5. [通用配置说明](#通用配置说明)
-6. [常见问题](#常见问题)
+5. [XMPP 配置](#xmpp-配置)
+6. [Matrix 配置](#matrix-配置)
+7. [IRC 配置](#irc-配置)
+8. [通用配置说明](#通用配置说明)
+9. [常见问题](#常见问题)
 
 ---
 
@@ -279,6 +282,141 @@ feishu_config = {
 
 ---
 
+## XMPP 配置
+
+### 第一步：获取 XMPP 账号
+
+1. 注册 XMPP 账号（可使用任意 XMPP 服务器）
+   - 公共服务器：[jabber.org](https://jabber.org)、[xmpp.jp](https://xmpp.jp) 等
+   - 自建服务器：Openfire、Prosody、ejabberd 等
+2. 记录你的 JID（如 `user@example.com`）和密码
+
+### 第二步：配置 config.toon
+
+```toml
+xmpp_config = {
+    enabled = true
+    server = "example.com"
+    username = "user@example.com"
+    password = "YOUR-PASSWORD-HERE"
+    resource = "ghostclaw"
+    rooms = ["room@conference.example.com"]
+    insecure_tls = false
+    group_policy = "mention"
+    nick = "GhostClaw"
+}
+```
+
+### 配置字段说明
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `enabled` | bool | 是 | false | 是否启用 XMPP 渠道 |
+| `server` | string | 是 | - | XMPP 服务器地址 |
+| `username` | string | 是 | - | XMPP JID（完整格式） |
+| `password` | string | 是 | - | XMPP 密码 |
+| `resource` | string | 否 | "ghostclaw" | 资源标识 |
+| `rooms` | []string | 否 | [] | 自动加入的 MUC 房间列表 |
+| `insecure_tls` | bool | 否 | false | 是否跳过 TLS 证书验证 |
+| `group_policy` | string | 否 | "mention" | 群组响应策略 |
+| `nick` | string | 否 | "GhostClaw" | MUC 房间昵称 |
+
+### 注意事项
+
+- **MUC 房间支持**：当前版本 MUC 功能正在完善中
+- **TLS 验证**：如果使用自签名证书，需要设置 `insecure_tls = true`
+- **资源标识**：建议保持默认或使用有意义的标识
+
+---
+
+## Matrix 配置
+
+### 第一步：创建 Matrix 账号
+
+1. 注册 Matrix 账号（可使用任意 Homeserver）
+   - 公共服务器：[matrix.org](https://matrix.org)
+   - 自建服务器：Synapse、Dendrite、Conduit 等
+2. 获取 Access Token
+   - 登录 Element Web
+   - 设置 → 帮助与关于 → 访问令牌
+
+### 第二步：配置 config.toon
+
+```toml
+matrix_config = {
+    enabled = true
+    homeserver_url = "https://matrix.org"
+    user_id = "@user:matrix.org"
+    access_token = "YOUR-ACCESS-TOKEN-HERE"
+    rooms = ["!roomid:matrix.org"]
+    group_policy = "mention"
+}
+```
+
+### 配置字段说明
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `enabled` | bool | 是 | false | 是否启用 Matrix 渠道 |
+| `homeserver_url` | string | 是 | - | Matrix Homeserver URL |
+| `user_id` | string | 是 | - | Matrix User ID（@user:server 格式） |
+| `access_token` | string | 是 | - | Matrix Access Token |
+| `rooms` | []string | 否 | [] | 自动加入的房间 ID 列表 |
+| `group_policy` | string | 否 | "mention" | 群组响应策略 |
+
+### 注意事项
+
+- **房间 ID 格式**：使用完整的房间 ID，如 `!roomid:matrix.org`
+- **Access Token**：请妥善保管，不要泄露
+- **加密房间**：当前版本暂不支持端到端加密（E2EE）
+
+---
+
+## IRC 配置
+
+### 第一步：获取 IRC 服务器信息
+
+1. 选择 IRC 服务器
+   - 公共网络：Libera.Chat、OFTC、Freenode 等
+   - 自建服务器：InspIRCd、UnrealIRCd 等
+2. 记录服务器地址、端口和频道信息
+
+### 第二步：配置 config.toon
+
+```toml
+irc_config = {
+    enabled = true
+    server = "irc.libera.chat"
+    port = 6697
+    nick = "GhostClaw"
+    password = ""
+    channels = ["#ghostclaw"]
+    use_tls = true
+    group_policy = "mention"
+}
+```
+
+### 配置字段说明
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `enabled` | bool | 是 | false | 是否启用 IRC 渠道 |
+| `server` | string | 是 | - | IRC 服务器地址 |
+| `port` | int | 是 | - | IRC 服务器端口 |
+| `nick` | string | 是 | - | IRC 昵称 |
+| `password` | string | 否 | - | 服务器密码（如需要） |
+| `channels` | []string | 否 | [] | 自动加入的频道列表 |
+| `use_tls` | bool | 否 | true | 是否使用 TLS/SSL |
+| `group_policy` | string | 否 | "mention" | 频道响应策略 |
+
+### 注意事项
+
+- **TLS 端口**：通常 TLS 端口为 6697，非 TLS 端口为 6667
+- **昵称注册**：某些网络需要注册昵称（NickServ）
+- **频道格式**：使用 `#` 开头的频道名
+
+---
+
 ## 通用配置说明
 
 ### 群组策略
@@ -307,12 +445,36 @@ ENABLE_TELEGRAM=1 ./build.sh
 ENABLE_DISCORD=1 ./build.sh
 ENABLE_SLACK=1 ./build.sh
 ENABLE_FEISHU=1 ./build.sh
+ENABLE_XMPP=1 ./build.sh
+ENABLE_MATRIX=1 ./build.sh
+ENABLE_IRC=1 ./build.sh
 
 # 启用多个渠道
 ENABLE_TELEGRAM=1 ENABLE_DISCORD=1 ./build.sh
 
 # 启用所有渠道
 ENABLE_ALL_CHANNELS=1 ./build.sh
+```
+
+### Go 构建标签
+
+如果你直接使用 `go build`，可以使用以下标签：
+
+```bash
+# 启用 XMPP 渠道
+go build -tags xmpp -o ghostclaw .
+
+# 启用 Matrix 渠道
+go build -tags matrix -o ghostclaw .
+
+# 启用 IRC 渠道
+go build -tags irc -o ghostclaw .
+
+# 启用多个渠道
+go build -tags "xmpp matrix irc" -o ghostclaw .
+
+# 启用所有渠道
+go build -tags "telegram discord slack feishu xmpp matrix irc webhook" -o ghostclaw .
 ```
 
 ---
@@ -360,6 +522,27 @@ ENABLE_ALL_CHANNELS=1 ./build.sh
 ```
 
 然后在 `config.toon` 中配置所有需要的渠道。
+
+### Q: XMPP 连接失败？
+
+1. 检查 JID 格式是否正确（应为 `user@server.com`）
+2. 确认服务器地址和端口正确
+3. 如果使用自签名证书，设置 `insecure_tls = true`
+4. 检查防火墙是否允许 XMPP 端口（通常为 5222）
+
+### Q: Matrix 无法同步消息？
+
+1. 确认 Access Token 有效（可在 Element 中重新获取）
+2. 检查 Homeserver URL 是否正确
+3. 确认 User ID 格式正确（`@user:server.com`）
+4. 如果使用自建服务器，确保 Synapse 配置正确
+
+### Q: IRC 连接被拒绝？
+
+1. 确认服务器地址和端口正确
+2. 检查是否需要 TLS（通常 6697 为 TLS 端口，6667 为非 TLS）
+3. 某些网络需要注册昵称，使用 NickServ 注册
+4. 检查是否被服务器封禁（尝试更换昵称）
 
 ### Q: 如何查看调试日志？
 

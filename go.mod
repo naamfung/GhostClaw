@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jig/lisp v0.2.24
+	github.com/lrstanley/girc v1.1.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
 	github.com/yuin/gopher-lua v1.1.1
@@ -18,6 +19,9 @@ require (
 	golang.org/x/term v0.41.0
 	gopkg.in/telebot.v3 v3.3.8
 	gorm.io/gorm v1.31.1
+	maunium.net/go/mautrix v0.26.4
+	mellium.im/sasl v0.3.2
+	mellium.im/xmpp v0.22.0
 )
 
 require (
@@ -29,7 +33,6 @@ require (
 	github.com/jig/scanner v1.2.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/lrstanley/girc v1.1.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -51,11 +54,8 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
-	maunium.net/go/mautrix v0.26.4 // indirect
 	mellium.im/reader v0.1.0 // indirect
-	mellium.im/sasl v0.3.2 // indirect
 	mellium.im/xmlstream v0.15.4 // indirect
-	mellium.im/xmpp v0.22.0 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
