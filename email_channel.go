@@ -112,3 +112,29 @@ func NewEmailChannelWithConfig(jobName, to string, config *EmailConfig) *EmailCh
 		smtpConfig:  config,
 	}
 }
+
+// HealthCheck 健康检查
+func (ec *EmailChannel) HealthCheck() map[string]interface{} {
+	return map[string]interface{}{
+		"id":      ec.id,
+		"status":  "operational",
+		"from":    ec.from,
+		"to":      ec.to,
+		"message": "Email channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (ec *EmailChannel) GetSessionID() string {
+	return ""
+}
+
+// GetChannelType 获取渠道类型
+func (ec *EmailChannel) GetChannelType() string {
+	return "email"
+}
+
+// IsConnected 检查 Email 通道状态
+func (ec *EmailChannel) IsConnected() bool {
+	return true
+}

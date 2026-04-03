@@ -213,4 +213,11 @@ func (d *dummyChannel) WriteChunk(chunk StreamChunk) error { return nil }
 func (d *dummyChannel) ID() string                         { return "dummy" }
 func (d *dummyChannel) Close() error                       { return nil }
 func (d *dummyChannel) GetSessionID() string               { return "" }
+func (d *dummyChannel) HealthCheck() map[string]interface{} {
+	return map[string]interface{}{
+		"id":      "dummy",
+		"status":  "operational",
+		"message": "Dummy channel health check",
+	}
+}
 

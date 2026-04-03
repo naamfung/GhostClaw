@@ -68,6 +68,13 @@ func (c *nilChannel) WriteChunk(chunk StreamChunk) error { return nil }
 func (c *nilChannel) ID() string                         { return "nil" }
 func (c *nilChannel) Close() error                       { return nil }
 func (c *nilChannel) GetSessionID() string               { return "" }
+func (c *nilChannel) HealthCheck() map[string]interface{} {
+	return map[string]interface{}{
+		"id":      "nil",
+		"status":  "operational",
+		"message": "Nil channel health check",
+	}
+}
 
 // NewSubagentManager 创建子代理管理器
 func NewSubagentManager() *SubagentManager {

@@ -3,9 +3,11 @@ package main
 import (
     //"crypto/ssh"
     "golang.org/x/crypto/ssh" // FOR GHOSTBSD/FREEBSD
+    "golang.org/x/crypto/ssh/knownhosts"
     "fmt"
     "os"
     "log"
+    "path/filepath"
     "sync"
     "time"
 )
@@ -71,10 +73,70 @@ func (m *SSHSessionManager) Connect(user, host, password, privateKeyPath string,
         return "", fmt.Errorf("no authentication method provided")
     }
 
+    // 查找 known_hosts 文件
+    homeDir, err := os.UserHomeDir()
+    if err != nil {
+        log.Printf("[SSH] Warning: unable to get user home directory: %v, falling back to insecure host key checking", err)
+        // 回退到不安全的验证方式
+        config := &ssh.ClientConfig{
+            User:            user,
+            Auth:            authMethods,
+            HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+            Timeout:         30 * time.Second,
+        }
+        addr := fmt.Sprintf("%s:%d", host, port)
+        client, err := ssh.Dial("tcp", addr, config)
+        if err != nil {
+            return "", fmt.Errorf("failed to dial: %w", err)
+        }
+        sess := &SSHSession{
+            ID:         sessionID,
+            Client:     client,
+            Username:   user,
+            Host:       host,
+            Port:       port,
+            CreatedAt:  time.Now(),
+            LastUsedAt: time.Now(),
+        }
+        m.sessions[sessionID] = sess
+        log.Printf("[SSH] New connection established (insecure): %s", sessionID)
+        return sessionID, nil
+    }
+
+    knownHostsFile := filepath.Join(homeDir, ".ssh", "known_hosts")
+    hostKeyCallback, err := knownhosts.New(knownHostsFile)
+    if err != nil {
+        log.Printf("[SSH] Warning: unable to load known_hosts file: %v, falling back to insecure host key checking", err)
+        // 回退到不安全的验证方式
+        config := &ssh.ClientConfig{
+            User:            user,
+            Auth:            authMethods,
+            HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+            Timeout:         30 * time.Second,
+        }
+        addr := fmt.Sprintf("%s:%d", host, port)
+        client, err := ssh.Dial("tcp", addr, config)
+        if err != nil {
+            return "", fmt.Errorf("failed to dial: %w", err)
+        }
+        sess := &SSHSession{
+            ID:         sessionID,
+            Client:     client,
+            Username:   user,
+            Host:       host,
+            Port:       port,
+            CreatedAt:  time.Now(),
+            LastUsedAt: time.Now(),
+        }
+        m.sessions[sessionID] = sess
+        log.Printf("[SSH] New connection established (insecure): %s", sessionID)
+        return sessionID, nil
+    }
+
     config := &ssh.ClientConfig{
         User:            user,
         Auth:            authMethods,
-        HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: 生产环境替换为更安全的验证方式
+        HostKeyCallback: hostKeyCallback,
         Timeout:         30 * time.Second,
     }
 

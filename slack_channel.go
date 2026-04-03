@@ -537,10 +537,33 @@ func (sc *SlackChannel) GetChannelType() string {
 
 // RegisterToBus 注册到消息总线
 func (sc *SlackChannel) RegisterToBus() {
-        if globalMessageBus != nil {
-                globalMessageBus.RegisterChannelSender("slack", sc)
-                log.Println("[Slack] Registered to message bus")
-        }
+	if globalMessageBus != nil {
+		globalMessageBus.RegisterChannelSender("slack", sc)
+		log.Println("[Slack] Registered to message bus")
+	}
+}
+
+// HealthCheck 健康检查
+func (sc *SlackChannel) HealthCheck() map[string]interface{} {
+	status := "disconnected"
+	if sc.client != nil {
+		status = "connected"
+	}
+	return map[string]interface{}{
+		"id":      sc.id,
+		"status":  status,
+		"message": "Slack channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (sc *SlackChannel) GetSessionID() string {
+	return ""
+}
+
+// IsConnected 检查 Slack 连接状态
+func (sc *SlackChannel) IsConnected() bool {
+	return sc.client != nil
 }
 
 func init() {

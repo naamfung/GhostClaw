@@ -521,10 +521,33 @@ func (dc *DiscordChannel) GetChannelType() string {
 
 // RegisterToBus 注册到消息总线
 func (dc *DiscordChannel) RegisterToBus() {
-        if globalMessageBus != nil {
-                globalMessageBus.RegisterChannelSender("discord", dc)
-                log.Println("[Discord] Registered to message bus")
-        }
+	if globalMessageBus != nil {
+		globalMessageBus.RegisterChannelSender("discord", dc)
+		log.Println("[Discord] Registered to message bus")
+	}
+}
+
+// HealthCheck 健康检查
+func (dc *DiscordChannel) HealthCheck() map[string]interface{} {
+	status := "disconnected"
+	if dc.bot != nil {
+		status = "connected"
+	}
+	return map[string]interface{}{
+		"id":      dc.id,
+		"status":  status,
+		"message": "Discord channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (dc *DiscordChannel) GetSessionID() string {
+	return ""
+}
+
+// IsConnected 检查 Discord 连接状态
+func (dc *DiscordChannel) IsConnected() bool {
+	return dc.bot != nil
 }
 
 func init() {

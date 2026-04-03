@@ -29,9 +29,16 @@ func (wsc *WSChannel) WriteChunk(chunk StreamChunk) error {
 	// 应用流式字符串替换
 	processed := wsc.ProcessChunkWithReplacement(chunk)
 
-	err := wsc.conn.WriteJSON(processed)
+	err := wsc.Retry(func() error {
+		err := wsc.conn.WriteJSON(processed)
+		if err != nil {
+			log.Printf("WebSocket write error (retrying): %v", err)
+		}
+		return err
+	})
+
 	if err != nil {
-		log.Printf("WebSocket write error: %v", err)
+		log.Printf("WebSocket write failed after retries: %v", err)
 	}
 	return err
 }
@@ -41,4 +48,22 @@ func (wsc *WSChannel) Close() error {
 	wsc.mu.Lock()
 	defer wsc.mu.Unlock()
 	return wsc.conn.Close()
+}
+
+// HealthCheck 健康检查
+func (wsc *WSChannel) HealthCheck() map[string]interface{} {
+	status := "disconnected"
+	if wsc.conn != nil {
+		status = "connected"
+	}
+	return map[string]interface{}{
+		"id":      wsc.id,
+		"status":  status,
+		"message": "WebSocket channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (wsc *WSChannel) GetSessionID() string {
+	return ""
 }

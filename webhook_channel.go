@@ -604,6 +604,25 @@ func (wc *WebhookChannel) RegisterToBus() {
 	}
 }
 
+// HealthCheck 健康检查
+func (wc *WebhookChannel) HealthCheck() map[string]interface{} {
+	return map[string]interface{}{
+		"id":      wc.id,
+		"status":  "operational",
+		"message": "Webhook channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (wc *WebhookChannel) GetSessionID() string {
+	return ""
+}
+
+// IsConnected 检查 Webhook 通道状态
+func (wc *WebhookChannel) IsConnected() bool {
+	return true
+}
+
 // GetListenAddr 返回监听地址
 func (wc *WebhookChannel) GetListenAddr() string {
 	return wc.config.Listen

@@ -1233,14 +1233,17 @@ func (s *HTTPServer) listModelsAPI(w http.ResponseWriter, _ *http.Request) {
 	result := make([]map[string]interface{}, len(models))
 	for i, m := range models {
 		result[i] = map[string]interface{}{
-			"Name":        m.Name,
-			"APIType":     m.APIType,
-			"BaseURL":     m.BaseURL,
-			"APIKey":      "", // 不返回密钥
-			"Model":       m.Model,
-			"Temperature": m.Temperature,
-			"MaxTokens":   m.MaxTokens,
-			"Description": m.Description,
+			"Name":                   m.Name,
+			"APIType":                m.APIType,
+			"BaseURL":                m.BaseURL,
+			"APIKey":                 "", // 不返回密钥
+			"Model":                  m.Model,
+			"Temperature":            m.Temperature,
+			"MaxTokens":              m.MaxTokens,
+			"Stream":                 m.Stream,
+			"Thinking":               m.Thinking,
+			"BlockDangerousCommands": m.BlockDangerousCommands,
+			"Description":            m.Description,
 		}
 	}
 
@@ -1334,14 +1337,17 @@ func (s *HTTPServer) getModelAPI(w http.ResponseWriter, _ *http.Request, name st
 
 	// 不返回 API 密钥
 	result := map[string]interface{}{
-		"Name":        model.Name,
-		"APIType":     model.APIType,
-		"BaseURL":     model.BaseURL,
-		"APIKey":      "",
-		"Model":       model.Model,
-		"Temperature": model.Temperature,
-		"MaxTokens":   model.MaxTokens,
-		"Description": model.Description,
+		"Name":                   model.Name,
+		"APIType":                model.APIType,
+		"BaseURL":                model.BaseURL,
+		"APIKey":                 "",
+		"Model":                  model.Model,
+		"Temperature":            model.Temperature,
+		"MaxTokens":              model.MaxTokens,
+		"Stream":                 model.Stream,
+		"Thinking":               model.Thinking,
+		"BlockDangerousCommands": model.BlockDangerousCommands,
+		"Description":            model.Description,
 	}
 	json.NewEncoder(w).Encode(result)
 }

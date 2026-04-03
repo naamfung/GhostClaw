@@ -414,16 +414,22 @@ func (tc *TelegramChannel) WriteChunk(chunk StreamChunk) error {
         }
 
         // 非流式模式或最终消息
-        if processed.Done && processed.Content != "" {
-                messages := tc.splitMessage(processed.Content, 4000)
-                for _, msg := range messages {
-                        _, err := tc.bot.Send(chat, msg, tele.ModeHTML)
-                        if err != nil {
-                                log.Printf("Failed to send Telegram message: %v", err)
-                                return err
+                if processed.Done && processed.Content != "" {
+                        messages := tc.splitMessage(processed.Content, 4000)
+                        for _, msg := range messages {
+                                err := tc.Retry(func() error {
+                                        _, err := tc.bot.Send(chat, msg, tele.ModeHTML)
+                                        if err != nil {
+                                                log.Printf("Failed to send Telegram message (retrying): %v", err)
+                                        }
+                                        return err
+                                })
+                                if err != nil {
+                                        log.Printf("Failed to send Telegram message after retries: %v", err)
+                                        return err
+                                }
                         }
                 }
-        }
 
         return nil
 }
@@ -679,9 +685,34 @@ func (tc *TelegramChannel) GetChannelType() string {
 
 // RegisterToBus 注册到消息总线
 func (tc *TelegramChannel) RegisterToBus() {
-        if globalMessageBus != nil {
-                globalMessageBus.RegisterChannelSender("telegram", tc)
-                log.Println("[Telegram] Registered to message bus")
-        }
+	if globalMessageBus != nil {
+		globalMessageBus.RegisterChannelSender("telegram", tc)
+		log.Println("[Telegram] Registered to message bus")
+	}
+}
+
+// HealthCheck 健康检查
+func (tc *TelegramChannel) HealthCheck() map[string]interface{} {
+	status := "disconnected"
+	if tc.bot != nil {
+		status = "connected"
+	}
+	return map[string]interface{}{
+		"id":         tc.id,
+		"status":     status,
+		"bot_id":     tc.botID,
+		"username":   tc.botUsername,
+		"message":    "Telegram channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (tc *TelegramChannel) GetSessionID() string {
+	return ""
+}
+
+// IsConnected 检查 Telegram 连接状态
+func (tc *TelegramChannel) IsConnected() bool {
+	return tc.bot != nil
 }
 

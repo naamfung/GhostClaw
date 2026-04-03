@@ -7,159 +7,291 @@
 package main
 
 import (
-        "fmt"
-        "log"
-        "strings"
-        "sync"
+	"context"
+	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"time"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 // MatrixConfig Matrix 渠道配置
 type MatrixConfig struct {
-        Enabled       bool     `toon:"enabled" json:"Enabled"`
-        HomeserverURL string   `toon:"homeserver_url" json:"HomeserverURL"` // Homeserver 地址（如 https://matrix.org）
-        UserID        string   `toon:"user_id" json:"UserID"`               // 完整用户 ID（如 @bot:matrix.org）
-        AccessToken   string   `toon:"access_token" json:"AccessToken"`     // 访问令牌
-        DeviceID      string   `toon:"device_id" json:"DeviceID"`           // 设备 ID，默认 "GARCLAW"
-        Rooms         []string `toon:"rooms" json:"Rooms"`                  // 自动加入的房间 ID（如 !roomid:matrix.org）
-        GroupPolicy   string   `toon:"group_policy" json:"GroupPolicy"`     // 群聊策略：silent / active
-        DisplayName   string   `toon:"display_name" json:"DisplayName"`     // Bot 显示名称
+	Enabled       bool     `toon:"enabled" json:"Enabled"`
+	HomeserverURL string   `toon:"homeserver_url" json:"HomeserverURL"` // Homeserver 地址（如 https://matrix.org）
+	UserID        string   `toon:"user_id" json:"UserID"`               // 完整用户 ID（如 @bot:matrix.org）
+	AccessToken   string   `toon:"access_token" json:"AccessToken"`     // 访问令牌
+	DeviceID      string   `toon:"device_id" json:"DeviceID"`           // 设备 ID，默认 "GARCLAW"
+	Rooms         []string `toon:"rooms" json:"Rooms"`                  // 自动加入的房间 ID（如 !roomid:matrix.org）
+	GroupPolicy   string   `toon:"group_policy" json:"GroupPolicy"`     // 群聊策略：silent / active
+	DisplayName   string   `toon:"display_name" json:"DisplayName"`     // Bot 显示名称
 }
 
 // MatrixChannel 实现 Channel 接口
 type MatrixChannel struct {
-        *BaseChannel
-        config MatrixConfig
-        mu     sync.RWMutex
-        stopCh chan struct{}
+	*BaseChannel
+	config         MatrixConfig
+	client         *mautrix.Client
+	mu             sync.RWMutex
+	stopCh         chan struct{}
+	connected      bool
+	messageHandler func(chatID, senderID, content string, metadata map[string]interface{})
 }
 
 // NewMatrixChannel 创建 Matrix 渠道
 func NewMatrixChannel(config *MatrixConfig) (*MatrixChannel, error) {
-        if config == nil {
-                return nil, fmt.Errorf("matrix config is nil")
-        }
-        if config.HomeserverURL == "" {
-                return nil, fmt.Errorf("matrix homeserver_url is required")
-        }
-        if config.UserID == "" {
-                return nil, fmt.Errorf("matrix user_id is required")
-        }
-        if config.AccessToken == "" {
-                return nil, fmt.Errorf("matrix access_token is required")
-        }
-        if config.DeviceID == "" {
-                config.DeviceID = "GARCLAW"
-        }
-        return &MatrixChannel{
-                BaseChannel: NewBaseChannel("matrix"),
-                config:      *config,
-                stopCh:      make(chan struct{}),
-        }, nil
+	if config == nil {
+		return nil, fmt.Errorf("matrix config is nil")
+	}
+	if config.HomeserverURL == "" {
+		return nil, fmt.Errorf("matrix homeserver_url is required")
+	}
+	if config.UserID == "" {
+		return nil, fmt.Errorf("matrix user_id is required")
+	}
+	if config.AccessToken == "" {
+		return nil, fmt.Errorf("matrix access_token is required")
+	}
+	if config.DeviceID == "" {
+		config.DeviceID = "GARCLAW"
+	}
+	return &MatrixChannel{
+		BaseChannel: NewBaseChannel("matrix"),
+		config:      *config,
+		stopCh:      make(chan struct{}),
+	}, nil
 }
 
 // Start 启动 Matrix 连接
-// TODO: 集成 mautrix/mautrix 库实现实际连接
-//
-// 实现要点：
-//   1. 使用 mautrix.NewClient(homeserverURL, userID, accessToken) 创建客户端
-//   2. 设置 DisplayName（如果配置了）
-//   3. 加入 config.Rooms 中列出的房间
-//   4. 启动 Syncer 监听事件
-//   5. 对 m.event.EventMessage 类型事件调用 messageHandler
-//   6. 根据 GroupPolicy 决定是否响应（检查是否被 @mention）
 func (mc *MatrixChannel) Start(messageHandler func(chatID, senderID, content string, metadata map[string]interface{})) error {
-        log.Printf("[Matrix] Starting Matrix bot: %s on %s", mc.config.UserID, mc.config.HomeserverURL)
+	mc.messageHandler = messageHandler
+	log.Printf("[Matrix] Starting Matrix bot: %s on %s", mc.config.UserID, mc.config.HomeserverURL)
 
-        // TODO: 实际的 Matrix 连接逻辑
-        // 示例（使用 mautrix）:
-        //
-        //   client, err := mautrix.NewClient(mc.config.HomeserverURL, mc.config.UserID, mc.config.AccessToken)
-        //   if err != nil { return err }
-        //
-        //   if mc.config.DisplayName != "" {
-        //       client.SetDisplayName(mc.config.DisplayName)
-        //   }
-        //
-        //   syncer := mautrix.NewDefaultSyncer()
-        //   syncer.OnEventType(mautrix.EventMessage, func(evt mautrix.Event) {
-        //       // 跳过自己发的消息
-        //       if evt.Sender == mc.config.UserID { return }
-        //       content := evt.Content.AsMessage().Body
-        //       chatID := evt.RoomID.String()
-        //       senderID := evt.Sender.String()
-        //       messageHandler(chatID, senderID, content, nil)
-        //   })
-        //   client.Syncer = syncer
-        //
-        //   for _, room := range mc.config.Rooms {
-        //       _, _ = client.JoinRoomByID(room)
-        //   }
-        //
-        //   go func() {
-        //       err = client.Sync()
-        //       if err != nil { log.Printf("[Matrix] Sync error: %v", err) }
-        //   }()
+	// 解析用户 ID
+	userID, err := id.ParseUserID(mc.config.UserID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
 
-        log.Printf("[Matrix] WARNING: Matrix channel is a stub. Full implementation requires adding mautrix library: go get maunium.net/go/mautrix")
+	// 创建客户端
+	client, err := mautrix.NewClient(mc.config.HomeserverURL, userID, mc.config.AccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to create Matrix client: %w", err)
+	}
+	mc.client = client
 
-        go func() {
-                <-mc.stopCh
-                log.Println("[Matrix] Stopped.")
-        }()
+	// 设置显示名称
+	if mc.config.DisplayName != "" {
+		if err := client.SetDisplayName(context.Background(), mc.config.DisplayName); err != nil {
+			log.Printf("[Matrix] Warning: failed to set display name: %v", err)
+		}
+	}
 
-        return nil
+	// 创建 syncer
+	syncer := client.Syncer.(*mautrix.DefaultSyncer)
+	syncer.OnEventType(event.EventMessage, mc.handleMatrixMessage)
+
+	// 加入房间
+	for _, roomIDStr := range mc.config.Rooms {
+		roomID, err := id.ParseRoomID(roomIDStr)
+		if err != nil {
+			log.Printf("[Matrix] Invalid room ID %s: %v", roomIDStr, err)
+			continue
+		}
+		log.Printf("[Matrix] Joining room: %s", roomIDStr)
+		if _, err := client.JoinRoomByID(context.Background(), roomID); err != nil {
+			log.Printf("[Matrix] Failed to join room %s: %v", roomIDStr, err)
+		}
+	}
+
+	mc.connected = true
+	log.Printf("[Matrix] Connected successfully")
+
+	// 启动 sync 循环
+	go func() {
+		if err := client.Sync(); err != nil {
+			if !strings.Contains(err.Error(), "context canceled") {
+				log.Printf("[Matrix] Sync error: %v", err)
+			}
+		}
+	}()
+
+	// 监听停止信号
+	go func() {
+		<-mc.stopCh
+		if mc.client != nil {
+			mc.client.StopSync()
+		}
+		mc.connected = false
+		log.Println("[Matrix] Stopped.")
+	}()
+
+	return nil
+}
+
+// handleMatrixMessage 处理 Matrix 消息
+func (mc *MatrixChannel) handleMatrixMessage(evt *event.Event) {
+	if evt.Type != event.EventMessage {
+		return
+	}
+
+	// 跳过自己发的消息
+	if evt.Sender.String() == mc.config.UserID {
+		return
+	}
+
+	// 解析消息内容
+	msgContent, ok := evt.Content.(*event.MessageEventContent)
+	if !ok || msgContent.Body == "" {
+		return
+	}
+
+	chatID := evt.RoomID.String()
+	senderID := evt.Sender.String()
+	content := msgContent.Body
+
+	// 检查是否应该响应
+	isDirectMention := strings.Contains(strings.ToLower(content), strings.ToLower(mc.config.DisplayName))
+	if !mc.shouldRespond(content, isDirectMention) {
+		return
+	}
+
+	// 调用消息处理器
+	if mc.messageHandler != nil {
+		metadata := map[string]interface{}{
+			"room_id":   evt.RoomID.String(),
+			"event_id":  evt.ID.String(),
+			"sender_id": evt.Sender.String(),
+			"type":      evt.Type.String(),
+			"timestamp": time.Now(),
+		}
+		mc.messageHandler(chatID, senderID, content, metadata)
+	}
 }
 
 // Stop 停止 Matrix 连接
 func (mc *MatrixChannel) Stop() {
-        close(mc.stopCh)
+	close(mc.stopCh)
 }
 
 // WriteChunk 发送消息片段到 Matrix 房间
 func (mc *MatrixChannel) WriteChunk(chunk StreamChunk) error {
-        // TODO: 将消息发送到对应的 Matrix 房间
-        log.Printf("[Matrix] WriteChunk: %s", truncateString(chunk.Content, 100))
-        return nil
+	if !mc.connected || mc.client == nil {
+		return fmt.Errorf("Matrix not connected")
+	}
+
+	if chunk.Content == "" {
+		return nil
+	}
+
+	// 解析房间 ID
+	roomID, err := id.ParseRoomID(chunk.SessionID)
+	if err != nil {
+		return fmt.Errorf("invalid session ID (room ID): %w", err)
+	}
+
+	// 创建消息内容
+	content := &event.MessageEventContent{
+		Body:    chunk.Content,
+		MsgType: event.MsgTypeText,
+	}
+
+	// 发送消息
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := mc.client.SendMessageEvent(ctx, roomID, event.EventMessage, content); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
 }
 
 // SendToUser 发送消息到指定房间（实现 MessageSender）
 func (mc *MatrixChannel) SendToUser(roomID string, message string) error {
-        log.Printf("[Matrix] SendToUser to %s: %s", roomID, truncateString(message, 100))
-        return nil
+	if !mc.connected || mc.client == nil {
+		return fmt.Errorf("Matrix not connected")
+	}
+
+	// 解析房间 ID
+	rid, err := id.ParseRoomID(roomID)
+	if err != nil {
+		return fmt.Errorf("invalid room ID: %w", err)
+	}
+
+	// 创建消息内容
+	content := &event.MessageEventContent{
+		Body:    message,
+		MsgType: event.MsgTypeText,
+	}
+
+	// 发送消息
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := mc.client.SendMessageEvent(ctx, rid, event.EventMessage, content); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	log.Printf("[Matrix] SendToUser to %s: %s", roomID, truncateString(message, 100))
+	return nil
 }
 
 // GetChannelType 获取渠道类型
 func (mc *MatrixChannel) GetChannelType() string {
-        return "matrix"
+	return "matrix"
 }
 
 // RegisterToBus 注册到消息总线
 func (mc *MatrixChannel) RegisterToBus() {
-        if globalMessageBus != nil {
-                globalMessageBus.RegisterChannelSender("matrix", mc)
-                log.Println("[Matrix] Registered to message bus")
-        }
+	if globalMessageBus != nil {
+		globalMessageBus.RegisterChannelSender("matrix", mc)
+		log.Println("[Matrix] Registered to message bus")
+	}
 }
 
 // SendMessage 发送消息到指定房间
 func (mc *MatrixChannel) SendMessage(roomID, message string) {
-        log.Printf("[Matrix] SendMessage to %s: %s", roomID, truncateString(message, 100))
+	mc.SendToUser(roomID, message)
 }
 
 // IsConnected 返回连接状态
 func (mc *MatrixChannel) IsConnected() bool {
-        return false
+	return mc.connected
 }
 
 // shouldRespond 判断是否应该响应消息
 func (mc *MatrixChannel) shouldRespond(content string, isDirectMention bool) bool {
-        switch strings.ToLower(mc.config.GroupPolicy) {
-        case "silent":
-                return isDirectMention
-        case "active":
-                return true
-        default:
-                return isDirectMention
-        }
+	switch strings.ToLower(mc.config.GroupPolicy) {
+	case "silent":
+		return isDirectMention
+	case "active":
+		return true
+	default:
+		return isDirectMention
+	}
 }
 
+// HealthCheck 健康检查
+func (mc *MatrixChannel) HealthCheck() map[string]interface{} {
+	status := "disconnected"
+	if mc.connected {
+		status = "connected"
+	}
+	return map[string]interface{}{
+		"id":         mc.id,
+		"status":     status,
+		"homeserver": mc.config.HomeserverURL,
+		"user_id":    mc.config.UserID,
+		"message":    "Matrix channel health check",
+	}
+}
+
+// GetSessionID 实现 Channel 接口
+func (mc *MatrixChannel) GetSessionID() string {
+	return ""
+}

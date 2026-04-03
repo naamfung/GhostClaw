@@ -12,14 +12,17 @@ import (
 
 // ModelConfig 模型配置
 type ModelConfig struct {
-	Name        string  `json:"Name"`
-	APIType     string  `json:"APIType"`
-	BaseURL     string  `json:"BaseURL"`
-	APIKey      string  `json:"APIKey"` // 支持环境变量 ${VAR}
-	Model       string  `json:"Model"`
-	Temperature float64 `json:"Temperature,omitempty"`
-	MaxTokens   int     `json:"MaxTokens,omitempty"`
-	Description string  `json:"Description,omitempty"`
+	Name                  string  `json:"Name"`
+	APIType               string  `json:"APIType"`
+	BaseURL               string  `json:"BaseURL"`
+	APIKey                string  `json:"APIKey"` // 支持环境变量 ${VAR}
+	Model                 string  `json:"Model"`
+	Temperature           float64 `json:"Temperature,omitempty"`
+	MaxTokens             int     `json:"MaxTokens,omitempty"`
+	Stream                bool    `json:"Stream,omitempty"`
+	Thinking              bool    `json:"Thinking,omitempty"`
+	BlockDangerousCommands bool   `json:"BlockDangerousCommands,omitempty"`
+	Description           string  `json:"Description,omitempty"`
 }
 
 // ResolveAPIKey 解析 API Key（支持环境变量）
