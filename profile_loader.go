@@ -164,10 +164,10 @@ func (pl *ProfileLoader) watchLoop() {
 }
 
 // GetProfile returns a copy of the current Profile.
-func (pl *ProfileLoader) GetProfile() Profile {
+func (pl *ProfileLoader) GetProfile() *Profile {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
-	p := Profile{
+	p := &Profile{
 		User:     pl.profile.User,
 		Soul:     pl.profile.Soul,
 		Agent:    pl.profile.Agent,

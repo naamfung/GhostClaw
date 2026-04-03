@@ -82,7 +82,7 @@ func handleTextReplace(ctx context.Context, argsMap map[string]interface{}, ch C
 
         // 构建响应
         var sb strings.Builder
-        sb.WriteString(fmt.Sprintf("✅ 操作完成\n"))
+        sb.WriteString("✅ 操作完成\n")
         sb.WriteString(fmt.Sprintf("- 修改行数: %d\n", result.LinesChanged))
         sb.WriteString(fmt.Sprintf("- 总行数: %d\n", result.TotalLines))
         sb.WriteString(fmt.Sprintf("- 匹配次数: %d\n", result.MatchesFound))

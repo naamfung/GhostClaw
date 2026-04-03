@@ -1,5 +1,16 @@
 # 版本历史
 
+## v0.0.4 (2026-04-03)
+
+### 代码质量优化
+
+**修复**：
+- 修复 `api_handlers.go` 中 17 个未使用的 `r *http.Request` 参数，统一替换为匿名变量 `_`
+- 涉及函数：getConfig、listRoles、getRole、deleteRole、listSkills、getSkill、deleteSkill、listActors、getActor、deleteActor、listModelsAPI、getModelAPI、deleteModelAPI、setMainModelAPI、getHook、setHookEnabled、reloadHooks
+
+**版本信息更新**：
+- 更新 `version.go` 版本号从 v0.2.5 统一为 v0.0.4，保持版本序列一致性
+
 ## v0.0.3 (2026-04-01)
 
 ### 文档全面更新：GhostClaw → GhostClaw

@@ -35,8 +35,10 @@
         let modelToDelete = $state<ModelConfig | null>(null);
 
         // Default Role (global setting from /api/config)
-        let defaultRole = $state('');
-        let defaultRoleLoaded = $state(false);
+	let defaultRole = $state('');
+	let defaultRoleLoaded = $state(false);
+	// Main model name from backend
+	let mainModelName = $state('main');
 
         // 编辑表单字段
         let editForm = $state({
@@ -67,6 +69,10 @@
                         if (response.ok) {
                                 const data = await response.json();
                                 models = data.Models || [];
+                                // 获取主模型名称
+                                if (data.MainModel) {
+                                        mainModelName = data.MainModel;
+                                }
                                 filterModels();
                         }
                 } catch (error) {
@@ -87,6 +93,16 @@
                 } catch (error) {
                         console.error('加载默认角色失败:', error);
                         defaultRole = config().defaultRole || '';
+                }
+        }
+
+        async function loadMainModelName() {
+                try {
+                        // 从 ActorManager 获取主模型名称
+                        // 这里需要修改后端 API，添加获取主模型名称的接口
+                        // 暂时通过设置主模型后返回的信息来更新
+                } catch (error) {
+                        console.error('加载主模型名称失败:', error);
                 }
         }
 
@@ -180,7 +196,9 @@
                         });
 
                         if (response.ok) {
-                                // 静默更新，直接重新加载模型列表
+                                // 更新主模型名称
+                                mainModelName = model.Name;
+                                // 重新加载模型列表
                                 await loadModels();
                         } else {
                                 const error = await response.json();
@@ -484,11 +502,11 @@
                                                         >
                                                                 <div class="flex-1 overflow-hidden">
                                                                         <div class="flex items-center gap-2">
-                                                                                <span class="truncate font-medium">{model.Name}</span>
-                                                                                {#if model.Name === 'main'}
-                                                                                        <Badge variant="secondary" class="text-xs">默认</Badge>
-                                                                                {/if}
-                                                                        </div>
+                                                        <span class="truncate font-medium">{model.Name}</span>
+                                                        {#if model.Name === mainModelName}
+                                                                <Badge variant="secondary" class="text-xs">默认</Badge>
+                                                        {/if}
+                                                </div>
                                                                         <p class="truncate text-xs text-muted-foreground">{model.Model || '未配置'}</p>
                                                                 </div>
                                                         </button>
@@ -515,11 +533,11 @@
                                                         <div class="flex items-center gap-3 min-w-0">
                                                                 <div class="min-w-0 flex-1">
                                                                         <h3 class="font-semibold">
-                                                                                {selectedModel.Name}
-                                                                                {#if selectedModel.Name === 'main'}
-                                                                                        <Badge variant="secondary" class="ml-2">默认</Badge>
-                                                                                {/if}
-                                                                        </h3>
+                                                                {selectedModel.Name}
+                                                                {#if selectedModel.Name === mainModelName}
+                                                                        <Badge variant="secondary" class="ml-2">默认</Badge>
+                                                                {/if}
+                                                        </h3>
                                                                         <p class="truncate text-sm text-muted-foreground">{selectedModel.Model}</p>
                                                                 </div>
                                                         </div>
@@ -628,8 +646,8 @@
         title="确认删除"
         description="确定要删除模型「{modelToDelete?.Name}」吗？此操作无法撤销。"
         confirmText="删除"
-        onconfirm={confirmDelete}
-        oncancel={() => {
+        onConfirm={confirmDelete}
+        onCancel={() => {
                 showDeleteConfirm = false;
                 modelToDelete = null;
         }}

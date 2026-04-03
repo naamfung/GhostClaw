@@ -76,7 +76,7 @@ import type {
 	MCPResourceAttachment,
 	MCPResourceContent
 } from '$lib/types';
-import type { ListChangedHandlers } from '@modelcontextprotocol/sdk/types.js';
+import type { ListChangedHandlers } from '@modelcontextprotocol/sdk';
 import type { DatabaseMessageExtraMcpResource, McpServerOverride } from '$lib/types/database';
 import type { SettingsConfigType } from '$lib/types/settings';
 
@@ -107,7 +107,7 @@ class MCPStore {
 	async probeProxy(): Promise<void> {
 		// Skip proxy probe if we're in a development environment
 		// or if the endpoint is likely not available
-		if (import.meta.env.DEV) {
+		if (import.meta?.env?.DEV) {
 			this._proxyAvailable = false;
 			return;
 		}
@@ -607,7 +607,7 @@ class MCPStore {
 		}
 
 		// Probe proxy availability only when MCP is actually needed
-		if (!this.isProxyAvailable && !import.meta.env.DEV) {
+		if (!this.isProxyAvailable && !import.meta?.env?.DEV) {
 			await this.probeProxy();
 		}
 
@@ -1136,7 +1136,7 @@ class MCPStore {
 					description: prompt.description,
 					title: prompt.title,
 					serverName,
-					arguments: prompt.arguments?.map((arg) => ({
+					arguments: prompt.arguments?.map((arg: { name: string; description: string; required: boolean }) => ({
 						name: arg.name,
 						description: arg.description,
 						required: arg.required

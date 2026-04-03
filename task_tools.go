@@ -269,7 +269,7 @@ func handleSmartShellInteractive(command string, suggestion CommandSuggestion, w
                 return fmt.Sprintf("Error: failed to start async execution: %v", err), false
         }
 
-        msg := fmt.Sprintf("⚠️ 检测到交互式命令\n\n")
+        msg := "⚠️ 检测到交互式命令\n\n"
         msg += fmt.Sprintf("**命令**: `%s`\n\n", command)
         msg += fmt.Sprintf("**问题**: %s\n\n", suggestion.Message)
 
@@ -281,10 +281,10 @@ func handleSmartShellInteractive(command string, suggestion CommandSuggestion, w
                 msg += fmt.Sprintf("**非交互式等价命令**: `%s`\n\n", suggestion.NonInteractiveEq)
         }
 
-        msg += fmt.Sprintf("---\n\n")
+        msg += "---\n\n"
         msg += fmt.Sprintf("✅ 命令已异步启动（PID: %d），将在 %d 分钟后唤醒。\n", task.PID, wakeAfterMinutes)
-        msg += fmt.Sprintf("如果命令卡在交互状态，你可以使用 `task_terminate` 终止它。\n\n")
-        msg += fmt.Sprintf("💡 建议：下次使用非交互式等价命令以避免此问题。")
+        msg += "如果命令卡在交互状态，你可以使用 `task_terminate` 终止它。\n\n"
+        msg += "💡 建议：下次使用非交互式等价命令以避免此问题。"
 
         result := map[string]interface{}{
                 "mode":               "interactive",

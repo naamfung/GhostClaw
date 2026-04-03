@@ -51,7 +51,7 @@ func (s *HTTPServer) configHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // getConfig 返回当前配置
-func (s *HTTPServer) getConfig(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
 	// 检查配置是否完整
 	needsSetup := apiKey == ""
 
@@ -284,7 +284,7 @@ func (s *HTTPServer) rolesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // listRoles 列出所有人格
-func (s *HTTPServer) listRoles(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) listRoles(w http.ResponseWriter, _ *http.Request) {
 	if globalRoleManager == nil {
 		http.Error(w, `{"error": "人格管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -389,7 +389,7 @@ func (s *HTTPServer) roleDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // getRole 获取人格详情
-func (s *HTTPServer) getRole(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) getRole(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalRoleManager == nil {
 		http.Error(w, `{"error": "人格管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -449,7 +449,7 @@ func (s *HTTPServer) updateRole(w http.ResponseWriter, r *http.Request, name str
 }
 
 // deleteRole 删除人格
-func (s *HTTPServer) deleteRole(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) deleteRole(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalRoleManager == nil {
 		http.Error(w, `{"error": "人格管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -632,7 +632,7 @@ func (s *HTTPServer) skillsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // listSkills 列出所有技能
-func (s *HTTPServer) listSkills(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) listSkills(w http.ResponseWriter, _ *http.Request) {
 	if globalSkillManager == nil {
 		http.Error(w, `{"error": "技能管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -735,7 +735,7 @@ func (s *HTTPServer) skillDetailHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // getSkill 获取技能详情
-func (s *HTTPServer) getSkill(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) getSkill(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalSkillManager == nil {
 		http.Error(w, `{"error": "技能管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -794,7 +794,7 @@ func (s *HTTPServer) updateSkill(w http.ResponseWriter, r *http.Request, name st
 }
 
 // deleteSkill 删除技能
-func (s *HTTPServer) deleteSkill(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) deleteSkill(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalSkillManager == nil {
 		http.Error(w, `{"error": "技能管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -909,7 +909,7 @@ func (s *HTTPServer) actorsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // listActors 列出所有演员
-func (s *HTTPServer) listActors(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) listActors(w http.ResponseWriter, _ *http.Request) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1025,7 +1025,7 @@ func (s *HTTPServer) actorDetailHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // getActor 获取演员详情
-func (s *HTTPServer) getActor(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) getActor(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1084,7 +1084,7 @@ func (s *HTTPServer) updateActor(w http.ResponseWriter, r *http.Request, name st
 }
 
 // deleteActor 删除演员
-func (s *HTTPServer) deleteActor(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) deleteActor(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1221,7 +1221,7 @@ func (s *HTTPServer) modelDetailHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // listModelsAPI 列出所有模型
-func (s *HTTPServer) listModelsAPI(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) listModelsAPI(w http.ResponseWriter, _ *http.Request) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1244,8 +1244,18 @@ func (s *HTTPServer) listModelsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 获取主模型名称
+	mainModelName := "main"
+	if globalActorManager != nil {
+		mainModel := globalActorManager.GetMainModel()
+		if mainModel != nil {
+			mainModelName = mainModel.Name
+		}
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"Models": result,
+		"Models":    result,
+		"MainModel": mainModelName,
 	})
 }
 
@@ -1310,7 +1320,7 @@ func (s *HTTPServer) createModelAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // getModelAPI 获取单个模型详情
-func (s *HTTPServer) getModelAPI(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) getModelAPI(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1424,7 +1434,7 @@ func (s *HTTPServer) updateModelAPI(w http.ResponseWriter, r *http.Request, name
 }
 
 // deleteModelAPI 删除模型
-func (s *HTTPServer) deleteModelAPI(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) deleteModelAPI(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1458,7 +1468,7 @@ func (s *HTTPServer) deleteModelAPI(w http.ResponseWriter, r *http.Request, name
 }
 
 // setMainModelAPI 设置主模型
-func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, _ *http.Request, name string) {
 	if globalActorManager == nil {
 		http.Error(w, `{"error": "演员管理器未初始化"}`, http.StatusInternalServerError)
 		return
@@ -1562,7 +1572,7 @@ func (s *HTTPServer) hookDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // getHook 获取 Hook 详情
-func (s *HTTPServer) getHook(w http.ResponseWriter, r *http.Request, name string) {
+func (s *HTTPServer) getHook(w http.ResponseWriter, _ *http.Request, name string) {
 	hookManager := GetHookManager()
 	if hookManager == nil {
 		http.Error(w, `{"error": "Hook 管理器未初始化"}`, http.StatusInternalServerError)
@@ -1579,7 +1589,7 @@ func (s *HTTPServer) getHook(w http.ResponseWriter, r *http.Request, name string
 }
 
 // setHookEnabled 设置 Hook 启用状态
-func (s *HTTPServer) setHookEnabled(w http.ResponseWriter, r *http.Request, name string, enabled bool) {
+func (s *HTTPServer) setHookEnabled(w http.ResponseWriter, _ *http.Request, name string, enabled bool) {
 	hookManager := GetHookManager()
 	if hookManager == nil {
 		http.Error(w, `{"error": "Hook 管理器未初始化"}`, http.StatusInternalServerError)
@@ -1605,7 +1615,7 @@ func (s *HTTPServer) setHookEnabled(w http.ResponseWriter, r *http.Request, name
 }
 
 // reloadHooks 重新加载所有 Hooks
-func (s *HTTPServer) reloadHooks(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) reloadHooks(w http.ResponseWriter, _ *http.Request) {
 	hookManager := GetHookManager()
 	if hookManager == nil {
 		http.Error(w, `{"error": "Hook 管理器未初始化"}`, http.StatusInternalServerError)

@@ -409,7 +409,7 @@ func (s *Stage) BuildWelcomeMessage(am *ActorManager, rm *RoleManager) string {
 
         actor, ok := am.GetActor(actorName)
         if !ok {
-                return fmt.Sprintf("🎭 已切换到默认角色")
+                return "🎭 已切换到默认角色"
         }
 
         role, ok := rm.GetRole(actor.Role)

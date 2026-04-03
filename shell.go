@@ -31,9 +31,9 @@ type BlockingCommandInfo struct {
 
 // ExpandAlias 递归展开别名，防止循环
 func ExpandAlias(command string, aliases map[string]string) string {
-        if aliases == nil || len(aliases) == 0 {
-                return command
-        }
+	if len(aliases) == 0 {
+		return command
+	}
 
         visited := make(map[string]bool)
         return expandAliasRecursive(command, aliases, visited)
@@ -272,15 +272,15 @@ func runShell(ctx context.Context, command string) CmdResult {
 
 // runShellWithTimeout 执行命令，增加别名展开
 func runShellWithTimeout(ctx context.Context, command string, force bool, isBlockingConfirmed bool) CmdResult {
-    if globalToolsAliases != nil && len(globalToolsAliases) > 0 {
-        expanded := ExpandAlias(command, globalToolsAliases)
-        if expanded != command {
-            if IsDebug {
-                fmt.Printf("[runShell] Alias expanded: %q -> %q\n", command, expanded)
-            }
-            command = expanded
-        }
-    }
+	if len(globalToolsAliases) > 0 {
+		expanded := ExpandAlias(command, globalToolsAliases)
+		if expanded != command {
+			if IsDebug {
+				fmt.Printf("[runShell] Alias expanded: %q -> %q\n", command, expanded)
+			}
+			command = expanded
+		}
+	}
 
     if IsDebug {
         fmt.Printf("[runShell] executing: %q, force=%v, isBlockingConfirmed=%v\n", command, force, isBlockingConfirmed)
