@@ -26,7 +26,7 @@ func DefaultMemoryConsolidatorConfig() MemoryConsolidatorConfig {
         ContextWindowTokens:      128000,
         MaxCompletionTokens:      4096,
         SafetyBuffer:             1024,
-        ConsolidationRatio:       0.01,
+        ConsolidationRatio:       0.05, // 增加默认值，从 0.01 调整为 0.05
         MaxConsolidationRound:    5,
         MinMessagesToConsolidate: 2,
     }
@@ -397,23 +397,52 @@ func (mc *MemoryConsolidator) buildCurrentMemoryContext() string {
 }
 
 func (mc *MemoryConsolidator) MaybeConsolidate(ctx context.Context, sessionKey string) error {
-    shouldConsolidate, _ := mc.ShouldConsolidate(sessionKey)
+    log.Println("########################")
+    log.Println("[MemoryConsolidator] Checking consolidation status...")
+    
+    shouldConsolidate, excessTokens := mc.ShouldConsolidate(sessionKey)
+    log.Printf("[MemoryConsolidator] Should consolidate: %v, Excess tokens: %d", shouldConsolidate, excessTokens)
+    
     if !shouldConsolidate {
+        log.Println("[MemoryConsolidator] Consolidation not needed")
+        log.Println("########################")
         return nil
     }
+    
     mc.mu.RLock()
     messages := mc.sessionMessages[sessionKey]
     offset := mc.sessionOffset[sessionKey]
     mc.mu.RUnlock()
+    
+    log.Printf("[MemoryConsolidator] Current state - Total messages: %d, Consolidated: %d, Unconsolidated: %d", len(messages), offset, len(messages)-offset)
+    
     if offset >= len(messages) {
+        log.Println("[MemoryConsolidator] No messages to consolidate")
+        log.Println("########################")
         return nil
     }
+    
     boundary := mc.findConsolidationBoundary(sessionKey, offset)
+    log.Printf("[MemoryConsolidator] Consolidation boundary: %d", boundary)
+    
     if boundary <= offset {
+        log.Println("[MemoryConsolidator] Boundary invalid, no consolidation")
+        log.Println("########################")
         return nil
     }
+    
     toConsolidate := messages[offset:boundary]
-    return mc.Consolidate(ctx, sessionKey, toConsolidate)
+    log.Printf("[MemoryConsolidator] Consolidating %d messages", len(toConsolidate))
+    
+    err := mc.Consolidate(ctx, sessionKey, toConsolidate)
+    if err != nil {
+        log.Printf("[MemoryConsolidator] Consolidation failed: %v", err)
+    } else {
+        log.Println("[MemoryConsolidator] Consolidation completed successfully")
+    }
+    
+    log.Println("########################")
+    return err
 }
 
 func (mc *MemoryConsolidator) findConsolidationBoundary(sessionKey string, startIdx int) int {
@@ -423,11 +452,21 @@ func (mc *MemoryConsolidator) findConsolidationBoundary(sessionKey string, start
     if startIdx >= len(messages) {
         return startIdx
     }
+    
+    // 尝试找到下一个用户消息作为边界
     for i := startIdx + 1; i < len(messages); i++ {
         if messages[i].Role == "user" {
             return i
         }
     }
+    
+    // 如果没有找到用户消息，使用一个合理的边界
+    // 至少整合 2 条消息（如果有足够的消息）
+    if len(messages) - startIdx >= 2 {
+        return startIdx + 2
+    }
+    
+    // 如果消息不足，使用所有剩余消息
     return len(messages)
 }
 

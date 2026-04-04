@@ -906,6 +906,18 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
         }
 
+        // 记录工具消息到记忆整合器
+        if globalMemoryConsolidator != nil {
+            for _, result := range results {
+                contentStr, _ := result.Content.(string)
+                globalMemoryConsolidator.AddMessage("default", ConsolidationMessage{
+                    Role:      "tool",
+                    Content:   contentStr,
+                    Timestamp: time.Now(),
+                })
+            }
+        }
+
         if globalTaskTracker != nil {
             shouldPrompt, promptMsg := globalTaskTracker.ShouldPromptTodo()
             if shouldPrompt && promptMsg != "" {

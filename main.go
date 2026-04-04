@@ -607,6 +607,11 @@ func main() {
 
         // 初始化记忆整合器
         consolidatorConfig := DefaultMemoryConsolidatorConfig()
+        // 自动基于模型的 maxTokens 设置 ContextWindowTokens
+        // 如果配置文件中没有显式设置，则使用模型的 maxTokens
+        if config.Memory == nil || config.Memory.ContextWindowTokens <= 0 {
+                consolidatorConfig.ContextWindowTokens = maxTokens
+        }
         if config.Memory != nil {
                 if config.Memory.MinMessagesToConsolidate > 0 {
                         consolidatorConfig.MinMessagesToConsolidate = config.Memory.MinMessagesToConsolidate

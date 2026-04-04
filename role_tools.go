@@ -91,8 +91,12 @@ func HandleContextCommand() string {
         session := GetGlobalSession()
         history := session.GetHistory()
 
-        // 1. 消息统计
-        totalMsgs := len(history)
+        // 1. 会话信息
+        sb.WriteString("会话信息:\n")
+        sb.WriteString(fmt.Sprintf("  会话ID: %s\n", session.ID))
+        sb.WriteString(fmt.Sprintf("  消息总数: %d 条\n", len(history)))
+
+        // 2. 消息统计
         userMsgs, assistantMsgs, toolMsgs, systemMsgs := 0, 0, 0, 0
         for _, msg := range history {
                 switch msg.Role {
@@ -106,10 +110,9 @@ func HandleContextCommand() string {
                         systemMsgs++
                 }
         }
-        sb.WriteString(fmt.Sprintf("消息总数: %d 条\n", totalMsgs))
-        sb.WriteString(fmt.Sprintf("  user: %d  assistant: %d  tool: %d  system: %d\n\n", userMsgs, assistantMsgs, toolMsgs, systemMsgs))
+        sb.WriteString(fmt.Sprintf("  消息分布: user: %d, assistant: %d, tool: %d, system: %d\n\n", userMsgs, assistantMsgs, toolMsgs, systemMsgs))
 
-        // 2. Token 估算
+        // 3. Token 估算
         totalTokens := 0
         for _, msg := range history {
                 if content, ok := msg.Content.(string); ok {
@@ -125,10 +128,10 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("Token 估算: ~%d tokens\n", totalTokens))
         }
 
-        // 3. 硬截断阈值
+        // 4. 硬截断阈值
         sb.WriteString(fmt.Sprintf("硬截断阈值: %d 条消息\n", MaxHistoryMessages))
-        remaining := MaxHistoryMessages - totalMsgs
-        if totalMsgs >= MaxHistoryMessages {
+        remaining := MaxHistoryMessages - len(history)
+        if len(history) >= MaxHistoryMessages {
                 sb.WriteString("  ⚠️  已超出阈值，下次 AgentLoop 将触发截断\n")
         } else if remaining <= 10 {
                 sb.WriteString(fmt.Sprintf("  ⚠️  距离阈值仅剩 %d 条消息\n", remaining))
@@ -136,7 +139,7 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("  距离阈值还有 %d 条消息\n", remaining))
         }
 
-        // 4. 记忆整合器信息
+        // 5. 记忆整合器信息
         if globalMemoryConsolidator != nil {
                 sb.WriteString("\n记忆整合器:\n")
                 budgetInfo := globalMemoryConsolidator.GetBudgetInfo("default")
@@ -177,17 +180,65 @@ func HandleContextCommand() string {
                 }
         }
 
-        // 5. 当前模型配置
-        sb.WriteString(fmt.Sprintf("\n当前模型: %s\n", globalAPIConfig.Model))
-        sb.WriteString(fmt.Sprintf("MaxTokens: %d\n", globalAPIConfig.MaxTokens))
+        // 6. 模型配置详情
+        sb.WriteString("\n模型配置:\n")
+        sb.WriteString(fmt.Sprintf("  模型名称: %s\n", globalAPIConfig.Model))
+        sb.WriteString(fmt.Sprintf("  MaxTokens: %d\n", globalAPIConfig.MaxTokens))
+        sb.WriteString(fmt.Sprintf("  Temperature: %.2f\n", globalAPIConfig.Temperature))
+        sb.WriteString(fmt.Sprintf("  API 类型: %s\n", globalAPIConfig.APIType))
         if globalAPIConfig.Thinking {
-                sb.WriteString("Thinking: 开启\n")
+                sb.WriteString("  Thinking: 开启\n")
+        } else {
+                sb.WriteString("  Thinking: 关闭\n")
         }
         if globalAPIConfig.BaseURL != "" {
-                sb.WriteString(fmt.Sprintf("API: %s\n", globalAPIConfig.BaseURL))
+                sb.WriteString(fmt.Sprintf("  API 地址: %s\n", globalAPIConfig.BaseURL))
+        }
+
+        // 7. 系统状态
+        sb.WriteString("\n系统状态:\n")
+        sb.WriteString(fmt.Sprintf("  运行模式: %s\n", getRunningMode()))
+        if globalRoleManager != nil {
+                sb.WriteString(fmt.Sprintf("  可用角色: %d 个\n", globalRoleManager.Count()))
+        }
+        if globalSkillManager != nil {
+                sb.WriteString(fmt.Sprintf("  可用技能: %d 个\n", globalSkillManager.Count()))
+        }
+
+        // 8. 最近消息摘要
+        if len(history) > 0 {
+                sb.WriteString("\n最近消息摘要:\n")
+                startIdx := 0
+                if len(history) > 3 {
+                        startIdx = len(history) - 3
+                }
+                for i := startIdx; i < len(history); i++ {
+                        msg := history[i]
+                        role := msg.Role
+                        if role == "system" {
+                                continue // 跳过系统消息
+                        }
+                        content := ""
+                        if c, ok := msg.Content.(string); ok {
+                                if len(c) > 50 {
+                                        content = c[:50] + "..."
+                                } else {
+                                        content = c
+                                }
+                        }
+                        sb.WriteString(fmt.Sprintf("  [%s] %s\n", role, content))
+                }
         }
 
         return sb.String()
+}
+
+// getRunningMode 获取当前运行模式
+func getRunningMode() string {
+        if cmdModeActive {
+                return "CMD 模式"
+        }
+        return "Log 模式"
 }
 
 // GetHelpText 返回帮助文本
