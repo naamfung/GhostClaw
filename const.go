@@ -421,11 +421,25 @@ func BuildToolSectionForRole(role *Role) string {
 
 	// 添加 OpenCLI 工具优先级说明
 	sb.WriteString("## 工具使用优先级\n\n")
-	sb.WriteString("**网页操作类任务**：\n")
-	sb.WriteString("1. 优先使用 OpenCLI（通过 shell 工具执行 `opencli` 命令）\n")
-	sb.WriteString("2. 仅当 OpenCLI 不可用时，才使用内置 browser 工具\n\n")
-	sb.WriteString("OpenCLI 优势：支持浏览器会话重用、更好的登录状态保持、更丰富的适配器生态。\n\n")
-	sb.WriteString("**检查 OpenCLI 是否可用**：`shell: \"which opencli\"` 或 `shell: \"opencli doctor\"`\n")
+
+	if isOpenCLIAvailable() {
+		sb.WriteString("**重要提示**：系统检测到 OpenCLI 已可用！\n\n")
+		sb.WriteString("**网页操作类任务**：\n")
+		sb.WriteString("- **强制要求**：所有网页操作类任务必须使用 OpenCLI（通过 shell 工具执行 `opencli` 命令）\n")
+		sb.WriteString("- **禁用说明**：内置 browser 工具已被禁用，请勿调用\n\n")
+		sb.WriteString("OpenCLI 使用示例：\n")
+		sb.WriteString("- 访问网页：`shell: \"opencli browse https://example.com\"`\n")
+		sb.WriteString("- 搜索：`shell: \"opencli search 关键词\"`\n")
+		sb.WriteString("- 查看帮助：`shell: \"opencli --help\"`\n")
+		sb.WriteString("- 或使用 skill 中的opencli指南。\n\n")
+		sb.WriteString("OpenCLI 优势：支持浏览器会话重用、更好的登录状态保持、更丰富的适配器生态。\n")
+	} else {
+		sb.WriteString("**网页操作类任务**：\n")
+		sb.WriteString("1. 优先使用 OpenCLI（通过 shell 工具执行 `opencli` 命令）\n")
+		sb.WriteString("2. 仅当 OpenCLI 不可用时，才使用内置 browser 工具\n\n")
+		sb.WriteString("OpenCLI 优势：支持浏览器会话重用、更好的登录状态保持、更丰富的适配器生态。\n\n")
+		sb.WriteString("**检查 OpenCLI 是否可用**：`shell: \"which opencli\"` 或 `shell: \"opencli doctor\"`\n")
+	}
 
 	return sb.String()
 }
