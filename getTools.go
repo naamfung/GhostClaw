@@ -30,6 +30,36 @@ func getToolName(tool map[string]interface{}) string {
 	return ""
 }
 
+// convertOpenAIToolToAnthropic 将 OpenAI 格式的工具转换为 Anthropic 格式
+func convertOpenAIToolToAnthropic(tool map[string]interface{}) map[string]interface{} {
+	function, _ := tool["function"].(map[string]interface{})
+	if function == nil {
+		return tool
+	}
+
+	name, _ := function["name"].(string)
+	description, _ := function["description"].(string)
+	parameters, _ := function["parameters"].(map[string]interface{})
+
+	// 构建 Anthropic 格式工具
+	anthropicTool := map[string]interface{}{
+		"name":         name,
+		"description":  description,
+		"input_schema": parameters,
+	}
+
+	return anthropicTool
+}
+
+// convertToolsToAnthropic 将工具列表从 OpenAI 格式转换为 Anthropic 格式
+func convertToolsToAnthropic(tools []map[string]interface{}) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(tools))
+	for i, tool := range tools {
+		result[i] = convertOpenAIToolToAnthropic(tool)
+	}
+	return result
+}
+
 // getFilteredTools 根据角色权限与工具配置过滤工具列表
 // role 为 nil 时返回所有工具（但仍受工具配置限制）
 func getFilteredTools(apiType string, role *Role) interface{} {
@@ -44,38 +74,20 @@ func getFilteredTools(apiType string, role *Role) interface{} {
 		return appendDynamicTools(apiType, tools)
 	}
 
-	// 根据格式处理
-	switch apiType {
-	case "openai", "ollama":
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		filtered := make([]map[string]interface{}, 0)
-		for _, tool := range toolList {
-			name := getToolName(tool)
-			if role.IsToolAllowed(name) {
-				filtered = append(filtered, tool)
-			}
-		}
-		// 添加 MCP 客户端工具与记忆整合工具
-		return appendDynamicTools(apiType, filtered)
-
-	default: // anthropic
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		filtered := make([]map[string]interface{}, 0)
-		for _, tool := range toolList {
-			name := getToolName(tool)
-			if role.IsToolAllowed(name) {
-				filtered = append(filtered, tool)
-			}
-		}
-		// 添加 MCP 客户端工具与记忆整合工具
-		return appendDynamicTools(apiType, filtered)
+	// 处理工具过滤（两种格式逻辑相同）
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
 	}
+	filtered := make([]map[string]interface{}, 0)
+	for _, tool := range toolList {
+		name := getToolName(tool)
+		if role.IsToolAllowed(name) {
+			filtered = append(filtered, tool)
+		}
+	}
+	// 添加 MCP 客户端工具与记忆整合工具
+	return appendDynamicTools(apiType, filtered)
 }
 
 // filterToolsByConfig 根据工具配置过滤工具列表
@@ -114,70 +126,44 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		return tools
 	}
 
-	// 根据格式处理
-	switch apiType {
-	case "openai", "ollama":
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		filtered := make([]map[string]interface{}, 0, len(toolList))
-		for _, tool := range toolList {
-			name := getToolName(tool)
-			// 检查是否需要禁用
-			shouldDisable := disabledTools[name] || (isOpenCLIAvailable() && strings.HasPrefix(name, "browser_"))
-			if !shouldDisable {
-				filtered = append(filtered, tool)
-			}
-		}
-		return filtered
-
-	default: // anthropic
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		filtered := make([]map[string]interface{}, 0, len(toolList))
-		for _, tool := range toolList {
-			name := getToolName(tool)
-			// 检查是否需要禁用
-			shouldDisable := disabledTools[name] || (isOpenCLIAvailable() && strings.HasPrefix(name, "browser_"))
-			if !shouldDisable {
-				filtered = append(filtered, tool)
-			}
-		}
-		return filtered
+	// 处理工具过滤（两种格式逻辑相同）
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
 	}
+	filtered := make([]map[string]interface{}, 0, len(toolList))
+	for _, tool := range toolList {
+		name := getToolName(tool)
+		// 检查是否需要禁用
+		shouldDisable := disabledTools[name] || (isOpenCLIAvailable() && strings.HasPrefix(name, "browser_") && name != "browser_search")
+		if !shouldDisable {
+			filtered = append(filtered, tool)
+		}
+	}
+	return filtered
 }
 
 // appendDynamicTools 添加动态工具（MCP 客户端工具与记忆整合工具）
 func appendDynamicTools(apiType string, tools interface{}) interface{} {
-	switch apiType {
-	case "openai", "ollama":
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		// 添加 MCP 客户端工具
-		if globalMCPClientManager != nil {
-			mcpTools := globalMCPClientManager.GetAllTools()
-			toolList = append(toolList, mcpTools...)
-		}
-		// 添加记忆整合工具
-		toolList = append(toolList, GetConsolidationTools()...)
-		return toolList
-	default: // anthropic
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok {
-			return tools
-		}
-		// 添加 MCP 客户端工具
-		if globalMCPClientManager != nil {
-			mcpTools := globalMCPClientManager.GetAllTools()
-			toolList = append(toolList, mcpTools...)
-		}
-		// 添加记忆整合工具
-		toolList = append(toolList, GetConsolidationTools()...)
-		return toolList
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
 	}
+
+	// 获取动态工具（OpenAI 格式）
+	var dynamicTools []map[string]interface{}
+	if globalMCPClientManager != nil {
+		dynamicTools = append(dynamicTools, globalMCPClientManager.GetAllTools()...)
+	}
+	dynamicTools = append(dynamicTools, GetConsolidationTools()...)
+
+	// 如果是 Anthropic 格式，需要转换工具格式
+	if apiType == "anthropic" {
+		dynamicTools = convertToolsToAnthropic(dynamicTools)
+	}
+
+	// 添加动态工具
+	toolList = append(toolList, dynamicTools...)
+
+	return toolList
 }

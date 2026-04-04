@@ -306,6 +306,47 @@ Example OpenCLI alternative:
 				},
 			},
 		},
+		// ========== OpenCLI 工具 ==========
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name": "opencli",
+				"description": `Execute OpenCLI commands. OpenCLI is available on this system!
+
+✅ USE THIS FOR ALL WEB-RELATED TASKS:
+• Web browsing and page reading
+• Web searching (Google, Bing, etc.)
+• Website automation (click, type, fill forms)
+• Interacting with specific websites (YouTube, GitHub, etc.)
+• Any task that would have used browser_* tools
+
+✅ OPENCLI ADVANTAGES:
+• Better session persistence
+• Cookie reuse
+• More reliable web automation
+• Rich adapter ecosystem
+
+⚠️ FOR DOWNLOADING FILES:
+If you need to download a file (not just browse), use curl/wget via the 'shell' tool instead.
+
+Example commands:
+- opencli web read https://example.com
+- opencli google search keyword
+- opencli doctor
+- opencli --help`,
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{
+							"type":        "string",
+							"description": "The OpenCLI command to execute (without 'opencli' prefix). Example: 'web read https://example.com', 'google search keyword', '--help'",
+						},
+					},
+					"required":             []string{"command"},
+					"additionalProperties": false,
+				},
+			},
+		},
 		{
 			"type": "function",
 			"function": map[string]interface{}{

@@ -41,7 +41,11 @@ type EmailConfig struct {
 
 // 浏览器配置
 type BrowserConfig struct {
-    UserMode bool `toon:"UserMode" json:"UserMode"`
+    UserMode        bool `toon:"UserMode" json:"UserMode"`
+    Headless        bool `toon:"Headless" json:"Headless"`
+    DisableGPU      bool `toon:"DisableGPU" json:"DisableGPU"`
+    DisableDevTools bool `toon:"DisableDevTools" json:"DisableDevTools"`
+    NoSandbox       bool `toon:"NoSandbox" json:"NoSandbox"`
 }
 
 // Telegram配置
@@ -328,6 +332,16 @@ func loadConfig() (Config, error) {
         config.Tools.SmartShell.DefaultWakeMins = 5
     }
     // Shell 和 ShellDelayed 默认禁用（零值 false 即为禁用）
+
+    // 设置浏览器配置默认值
+    // 默认启用用户模式，禁用无头模式
+    config.BrowserConfig.UserMode = true
+    config.BrowserConfig.Headless = false
+    // 默认在无头模式下才禁用 GPU 和开发者工具
+    config.BrowserConfig.DisableGPU = false
+    config.BrowserConfig.DisableDevTools = false
+    // 默认启用 NoSandbox 以提高兼容性
+    config.BrowserConfig.NoSandbox = true
 
     // 设置系统信息配置默认值
     // 默认启用系统信息，包含 CPU 和内存信息，不包含 GPU

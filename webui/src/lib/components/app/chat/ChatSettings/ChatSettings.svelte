@@ -159,6 +159,26 @@
                                         key: SETTINGS_KEYS.BROWSER_USER_MODE,
                                         label: '用户模式',
                                         type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_HEADLESS,
+                                        label: '无头模式',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_DISABLE_GPU,
+                                        label: '禁用 GPU',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_DISABLE_DEV_TOOLS,
+                                        label: '禁用开发者工具',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_NO_SANDBOX,
+                                        label: '禁用沙箱',
+                                        type: SettingsFieldType.CHECKBOX
                                 }
                         ]
                 },

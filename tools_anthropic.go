@@ -184,6 +184,44 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"additionalProperties": false,
 			},
 		},
+		// ========== OpenCLI 工具 ==========
+		{
+			"name": "opencli",
+			"description": `Execute OpenCLI commands. OpenCLI is available on this system!
+
+✅ USE THIS FOR ALL WEB-RELATED TASKS:
+• Web browsing and page reading
+• Web searching (Google, Bing, etc.)
+• Website automation (click, type, fill forms)
+• Interacting with specific websites (YouTube, GitHub, etc.)
+• Any task that would have used browser_* tools
+
+✅ OPENCLI ADVANTAGES:
+• Better session persistence
+• Cookie reuse
+• More reliable web automation
+• Rich adapter ecosystem
+
+⚠️ FOR DOWNLOADING FILES:
+If you need to download a file (not just browse), use curl/wget via the 'shell' tool instead.
+
+Example commands:
+- opencli web read https://example.com
+- opencli google search keyword
+- opencli doctor
+- opencli --help`,
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{
+						"type":        "string",
+						"description": "The OpenCLI command to execute (without 'opencli' prefix). Example: 'web read https://example.com', 'google search keyword', '--help'",
+					},
+				},
+				"required":             []string{"command"},
+				"additionalProperties": false,
+			},
+		},
 		{
 			"name":        "browser_visit",
 			"description": "Visit a URL and extract the text content from the web page. Useful for reading article content, product descriptions, etc.",

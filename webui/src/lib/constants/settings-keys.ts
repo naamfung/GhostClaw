@@ -28,5 +28,9 @@ export const SETTINGS_KEYS = {
         // Security
         ENABLE_SSRF_PROTECTION: 'enableSSRFProtection',
         // Browser
-        BROWSER_USER_MODE: 'browserUserMode'
+        BROWSER_USER_MODE: 'browserUserMode',
+        BROWSER_HEADLESS: 'browserHeadless',
+        BROWSER_DISABLE_GPU: 'browserDisableGPU',
+        BROWSER_DISABLE_DEV_TOOLS: 'browserDisableDevTools',
+        BROWSER_NO_SANDBOX: 'browserNoSandbox'
 } as const;

@@ -33,6 +33,10 @@ var (
 
         BlockDangerousCommands bool
         UserModeBrowser        bool
+        HeadlessBrowser        bool
+        DisableGPUBrowser      bool
+        DisableDevToolsBrowser bool
+        NoSandboxBrowser       bool
         IsDebug                bool
 
         globalAPIConfig      APIConfig
@@ -353,6 +357,10 @@ func main() {
         thinking = config.APIConfig.Thinking
         BlockDangerousCommands = config.APIConfig.BlockDangerousCommands
         UserModeBrowser = config.BrowserConfig.UserMode
+        HeadlessBrowser = config.BrowserConfig.Headless
+        DisableGPUBrowser = config.BrowserConfig.DisableGPU
+        DisableDevToolsBrowser = config.BrowserConfig.DisableDevTools
+        NoSandboxBrowser = config.BrowserConfig.NoSandbox
         globalEmailConfig = config.EmailConfig
         globalTelegramConfig = config.TelegramConfig
         globalDiscordConfig = config.DiscordConfig

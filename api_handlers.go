@@ -250,7 +250,11 @@ func saveConfigToFile() error {
 			Listen: "0.0.0.0:10086",
 		},
 		BrowserConfig: BrowserConfig{
-			UserMode: UserModeBrowser,
+			UserMode:        UserModeBrowser,
+			Headless:        HeadlessBrowser,
+			DisableGPU:      DisableGPUBrowser,
+			DisableDevTools: DisableDevToolsBrowser,
+			NoSandbox:       NoSandboxBrowser,
 		},
 		DefaultRole: defaultRole,
 		Timeout:     globalTimeoutConfig,

@@ -25,7 +25,11 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         // security settings
         enableSSRFProtection: true,
         // browser settings
-        browserUserMode: false
+        browserUserMode: true,
+        browserHeadless: false,
+        browserDisableGPU: false,
+        browserDisableDevTools: false,
+        browserNoSandbox: true
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -54,6 +58,14 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
                 '启用 SSRF 防护，阻止对内部网络地址的请求。',
         browserUserMode:
                 '启用浏览器用户模式，使用普通用户权限运行浏览器操作。',
+        browserHeadless:
+                '启用无头模式，在后台运行浏览器而不显示窗口。',
+        browserDisableGPU:
+                '禁用 GPU 加速，可在无头模式下节省资源。',
+        browserDisableDevTools:
+                '禁用开发者工具，可在无头模式下禁用调试功能。',
+        browserNoSandbox:
+                '禁用沙箱，提高兼容性但降低安全性（推荐启用）。',
         // Timeout settings
         timeoutShell: 'Shell 命令执行的超时时间（秒）。超时后命令将被强制终止。',
         timeoutHttp: 'HTTP 请求的超时时间（秒）。包括 API 调用和网络请求。',

@@ -156,10 +156,18 @@ func launchBrowserRod() (*rod.Browser, error) {
 		// 创建普通启动器
 		l = launcher.New()
 		// 设置浏览器启动选项
-		l.Headless(true)
-		l.NoSandbox(true)
-		l.Set("disable-gpu", "true")
-		l.Set("disable-dev-tools", "true")
+		if HeadlessBrowser {
+			l.Headless(true)
+		}
+		if DisableGPUBrowser {
+			l.Set("disable-gpu", "true")
+		}
+		if DisableDevToolsBrowser {
+			l.Set("disable-dev-tools", "true")
+		}
+		if NoSandboxBrowser {
+			l.NoSandbox(true)
+		}
 
 		// 如果检测到浏览器路径，指定可执行文件
 		if browserPath != "" {

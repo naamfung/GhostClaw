@@ -407,7 +407,13 @@ func BuildToolSectionForRole(role *Role) string {
 		availableTools := make([]string, 0)
 		for _, tool := range category.tools {
 			if role.IsToolAllowed(tool.name) {
-				availableTools = append(availableTools, fmt.Sprintf("- **%s**：%s", tool.name, tool.description))
+				// 动态修改 browser_search 工具的描述，在 opencli 可用时不标记为备用
+				toolDesc := tool.description
+				if tool.name == "browser_search" && isOpenCLIAvailable() {
+					// 移除备用标记，因为 browser_search 仍然可用
+					toolDesc = strings.Replace(toolDesc, "（备用：如系统有 OpenCLI，优先用 shell 执行 opencli 命令）", "", 1)
+				}
+				availableTools = append(availableTools, fmt.Sprintf("- **%s**：%s", tool.name, toolDesc))
 			}
 		}
 		if len(availableTools) > 0 {
@@ -418,6 +424,16 @@ func BuildToolSectionForRole(role *Role) string {
 	}
 
 	sb.WriteString("**提示**：每个工具都有详细的参数说明。调用时系统会显示具体用法。\n\n")
+
+	// 关于 curl 的提示（仅在 opencli 可用时显示）
+	if isOpenCLIAvailable() {
+		sb.WriteString("## 关于 curl 使用\n\n")
+		sb.WriteString("⚠️ **重要**：如果并非下载文件，而是为了访问网页、搜索信息或进行网页自动化操作，**请优先使用 opencli 工具**或通过 shell 运行 opencli 命令，而不是使用 curl！\n\n")
+		sb.WriteString("curl/wget 仅适用于：\n")
+		sb.WriteString("- 直接下载文件\n")
+		sb.WriteString("- 简单的 HTTP API 请求（非网页浏览）\n\n")
+		sb.WriteString("所有网页浏览、搜索和交互任务请使用 opencli 工具。\n\n")
+	}
 
 	// 添加 OpenCLI 工具优先级说明
 	sb.WriteString("## 工具使用优先级\n\n")

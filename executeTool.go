@@ -1588,6 +1588,42 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 			}
 		}
 
+	case "opencli":
+		command, ok := argsMap["command"].(string)
+		if !ok || command == "" {
+			content = "Error: Invalid or empty command"
+			status = TaskStatusFailed
+		} else {
+			// 构建完整的 opencli 命令
+			fullCommand := "opencli " + command
+			result := runShellWithTimeout(ctx, fullCommand, false, false)
+			
+			if result.ConfirmRequired {
+				var confirmResult strings.Builder
+				confirmResult.WriteString("⚠️ **确认请求**\n\n")
+				confirmResult.WriteString(result.ConfirmMessage)
+				confirmResult.WriteString("\n\n---\n")
+				confirmResult.WriteString("要强制执行此命令，请使用: `opencli(command=\"...\")`\n")
+				
+				content = confirmResult.String()
+				status = TaskStatusSuccess
+			} else if result.Err != nil {
+				if ctx.Err() == context.Canceled {
+					return CancelToolResult(toolID, CancelByUser, "Command cancelled by user", toolName)
+				} else {
+					content = fmt.Sprintf("Error: %v", result.Err)
+					status = TaskStatusFailed
+				}
+			} else {
+				content = result.Stdout
+				if result.ExitCode != 0 && result.Stderr != "" {
+					content += "\n" + result.Stderr
+					status = TaskStatusFailed
+				}
+			}
+			fmt.Println(content)
+		}
+
 	default:
 		if strings.HasPrefix(toolName, "mcp_") && globalMCPClientManager != nil {
 			result, err := globalMCPClientManager.CallTool(ctx, toolName, argsMap)
