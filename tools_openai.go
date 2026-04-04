@@ -255,11 +255,19 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 			},
 		},
 		// ========== 基础浏览器工具 ==========
+		// 注意：这些浏览器工具是备选方案。如果系统安装了 OpenCLI，应优先使用 OpenCLI 执行网页操作。
 		{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":        "browser_search",
-				"description": "Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.",
+				"name": "browser_search",
+				"description": `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
+
+⚠️ PRIORITY NOTICE: If OpenCLI is available on the system, prefer using OpenCLI commands via the 'shell' tool instead of this built-in browser tool.
+OpenCLI provides better session persistence and more reliable web automation.
+
+Example OpenCLI alternative:
+- shell: "opencli search <keyword>" (if adapter available)
+- shell: "opencli open https://www.baidu.com/s?wd=<keyword>"`,
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -276,8 +284,15 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 		{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":        "browser_visit",
-				"description": "Visit a URL and extract the text content from the web page. Useful for reading article content, product descriptions, etc.",
+				"name": "browser_visit",
+				"description": `Visit a URL and extract the text content from the web page. Useful for reading article content, product descriptions, etc.
+
+⚠️ PRIORITY NOTICE: If OpenCLI is available on the system, prefer using OpenCLI commands via the 'shell' tool instead of this built-in browser tool.
+OpenCLI provides better session persistence, cookie reuse, and more reliable web automation.
+
+Example OpenCLI alternative:
+- shell: "opencli open <url>"
+- shell: "opencli <adapter> <command>" (e.g., "opencli hackernews top --limit 5")`,
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
