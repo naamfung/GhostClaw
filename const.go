@@ -429,7 +429,7 @@ func BuildToolSectionForRole(role *Role) string {
 		sb.WriteString("- **禁用说明**：内置 browser 工具已被禁用，请勿调用\n\n")
 		sb.WriteString("OpenCLI 使用示例：\n")
 		sb.WriteString("- 访问网页：`shell: \"opencli web read https://example.com\"`\n")
-		sb.WriteString("- Google 搜索：`shell: \"opencli google search 关键词\"`\n")
+		sb.WriteString("- 咇站搜索：`shell: \"opencli bilibili search 关键词\"`\n")
 		sb.WriteString("- 强烈建议先睇命令帮助：`shell: \"opencli --help\"`\n")
 		sb.WriteString("- 或使用 skill 中的opencli指南。\n\n")
 		sb.WriteString("OpenCLI 优势：支持浏览器会话重用、更好的登录状态保持、更丰富的适配器生态。\n")
