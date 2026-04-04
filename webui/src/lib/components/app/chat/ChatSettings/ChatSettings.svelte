@@ -179,6 +179,11 @@
                                         key: SETTINGS_KEYS.BROWSER_NO_SANDBOX,
                                         label: '禁用沙箱',
                                         type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.BROWSER_DISABLE_TOOLS,
+                                        label: '禁用内置浏览器工具',
+                                        type: SettingsFieldType.CHECKBOX
                                 }
                         ]
                 },

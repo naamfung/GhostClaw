@@ -32,5 +32,6 @@ export const SETTINGS_KEYS = {
         BROWSER_HEADLESS: 'browserHeadless',
         BROWSER_DISABLE_GPU: 'browserDisableGPU',
         BROWSER_DISABLE_DEV_TOOLS: 'browserDisableDevTools',
-        BROWSER_NO_SANDBOX: 'browserNoSandbox'
+        BROWSER_NO_SANDBOX: 'browserNoSandbox',
+        BROWSER_DISABLE_TOOLS: 'browserDisableTools'
 } as const;

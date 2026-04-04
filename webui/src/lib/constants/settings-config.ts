@@ -29,7 +29,8 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         browserHeadless: false,
         browserDisableGPU: false,
         browserDisableDevTools: false,
-        browserNoSandbox: true
+        browserNoSandbox: true,
+        browserDisableTools: false
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -66,6 +67,8 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
                 '禁用开发者工具，可在无头模式下禁用调试功能。',
         browserNoSandbox:
                 '禁用沙箱，提高兼容性但降低安全性（推荐启用）。',
+        browserDisableTools:
+                '当 opencli 可用时，禁用内置浏览器工具，强制使用 opencli 进行网页操作。',
         // Timeout settings
         timeoutShell: 'Shell 命令执行的超时时间（秒）。超时后命令将被强制终止。',
         timeoutHttp: 'HTTP 请求的超时时间（秒）。包括 API 调用和网络请求。',
