@@ -48,8 +48,8 @@ func isOpenCLIAvailable() bool {
 		Everything looks good!
 		root@~/GhostClaw <master>#
 	*/
-	// 尝试运行 opencli doctor 命令
-	cmd := exec.Command("opencli", "doctor")
+	// 尝试运行 opencli doctor --no-live 命令，跳过实时浏览器连接测试
+	cmd := exec.Command("opencli", "doctor", "--no-live")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// 命令执行失败，opencli 不可用

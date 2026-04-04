@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "max_suggestions": 10,
+  "min_improvement_score": 0.5,
+  "optimization_interval": 24,
+  "excluded_tools": []
+}
