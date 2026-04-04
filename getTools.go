@@ -1,5 +1,10 @@
 package main
 
+import (
+	"log"
+	"strings"
+)
+
 // getTools 根据 API 类型返回对应格式的工具定义
 func getTools(apiType string) interface{} {
 	switch apiType {
@@ -98,8 +103,14 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		disabledTools["shell_delayed_remove"] = true
 	}
 
+	// 检查 opencli 是否可用，如果可用，禁用所有 browser_ 前缀的工具
+	if isOpenCLIAvailable() {
+		log.Println("[Tools] opencli is available, disabling browser_* tools")
+		// 这里我们会在后续的过滤逻辑中处理 browser_ 前缀的工具
+	}
+
 	// 如果未有需要过滤的工具，直接返回
-	if len(disabledTools) == 0 {
+	if len(disabledTools) == 0 && !isOpenCLIAvailable() {
 		return tools
 	}
 
@@ -113,7 +124,9 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		filtered := make([]map[string]interface{}, 0, len(toolList))
 		for _, tool := range toolList {
 			name := getToolName(tool)
-			if !disabledTools[name] {
+			// 检查是否需要禁用
+			shouldDisable := disabledTools[name] || (isOpenCLIAvailable() && strings.HasPrefix(name, "browser_"))
+			if !shouldDisable {
 				filtered = append(filtered, tool)
 			}
 		}
@@ -127,7 +140,9 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		filtered := make([]map[string]interface{}, 0, len(toolList))
 		for _, tool := range toolList {
 			name := getToolName(tool)
-			if !disabledTools[name] {
+			// 检查是否需要禁用
+			shouldDisable := disabledTools[name] || (isOpenCLIAvailable() && strings.HasPrefix(name, "browser_"))
+			if !shouldDisable {
 				filtered = append(filtered, tool)
 			}
 		}
