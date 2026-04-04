@@ -522,6 +522,47 @@ func InitFeedbackCollector(dataDir string) {
 	}
 }
 
+// GetRatingDistribution 获取评分分布数据
+func (fc *FeedbackCollector) GetRatingDistribution() map[int]int {
+	fc.mu.RLock()
+	defer fc.mu.RUnlock()
+
+	records, err := fc.loadAllFeedback()
+	if err != nil {
+		return make(map[int]int)
+	}
+
+	ratingDistribution := make(map[int]int)
+	for _, record := range records {
+		if record.Rating >= 1 && record.Rating <= 5 {
+			ratingDistribution[record.Rating]++
+		}
+	}
+
+	return ratingDistribution
+}
+
+// GetDailyRatings 获取每日评分数据
+func (fc *FeedbackCollector) GetDailyRatings() map[string][]int {
+	fc.mu.RLock()
+	defer fc.mu.RUnlock()
+
+	records, err := fc.loadAllFeedback()
+	if err != nil {
+		return make(map[string][]int)
+	}
+
+	dailyRatings := make(map[string][]int)
+	for _, record := range records {
+		date := record.Timestamp.Format("2006-01-02")
+		if record.Rating >= 1 && record.Rating <= 5 {
+			dailyRatings[date] = append(dailyRatings[date], record.Rating)
+		}
+	}
+
+	return dailyRatings
+}
+
 // GetFeedbackCollector 获取反馈收集器
 func GetFeedbackCollector() *FeedbackCollector {
 	return globalFeedbackCollector

@@ -375,6 +375,53 @@ func InitTrajectoryManager(dataDir string) {
 	}
 }
 
+// GetTrajectories 获取轨迹数据
+func (tm *TrajectoryManager) GetTrajectories() ([]Trajectory, error) {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	successTrajectories, _ := tm.loadTrajectories(tm.successFile)
+	failedTrajectories, _ := tm.loadTrajectories(tm.failedFile)
+	allTrajectories := append(successTrajectories, failedTrajectories...)
+
+	return allTrajectories, nil
+}
+
+// GetToolSuccessRates 获取工具成功率数据
+func (tm *TrajectoryManager) GetToolSuccessRates() map[string]float64 {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	trajectories, err := tm.GetTrajectories()
+	if err != nil {
+		return make(map[string]float64)
+	}
+
+	toolSuccessCount := make(map[string]int)
+	toolTotalCount := make(map[string]int)
+
+	for _, t := range trajectories {
+		for _, tc := range t.ToolCalls {
+			toolTotalCount[tc.FunctionName]++
+			if tc.Success {
+				toolSuccessCount[tc.FunctionName]++
+			}
+		}
+	}
+
+	toolSuccessRates := make(map[string]float64)
+	for tool, total := range toolTotalCount {
+		success := toolSuccessCount[tool]
+		if total > 0 {
+			toolSuccessRates[tool] = float64(success) / float64(total)
+		} else {
+			toolSuccessRates[tool] = 0.0
+		}
+	}
+
+	return toolSuccessRates
+}
+
 // GetTrajectoryManager 获取轨迹管理器
 func GetTrajectoryManager() *TrajectoryManager {
 	return globalTrajectoryManager

@@ -102,6 +102,7 @@ func (w *cliLogWriter) Write(p []byte) (n int, err error) {
 // /logs 切回 Log 模式（释放终端），/exit 退出程序
 func runCMDMode(ctx context.Context, session *GlobalSession) {
         cmdModeActive = true
+        fmt.Println("\n")
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("  GhostClaw REPL 模式")
         fmt.Println("  输入消息与模型对话")
@@ -204,6 +205,7 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 // 后台 goroutine 监听 stdin，按 / 键即刻切换到 REPL 模式（无需回车）
 // 如果 stdin 不是终端（如后台运行/管道），则仅阻塞等待 ctx 取消
 func runLogMode(ctx context.Context, session *GlobalSession) {
+        fmt.Println("\n")
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("  GhostClaw Log 模式（默认）")
         fmt.Println("  终端仅显示程序日志")

@@ -269,13 +269,20 @@ func (ie *InsightsEngine) computeToolUsage(startTime time.Time) ToolUsageStats {
 		toolUsage = val
 	}
 
+	// 获取工具成功率数据
+	toolSuccessRates := ie.trajectoryManager.GetToolSuccessRates()
+
 	// 转换为排序的工具使用项
 	var toolItems []ToolUsageItem
 	for name, count := range toolUsage {
+		successRate := 0.0
+		if rate, ok := toolSuccessRates[name]; ok {
+			successRate = rate
+		}
 		toolItems = append(toolItems, ToolUsageItem{
 			Name:        name,
 			Count:       count,
-			SuccessRate: 0.0, // 初始化为 0，实际需要从轨迹中提取
+			SuccessRate: successRate,
 		})
 	}
 
@@ -289,36 +296,50 @@ func (ie *InsightsEngine) computeToolUsage(startTime time.Time) ToolUsageStats {
 		toolItems = toolItems[:10]
 	}
 
-	successRates := make(map[string]float64)
-	// 初始化成功率
-	for name := range toolUsage {
-		successRates[name] = 0.0
-	}
-
 	return ToolUsageStats{
 		TopTools:     toolItems,
-		SuccessRates: successRates,
+		SuccessRates: toolSuccessRates,
 	}
 }
 
 // computeActivityPattern 计算活动模式
 func (ie *InsightsEngine) computeActivityPattern(startTime time.Time) ActivityPattern {
+	if ie.trajectoryManager == nil {
+		return ActivityPattern{}
+	}
+
 	// 从轨迹数据中提取活动模式
-	// 由于无法直接访问轨迹数据，我们使用默认值
-	// 实际实现时，需要在 TrajectoryManager 中添加相应的方法
+	trajectories, err := ie.trajectoryManager.GetTrajectories()
+	if err != nil {
+		trajectories = []Trajectory{}
+	}
 
 	byDay := make(map[string]int)
 	byHour := make(map[int]int)
 
-	// 生成过去7天的数据
-	for i := 0; i < 7; i++ {
-		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
-		byDay[date] = 0
+	// 统计每天的会话数
+	for _, t := range trajectories {
+		if t.Timestamp.After(startTime) {
+			date := t.Timestamp.Format("2006-01-02")
+			byDay[date]++
+
+			hour := t.Timestamp.Hour()
+			byHour[hour]++
+		}
 	}
 
-	// 生成24小时的数据
-	for i := 0; i < 24; i++ {
-		byHour[i] = 0
+	// 如果没有数据，使用默认值
+	if len(byDay) == 0 {
+		// 生成过去7天的数据
+		for i := 0; i < 7; i++ {
+			date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+			byDay[date] = 0
+		}
+
+		// 生成24小时的数据
+		for i := 0; i < 24; i++ {
+			byHour[i] = 0
+		}
 	}
 
 	// 找出峰值小时
@@ -348,10 +369,13 @@ func (ie *InsightsEngine) computeFeedbackStats(startTime time.Time) FeedbackStat
 
 	stats := ie.feedbackCollector.GetFeedbackStats()
 
-	ratingDistribution := make(map[int]int)
+	// 从反馈收集器获取真实的评分分布
+	ratingDistribution := ie.feedbackCollector.GetRatingDistribution()
 	// 初始化评分分布
 	for i := 1; i <= 5; i++ {
-		ratingDistribution[i] = 0
+		if _, ok := ratingDistribution[i]; !ok {
+			ratingDistribution[i] = 0
+		}
 	}
 
 	byCategory := make(map[string]int)
@@ -369,17 +393,25 @@ func (ie *InsightsEngine) computeFeedbackStats(startTime time.Time) FeedbackStat
 	// 生成评分趋势
 	var trend []RatingTrend
 	// 从反馈收集器获取真实数据
-	if dailyTrend, ok := stats["daily_trend"].(map[string]int); ok {
+	dailyRatings := ie.feedbackCollector.GetDailyRatings()
+	if len(dailyRatings) > 0 {
 		// 按日期排序
-		dates := make([]string, 0, len(dailyTrend))
-		for date := range dailyTrend {
+		dates := make([]string, 0, len(dailyRatings))
+		for date := range dailyRatings {
 			dates = append(dates, date)
 		}
 		sort.Strings(dates)
 
 		for _, date := range dates {
-			// 使用平均评分 0，实际需要从轨迹中提取
-			trend = append(trend, RatingTrend{Date: date, Rating: 0})
+			ratings := dailyRatings[date]
+			if len(ratings) > 0 {
+				total := 0
+				for _, r := range ratings {
+					total += r
+				}
+				average := float64(total) / float64(len(ratings))
+				trend = append(trend, RatingTrend{Date: date, Rating: average})
+			}
 		}
 	}
 
@@ -402,39 +434,156 @@ func (ie *InsightsEngine) computeFeedbackStats(startTime time.Time) FeedbackStat
 func (ie *InsightsEngine) computeTopSessions(startTime time.Time) []TopSession {
 	var topSessions []TopSession
 
-	// 由于无法直接访问轨迹数据，我们使用空数组
-	// 实际实现时，需要在 TrajectoryManager 中添加相应的方法
+	if ie.trajectoryManager == nil {
+		return topSessions
+	}
+
+	// 从轨迹数据中提取顶级会话
+	trajectories, err := ie.trajectoryManager.GetTrajectories()
+	if err != nil {
+		return topSessions
+	}
+
+	// 过滤出 startTime 之后的轨迹
+	var filteredTrajectories []Trajectory
+	for _, t := range trajectories {
+		if t.Timestamp.After(startTime) {
+			filteredTrajectories = append(filteredTrajectories, t)
+		}
+	}
+
+	// 按消息数和工具调用数排序
+	sort.Slice(filteredTrajectories, func(i, j int) bool {
+		// 首先按消息数排序
+		if len(filteredTrajectories[i].Messages) != len(filteredTrajectories[j].Messages) {
+			return len(filteredTrajectories[i].Messages) > len(filteredTrajectories[j].Messages)
+		}
+		// 消息数相同则按工具调用数排序
+		return len(filteredTrajectories[i].ToolCalls) > len(filteredTrajectories[j].ToolCalls)
+	})
+
+	// 只取前5个
+	limit := 5
+	if len(filteredTrajectories) < limit {
+		limit = len(filteredTrajectories)
+	}
+
+	for i := 0; i < limit; i++ {
+		t := filteredTrajectories[i]
+		topSessions = append(topSessions, TopSession{
+			ID:            t.ID,
+			Timestamp:     t.Timestamp,
+			MessageCount:  len(t.Messages),
+			ToolCallCount: len(t.ToolCalls),
+			Duration:      t.Duration,
+			Rating:        t.UserFeedback,
+			Model:         t.ModelUsed,
+		})
+	}
 
 	return topSessions
 }
 
 // generateRecommendations 生成改进建议
 func (ie *InsightsEngine) generateRecommendations(startTime time.Time) []Recommendation {
-	recommendations := []Recommendation{
-		{
-			Type:        "tool_usage",
-			Title:       "优化工具使用策略",
-			Description: "根据分析，某些工具的使用频率较低。建议在系统提示中添加更多工具使用示例，提高工具调用的准确性。",
-			Priority:    "medium",
-		},
-		{
-			Type:        "feedback",
-			Title:       "增加反馈收集频率",
-			Description: "当前反馈收集率较低，建议在更多任务完成时询问用户反馈，以获取更多改进数据。",
-			Priority:    "medium",
-		},
-		{
-			Type:        "model",
-			Title:       "优化模型选择策略",
-			Description: "根据使用模式，建议为不同类型的任务选择合适的模型，以提高效率和准确性。",
+	recommendations := []Recommendation{}
+
+	// 基于工具使用情况生成建议
+	if ie.trajectoryManager != nil {
+		toolSuccessRates := ie.trajectoryManager.GetToolSuccessRates()
+		lowSuccessTools := []string{}
+		for tool, rate := range toolSuccessRates {
+			if rate < 0.5 {
+				lowSuccessTools = append(lowSuccessTools, tool)
+			}
+		}
+
+		if len(lowSuccessTools) > 0 {
+			recommendations = append(recommendations, Recommendation{
+				Type:        "tool_usage",
+				Title:       "优化低成功率工具",
+				Description: "分析显示以下工具的成功率较低：" + strings.Join(lowSuccessTools, ", ") + "。建议优化这些工具的实现或使用方式。",
+				Priority:    "high",
+			})
+		}
+
+		// 基于轨迹数据生成建议
+		trajectories, err := ie.trajectoryManager.GetTrajectories()
+		if err == nil && len(trajectories) > 0 {
+			// 分析平均会话时长
+			totalDuration := 0
+			for _, t := range trajectories {
+				totalDuration += t.Duration
+			}
+			averageDuration := float64(totalDuration) / float64(len(trajectories))
+			if averageDuration > 600 { // 超过10分钟
+				recommendations = append(recommendations, Recommendation{
+					Type:        "performance",
+					Title:       "改善响应速度",
+					Description: "分析显示平均会话时长较长（超过10分钟），建议优化工具调用和模型响应时间，提高用户体验。",
+					Priority:    "high",
+				})
+			}
+
+			// 分析模型使用情况
+			modelUsage := make(map[string]int)
+			for _, t := range trajectories {
+				if t.ModelUsed != "" {
+					modelUsage[t.ModelUsed]++
+				}
+			}
+			if len(modelUsage) > 1 {
+				recommendations = append(recommendations, Recommendation{
+					Type:        "model",
+					Title:       "优化模型选择策略",
+					Description: "系统使用了多种模型，建议为不同类型的任务选择合适的模型，以提高效率和准确性。",
+					Priority:    "medium",
+				})
+			}
+		}
+	}
+
+	// 基于反馈数据生成建议
+	if ie.feedbackCollector != nil {
+		ratingDistribution := ie.feedbackCollector.GetRatingDistribution()
+		lowRatings := 0
+		totalRatings := 0
+		for rating, count := range ratingDistribution {
+			totalRatings += count
+			if rating <= 2 {
+				lowRatings += count
+			}
+		}
+
+		if totalRatings > 0 && float64(lowRatings)/float64(totalRatings) > 0.2 {
+			recommendations = append(recommendations, Recommendation{
+				Type:        "feedback",
+				Title:       "提高服务质量",
+				Description: "分析显示低评分比例较高，建议关注用户反馈，提高服务质量。",
+				Priority:    "high",
+			})
+		}
+
+		// 检查反馈收集率
+		dailyRatings := ie.feedbackCollector.GetDailyRatings()
+		if len(dailyRatings) < 7 {
+			recommendations = append(recommendations, Recommendation{
+				Type:        "feedback",
+				Title:       "增加反馈收集频率",
+				Description: "当前反馈收集率较低，建议在更多任务完成时询问用户反馈，以获取更多改进数据。",
+				Priority:    "medium",
+			})
+		}
+	}
+
+	// 添加默认建议（如果没有其他建议）
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, Recommendation{
+			Type:        "general",
+			Title:       "持续优化系统性能",
+			Description: "建议定期分析系统使用数据，持续优化系统性能和用户体验。",
 			Priority:    "low",
-		},
-		{
-			Type:        "performance",
-			Title:       "改善响应速度",
-			Description: "分析显示某些会话持续时间较长，建议优化工具调用和模型响应时间，提高用户体验。",
-			Priority:    "high",
-		},
+		})
 	}
 
 	return recommendations

@@ -51,8 +51,8 @@ func schemeEval(ctx context.Context, expr string) (string, error) {
         // REPL 的 READ 只读一个 form，do 块可顺序执行多个 form 并返回最后一个结果
         wrappedExpr := "(do\n" + expr + "\n)"
 
-        // 5 秒超时
-        evalCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+        // 60 秒超时
+        evalCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
         defer cancel()
 
         startTime := time.Now()

@@ -274,7 +274,7 @@ func (c *MCPClient) sendRequestStdio(req JSONRPCRequest) (*JSONRPCResponse, erro
                 if err := json.Unmarshal([]byte(buffer.String()), &resp); err == nil {
                         return &resp, nil
                 }
-                // 如果还没收到完整的 JSON，继续读取
+                // 如果还未收到完整的 JSON，继续读取
                 // 简单判断：如果当前行是空行或已包含完整的括号，但解析失败则继续
         }
 }
