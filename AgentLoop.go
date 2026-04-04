@@ -12,9 +12,6 @@ import (
 
 const MaxHistoryMessages = 100
 
-// 工具调用配额（每个会话/任务）
-const MaxToolCallsPerSession = 50
-
 // AGENTIC_TAGS 用于前端解析工具调用的标记
 const (
     AgenticToolCallStart   = "<<<AGENTIC_TOOL_CALL_START>>>"
@@ -109,9 +106,6 @@ func getAllowedToolsList(role *Role) string {
 // AgentLoop 核心循环
 func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, baseURL, apiKey, modelID string,
     temperature float64, maxTokens int, stream bool, thinking bool) ([]Message, error) {
-
-    // 工具调用配额计数器
-    toolCallCount := 0
 
     // 初始化上下文压缩器
     compressor := NewContextCompressor()
@@ -722,15 +716,6 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 default:
                 }
 
-                // ========== 工具调用配额检查 ==========
-                toolCallCount++
-                if toolCallCount > MaxToolCallsPerSession {
-                    errMsg := fmt.Sprintf("⚠️ 已达到工具调用上限（%d次），任务已自动停止。请考虑简化任务或使用 /new 开始新对话。", MaxToolCallsPerSession)
-                    ch.WriteChunk(StreamChunk{Error: errMsg, Done: true})
-                    return messages, fmt.Errorf("tool call quota exceeded")
-                }
-                // ===================================
-
                 if call.Name == "" {
                     results = append(results, NewToolResultMessage(call.ID, "Error: Invalid tool type or function field", TaskStatusFailed, ""))
                     continue
@@ -843,15 +828,6 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                             results = append(results, NewToolResultMessage(toolID, "Error: Invalid tool use fields", TaskStatusFailed, toolName))
                             continue
                         }
-
-                        // ========== 工具调用配额检查 ==========
-                        toolCallCount++
-                        if toolCallCount > MaxToolCallsPerSession {
-                            errMsg := fmt.Sprintf("⚠️ 已达到工具调用上限（%d次），任务已自动停止。请考虑简化任务或使用 /new 开始新对话。", MaxToolCallsPerSession)
-                            ch.WriteChunk(StreamChunk{Error: errMsg, Done: true})
-                            return messages, fmt.Errorf("tool call quota exceeded")
-                        }
-                        // ===================================
 
                         if hookManager != nil && hookManager.IsEnabled() {
                             hookResult := hookManager.RunBeforeTool(ctx, 0, "", iteration, toolName, input)
@@ -1047,9 +1023,6 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             
             // 判断对话是否成功完成
             success := true
-            if toolCallCount > MaxToolCallsPerSession {
-                success = false
-            }
             
             // 记录轨迹
             globalTrajectoryManager.RecordTrajectory(messages, success, modelUsed, tokenUsage)

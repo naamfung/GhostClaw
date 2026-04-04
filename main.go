@@ -54,6 +54,7 @@ var (
         globalActorManager     *ActorManager
         globalStage            *Stage
         globalSkillManager     *SkillManager
+	globalSkillManagerV2   *SkillManagerV2
         globalTaskManager      *TaskManager
         globalMCPServer        *MCPServer
         globalUnifiedMemory    *UnifiedMemory
@@ -563,6 +564,16 @@ func main() {
                 log.Printf("Warning: failed to start skill manager: %v", err)
         } else {
                 log.Printf("Skill manager started. %d skills available.", globalSkillManager.Count())
+        }
+
+        // 初始化新的技能管理器 V2（分层加载 + SQLite 索引）
+        globalSkillManagerV2, err = NewSkillManagerV2(skillsDir, 100) // 缓存100个技能
+        if err != nil {
+                log.Printf("Warning: failed to start skill manager v2: %v", err)
+        } else {
+                // 获取统计信息
+                stats, _ := globalSkillManagerV2.EvolutionOptimizer().GetSkillStats()
+                log.Printf("Skill manager v2 started. Total skills: %d", stats["total_skills"])
         }
 
         // 初始化 MCP 服务器

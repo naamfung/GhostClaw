@@ -10,6 +10,7 @@ require (
 	github.com/go-rod/rod v0.116.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jig/lisp v0.2.24
 	github.com/lrstanley/girc v1.1.1
 	github.com/robfig/cron/v3 v3.0.1
@@ -21,6 +22,7 @@ require (
 	gorm.io/gorm v1.31.1
 	maunium.net/go/mautrix v0.26.4
 	mellium.im/sasl v0.3.2
+	mellium.im/xmlstream v0.15.4
 	mellium.im/xmpp v0.22.0
 )
 
@@ -55,7 +57,6 @@ require (
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
 	mellium.im/reader v0.1.0 // indirect
-	mellium.im/xmlstream v0.15.4 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect

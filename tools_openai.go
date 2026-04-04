@@ -1273,6 +1273,223 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				},
 			},
 		},
+		// ========== 技能管理工具 ==========
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_list",
+				"description": "列出所有可用的技能，支持分页、过滤、搜索和排序。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"page": map[string]interface{}{
+							"type":        "integer",
+							"description": "页码，从1开始，默认1",
+						},
+						"page_size": map[string]interface{}{
+							"type":        "integer",
+							"description": "每页数量，默认20，最大100",
+						},
+						"tags": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "标签过滤",
+						},
+						"search": map[string]interface{}{
+							"type":        "string",
+							"description": "全文搜索关键词",
+						},
+						"sort_by": map[string]interface{}{
+							"type":        "string",
+							"description": "排序字段：name, usage, quality, last_used",
+						},
+						"sort_order": map[string]interface{}{
+							"type":        "string",
+							"description": "排序方向：asc, desc",
+						},
+						"context": map[string]interface{}{
+							"type":        "string",
+							"description": "当前上下文，用于智能推荐排序",
+						},
+						"suggest_only": map[string]interface{}{
+							"type":        "boolean",
+							"description": "只返回推荐技能",
+						},
+					},
+					"required": []string{},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_create",
+				"description": "创建一个新的技能。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的显示名称",
+						},
+						"description": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的描述",
+						},
+						"system_prompt": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的系统提示",
+						},
+						"trigger_words": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "触发关键词列表",
+						},
+						"tags": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "标签列表",
+						},
+					},
+					"required": []string{"name", "system_prompt"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_delete",
+				"description": "删除指定的技能。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的名称",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_get",
+				"description": "获取指定技能的详细信息。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的名称",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_reload",
+				"description": "重新加载所有技能。",
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+					"required":   []string{},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_update",
+				"description": "更新技能的部分内容。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的名称",
+						},
+						"display_name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的显示名称",
+						},
+						"description": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的描述",
+						},
+						"system_prompt": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的系统提示",
+						},
+						"trigger_words": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "触发关键词列表",
+						},
+						"tags": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "标签列表",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_suggest",
+				"description": "根据当前上下文智能推荐相关技能。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"context": map[string]interface{}{
+							"type":        "string",
+							"description": "当前对话上下文",
+						},
+						"top_k": map[string]interface{}{
+							"type":        "integer",
+							"description": "返回推荐数量，默认5",
+						},
+					},
+					"required": []string{"context"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_stats",
+				"description": "获取技能系统的统计信息。",
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+					"required":   []string{},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "skill_evaluate",
+				"description": "评估指定技能的质量。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的名称",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
 		{
 			"type": "function",
 			"function": map[string]interface{}{

@@ -378,3 +378,77 @@ func (sm *SkillManager) DeleteSkill(name string) error {
         delete(sm.skills, name)
         return nil
 }
+
+// parseSkillContent 解析技能内容（字符串版本，用于 SkillManagerV2）
+func parseSkillContent(content string, path string) (*Skill, error) {
+	skill := &Skill{
+		FilePath:     path,
+		LastModified: time.Now(),
+	}
+
+	// 解析 Markdown 格式的技能文件
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	var currentSection string
+	var sectionContent strings.Builder
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// 检测标题
+		if strings.HasPrefix(line, "# ") {
+			// 主标题 -> 技能名称
+			skill.DisplayName = strings.TrimPrefix(line, "# ")
+			skill.Name = sanitizeName(skill.DisplayName)
+		} else if strings.HasPrefix(line, "## ") {
+			// 保存上一个 section
+			if currentSection != "" {
+				setSectionContent(skill, currentSection, sectionContent.String())
+			}
+			currentSection = strings.TrimPrefix(line, "## ")
+			sectionContent.Reset()
+		} else {
+			// 添加到当前 section
+			if currentSection != "" {
+				sectionContent.WriteString(line)
+				sectionContent.WriteString("\n")
+			}
+		}
+	}
+
+	// 保存最后一个 section
+	if currentSection != "" {
+		setSectionContent(skill, currentSection, sectionContent.String())
+	}
+
+	// 如果没有名称，使用文件名
+	if skill.Name == "" {
+		skill.Name = strings.TrimSuffix(filepath.Base(path), ".md")
+		skill.DisplayName = skill.Name
+	}
+
+	// 验证必要字段
+	if skill.SystemPrompt == "" && skill.Description == "" {
+		return nil, fmt.Errorf("skill %s has no description or system_prompt", skill.Name)
+	}
+
+	return skill, nil
+}
+
+// parseJSONArray 解析 JSON 数组字符串
+func parseJSONArray(jsonStr string) []string {
+	// 简单解析，移除 [ ] 和引号
+	jsonStr = strings.Trim(jsonStr, "[]")
+	if jsonStr == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(jsonStr, "\",\"")
+	var result []string
+	for _, part := range parts {
+		part = strings.Trim(part, "\"")
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}

@@ -818,23 +818,12 @@ func (lec *LoopEventCollector) GetEvents() []LoopDetectionEvent {
 	return result
 }
 
-// 需要循环检测的工具列表（只有列表中的工具才进行检测，避免误报）
+// 需要循环检测的工具黑名单列表（只在列表中的工具方进行检测）
 var monitoredTools = map[string]bool{
-	"shell":                  true,
-	"smart_shell":            true,
-	"shell_delayed":          true,
-	"ssh_exec":               true,
-	"read_file_line":         true,
-	"read_all_lines":         true,
-	"write_file_line":        true,
-	"write_all_lines":        true,
-	"browser_click":          true,
-	"browser_type":           true,
-	"browser_scroll":         true,
-	"browser_wait_element":   true,
-	"browser_extract_links":  true,
-	"browser_extract_images": true,
-	"browser_execute_js":     true,
+	"shell":         true,
+	"smart_shell":   true,
+	"shell_delayed": true,
+	"ssh_exec":      true,
 }
 
 // LoopDetector 循环检测器
@@ -846,8 +835,8 @@ type LoopDetector struct {
 	warningThreshold   int // 警告阈值（达到此次数则警告）
 	patternWindow      int // 模式检测窗口大小
 	mu                 sync.RWMutex
-	config             *LoopDetectionConfig   // 配置（可选）
-	eventCollector     *LoopEventCollector    // 事件收集器（可选）
+	config             *LoopDetectionConfig // 配置（可选）
+	eventCollector     *LoopEventCollector  // 事件收集器（可选）
 }
 
 // LoopToolCallRecord 循环检测用的工具调用记录
@@ -950,7 +939,7 @@ func NewLoopDetectorWithConfig(config *LoopDetectionConfig) *LoopDetector {
 // generateFingerprint 生成工具调用的指纹（用于快速比较）
 func generateFingerprint(toolName string, args map[string]interface{}) string {
 	// 对于shell命令，使用命令内容作为指纹
-	if toolName == "shell" || toolName == "smart_shell" {
+	if toolName == "shell" || toolName == "smart_shell" || toolName == "shell_delayed" {
 		if cmd, ok := args["command"].(string); ok {
 			return toolName + ":" + cmd
 		}
@@ -973,6 +962,21 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
 		}
 	}
 
+	// 对于写文件操作，使用文件名 + 行号/内容摘要作为指纹
+	if toolName == "write_file_line" {
+		if filename, ok := args["filename"].(string); ok {
+			if lineNum, ok := args["line_number"].(float64); ok {
+				return toolName + ":" + filename + ":" + fmt.Sprintf("%d", int(lineNum))
+			}
+			return toolName + ":" + filename
+		}
+	}
+	if toolName == "write_all_lines" {
+		if filename, ok := args["filename"].(string); ok {
+			return toolName + ":" + filename
+		}
+	}
+
 	// 对于浏览器操作，使用URL作为指纹的一部分
 	if strings.HasPrefix(toolName, "browser_") {
 		if url, ok := args["url"].(string); ok {
@@ -988,8 +992,18 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
 		return toolName
 	}
 
-	// 默认：使用工具名称
-	return toolName
+	// 默认：尝试从参数中提取关键信息生成指纹
+	// 优先使用 filename、path、url、name、id 等常见标识字段
+	keyFields := []string{"filename", "path", "url", "name", "id", "key", "target", "source"}
+	for _, field := range keyFields {
+		if value, ok := args[field].(string); ok && value != "" {
+			return toolName + ":" + field + "=" + value
+		}
+	}
+
+	// 如果没有任何标识字段，使用工具名 + 参数数量作为指纹
+	// 这样可以区分不同复杂度的调用
+	return toolName + ":args=" + fmt.Sprintf("%d", len(args))
 }
 
 // RecordAndCheck 记录工具调用并检测循环
@@ -1414,11 +1428,11 @@ type ConfigValidationError struct {
 
 // OptimizationProposal 优化建议
 type OptimizationProposal struct {
-	Type        string  `json:"type"`
-	Description string  `json:"description"`
-	Priority    string  `json:"priority"`
-	ExpectedImpact float64 `json:"expected_impact"`
-	Apply       func() error `json:"-"`
+	Type           string       `json:"type"`
+	Description    string       `json:"description"`
+	Priority       string       `json:"priority"`
+	ExpectedImpact float64      `json:"expected_impact"`
+	Apply          func() error `json:"-"`
 }
 
 // NewLoopDetectionOptimizer 创建循环检测配置优化器
@@ -1440,9 +1454,9 @@ func NewLoopDetectionOptimizer(config *LoopDetectionConfig, collector *LoopEvent
 func getDefaultLoopDetectionConfig() *LoopDetectionConfig {
 	config := &LoopDetectionConfig{}
 	config.Thresholds.MaxHistory = 100
-	config.Thresholds.InterruptThreshold = 3
-	config.Thresholds.WarningThreshold = 2
-	config.Thresholds.PatternWindow = 5
+	config.Thresholds.InterruptThreshold = 9 //当相同工具调用重复次数达到此阈值时，会 中断任务
+	config.Thresholds.WarningThreshold = 3   //当相同工具调用重复次数达到此阈值时，会 发出警告
+	config.Thresholds.PatternWindow = 10
 
 	config.Warnings.LoopInterrupt.Title = "🚫 ⚠️ **循环检测警告**"
 	config.Warnings.LoopInterrupt.Message = "检测到相同操作「{{.Fingerprint}}」已重复执行 {{.Count}} 次。\n\n这可能表明陷入了死循环。"
@@ -1666,9 +1680,9 @@ func (ldo *LoopDetectionOptimizer) AnalyzeEventData(events []LoopDetectionEvent)
 		if effectivenessRate < 0.3 {
 			// 警告效果不佳，建议改进
 			proposals = append(proposals, OptimizationProposal{
-				Type:        "warning_improvement",
-				Description: fmt.Sprintf("警告有效性仅 %.1f%%，建议改进警告提示信息", effectivenessRate*100),
-				Priority:    "high",
+				Type:           "warning_improvement",
+				Description:    fmt.Sprintf("警告有效性仅 %.1f%%，建议改进警告提示信息", effectivenessRate*100),
+				Priority:       "high",
 				ExpectedImpact: 0.8,
 				Apply: func() error {
 					// 建议添加更具体的指导
@@ -1688,9 +1702,9 @@ func (ldo *LoopDetectionOptimizer) AnalyzeEventData(events []LoopDetectionEvent)
 		currentWarningThreshold := ldo.currentConfig.Thresholds.WarningThreshold
 		if currentWarningThreshold > 1 {
 			proposals = append(proposals, OptimizationProposal{
-				Type:        "threshold_adjustment",
-				Description: fmt.Sprintf("建议降低 WarningThreshold 从 %d 到 %d", currentWarningThreshold, currentWarningThreshold-1),
-				Priority:    "medium",
+				Type:           "threshold_adjustment",
+				Description:    fmt.Sprintf("建议降低 WarningThreshold 从 %d 到 %d", currentWarningThreshold, currentWarningThreshold-1),
+				Priority:       "medium",
 				ExpectedImpact: 0.6,
 				Apply: func() error {
 					return ldo.UpdateThresholds(
@@ -1707,9 +1721,9 @@ func (ldo *LoopDetectionOptimizer) AnalyzeEventData(events []LoopDetectionEvent)
 	// 分析3：频繁循环检测
 	if warningCount > len(events)/3 {
 		proposals = append(proposals, OptimizationProposal{
-			Type:        "sensitivity_adjustment",
-			Description: "循环检测过于敏感，建议增加阈值",
-			Priority:    "low",
+			Type:           "sensitivity_adjustment",
+			Description:    "循环检测过于敏感，建议增加阈值",
+			Priority:       "low",
 			ExpectedImpact: 0.4,
 			Apply: func() error {
 				return ldo.UpdateThresholds(
