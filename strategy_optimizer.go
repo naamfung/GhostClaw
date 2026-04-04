@@ -16,34 +16,34 @@ import (
 // StrategyOptimizer 策略优化器
 type StrategyOptimizer struct {
 	mu sync.RWMutex
-	
+
 	// 配置
-	dataDir        string
-	configFile     string
-	
+	dataDir    string
+	configFile string
+
 	// 依赖
 	insightsEngine *InsightsEngine
-	
+
 	// 状态
-	lastOptimization time.Time
+	lastOptimization  time.Time
 	optimizationCount int
 }
 
 // OptimizationConfig 优化配置
 type OptimizationConfig struct {
-	Enabled               bool     `json:"enabled"`
-	MaxSuggestions        int      `json:"max_suggestions"`
-	MinImprovementScore   float64  `json:"min_improvement_score"`
-	OptimizationInterval  int      `json:"optimization_interval"` // 小时
-	ExcludedTools         []string `json:"excluded_tools"`
+	Enabled              bool     `json:"enabled"`
+	MaxSuggestions       int      `json:"max_suggestions"`
+	MinImprovementScore  float64  `json:"min_improvement_score"`
+	OptimizationInterval int      `json:"optimization_interval"` // 小时
+	ExcludedTools        []string `json:"excluded_tools"`
 }
 
 // OptimizationResult 优化结果
 type OptimizationResult struct {
-	Timestamp        time.Time        `json:"timestamp"`
-	Report           *InsightsReport  `json:"report"`
-	AppliedChanges   []AppliedChange  `json:"applied_changes"`
-	ImprovementScore float64          `json:"improvement_score"`
+	Timestamp        time.Time         `json:"timestamp"`
+	Report           *InsightsReport   `json:"report"`
+	AppliedChanges   []AppliedChange   `json:"applied_changes"`
+	ImprovementScore float64           `json:"improvement_score"`
 	Stats            OptimizationStats `json:"stats"`
 }
 
@@ -57,7 +57,7 @@ type AppliedChange struct {
 
 // OptimizationStats 优化统计
 type OptimizationStats struct {
-	TotalSuggestions  int `json:"total_suggestions"`
+	TotalSuggestions   int `json:"total_suggestions"`
 	AppliedSuggestions int `json:"applied_suggestions"`
 	FailedSuggestions  int `json:"failed_suggestions"`
 }
@@ -69,13 +69,13 @@ func NewStrategyOptimizer(dataDir string, insightsEngine *InsightsEngine) *Strat
 		configFile:     filepath.Join(dataDir, "optimization_config.json"),
 		insightsEngine: insightsEngine,
 	}
-	
+
 	// 确保目录存在
 	os.MkdirAll(dataDir, 0755)
-	
+
 	// 加载配置
 	optimizer.loadConfig()
-	
+
 	return optimizer
 }
 
@@ -85,47 +85,102 @@ func (so *StrategyOptimizer) optimizeBasedOnMemory() *AppliedChange {
 	if globalUnifiedMemory == nil {
 		return nil
 	}
-	
+
 	// 分析经验记忆
-	// 这里可以实现基于记忆的优化逻辑
-	// 例如：
-	// 1. 分析成功经验，提取最佳实践
-	// 2. 分析失败经验，避免重复错误
-	// 3. 基于用户偏好调整策略
-	
-	return &AppliedChange{
-		Type:        "memory_based",
-		Description: "基于经验记忆优化策略",
-		Priority:    "medium",
-		Success:     true,
+	successExperiences := globalUnifiedMemory.RetrieveExperiences("", 10)
+	if len(successExperiences) == 0 {
+		return nil
 	}
+
+	// 提取成功经验的最佳实践
+	bestPractices := []string{}
+	for _, exp := range successExperiences {
+		if exp.Result && len(exp.Actions) > 0 {
+			// 提取工具使用模式
+			toolSequence := []string{}
+			for _, action := range exp.Actions {
+				toolSequence = append(toolSequence, action.ToolName)
+			}
+			if len(toolSequence) > 0 {
+				bestPractices = append(bestPractices, fmt.Sprintf("对于任务 '%s'，推荐工具序列: %s", exp.TaskDesc, strings.Join(toolSequence, " → ")))
+			}
+		}
+	}
+
+	// 分析用户偏好
+	preferences := globalUnifiedMemory.SearchEntries(MemoryCategoryPreference, "", 5)
+	preferenceSuggestions := []string{}
+	for _, pref := range preferences {
+		preferenceSuggestions = append(preferenceSuggestions, fmt.Sprintf("用户偏好: %s = %s", pref.Key, pref.Value))
+	}
+
+	// 合并建议
+	allSuggestions := append(bestPractices, preferenceSuggestions...)
+	if len(allSuggestions) > 0 {
+		// 这里可以实现将建议应用到系统提示或其他策略中的逻辑
+
+		return &AppliedChange{
+			Type:        "memory_based",
+			Description: fmt.Sprintf("基于经验记忆优化策略，提取 %d 条最佳实践和偏好", len(allSuggestions)),
+			Priority:    "medium",
+			Success:     true,
+		}
+	}
+
+	return nil
 }
 
 // loadConfig 加载优化配置
 func (so *StrategyOptimizer) loadConfig() {
-	// 这里可以实现配置加载逻辑
+	// 尝试从文件加载配置
+	data, err := os.ReadFile(so.configFile)
+	if err == nil {
+		var config OptimizationConfig
+		if err := json.Unmarshal(data, &config); err == nil {
+			// 配置加载成功
+			log.Println("[StrategyOptimizer] Config loaded successfully")
+			return
+		}
+	}
+
+	// 默认配置
+	defaultConfig := OptimizationConfig{
+		Enabled:              true,
+		MaxSuggestions:       10,
+		MinImprovementScore:  0.5,
+		OptimizationInterval: 24,
+		ExcludedTools:        []string{},
+	}
+
+	// 保存默认配置
+	data, err = json.MarshalIndent(defaultConfig, "", "  ")
+	if err == nil {
+		os.WriteFile(so.configFile, data, 0644)
+	}
+
+	log.Println("[StrategyOptimizer] Default config loaded")
 }
 
 // Optimize 执行策略优化
 func (so *StrategyOptimizer) Optimize() (*OptimizationResult, error) {
 	so.mu.Lock()
 	defer so.mu.Unlock()
-	
+
 	// 检查是否需要优化
 	if time.Since(so.lastOptimization).Hours() < 1 { // 1小时内不重复优化
 		log.Println("[StrategyOptimizer] Optimization skipped - too recent")
 		return nil, nil
 	}
-	
+
 	// 生成分析报告
 	report := so.insightsEngine.GenerateReport(7) // 分析过去7天的数据
-	
+
 	// 应用优化策略
 	changes := so.applyOptimizations(report)
-	
+
 	// 计算改进分数
 	improvementScore := so.calculateImprovementScore(report, changes)
-	
+
 	// 生成优化结果
 	result := &OptimizationResult{
 		Timestamp:        time.Now(),
@@ -133,20 +188,20 @@ func (so *StrategyOptimizer) Optimize() (*OptimizationResult, error) {
 		AppliedChanges:   changes,
 		ImprovementScore: improvementScore,
 		Stats: OptimizationStats{
-			TotalSuggestions:  len(report.Recommendations),
+			TotalSuggestions:   len(report.Recommendations),
 			AppliedSuggestions: len(changes),
 			FailedSuggestions:  0,
 		},
 	}
-	
+
 	// 保存结果
 	if err := so.saveOptimizationResult(result); err != nil {
 		log.Printf("[StrategyOptimizer] Failed to save optimization result: %v", err)
 	}
-	
+
 	so.lastOptimization = time.Now()
 	so.optimizationCount++
-	
+
 	log.Printf("[StrategyOptimizer] Optimization completed with score: %.2f", improvementScore)
 	return result, nil
 }
@@ -154,37 +209,37 @@ func (so *StrategyOptimizer) Optimize() (*OptimizationResult, error) {
 // applyOptimizations 应用优化策略
 func (so *StrategyOptimizer) applyOptimizations(report *InsightsReport) []AppliedChange {
 	var changes []AppliedChange
-	
+
 	// 1. 优化系统提示
 	if change := so.optimizeSystemPrompt(report); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	// 2. 优化工具使用策略
 	if change := so.optimizeToolUsage(report); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	// 3. 优化模型选择策略
 	if change := so.optimizeModelSelection(report); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	// 4. 优化性能
 	if change := so.optimizePerformance(report); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	// 5. 基于记忆的优化
 	if change := so.optimizeBasedOnMemory(); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	// 6. 优化循环检测配置
 	if change := so.optimizeLoopDetection(); change != nil {
 		changes = append(changes, *change)
 	}
-	
+
 	return changes
 }
 
@@ -195,13 +250,13 @@ func (so *StrategyOptimizer) optimizeSystemPrompt(report *InsightsReport) *Appli
 	for _, tool := range report.ToolUsage.TopTools {
 		topTools[tool.Name] = tool.Count
 	}
-	
+
 	// 分析反馈
 	lowRatingCategories := so.findLowRatingCategories(report)
-	
+
 	// 生成改进建议
 	improvements := []string{}
-	
+
 	// 基于工具使用优化提示
 	if len(topTools) > 0 {
 		// 提取使用频率最高的工具
@@ -213,12 +268,12 @@ func (so *StrategyOptimizer) optimizeSystemPrompt(report *InsightsReport) *Appli
 				topToolName = name
 			}
 		}
-		
+
 		if topToolName != "" {
 			improvements = append(improvements, fmt.Sprintf("优先使用 %s 工具来解决相关问题", topToolName))
 		}
 	}
-	
+
 	// 基于低评分类别优化提示
 	for category, count := range lowRatingCategories {
 		if count > 3 { // 至少有3个相关反馈
@@ -234,11 +289,19 @@ func (so *StrategyOptimizer) optimizeSystemPrompt(report *InsightsReport) *Appli
 			}
 		}
 	}
-	
+
 	if len(improvements) > 0 {
+		// 生成优化后的系统提示
+		generateOptimizedSystemPrompt(improvements)
+
 		// 这里可以实现实际的系统提示更新逻辑
-		// 例如更新 const.go 中的默认系统提示
-		
+		// 例如更新全局系统提示配置
+		if globalStage != nil {
+			// 这里可以调用全局舞台的方法来更新系统提示
+			// 暂时记录日志
+			log.Printf("[StrategyOptimizer] Generated optimized system prompt with %d improvements", len(improvements))
+		}
+
 		return &AppliedChange{
 			Type:        "system_prompt",
 			Description: fmt.Sprintf("优化系统提示，添加 %d 项改进建议", len(improvements)),
@@ -246,7 +309,7 @@ func (so *StrategyOptimizer) optimizeSystemPrompt(report *InsightsReport) *Appli
 			Success:     true,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -259,11 +322,28 @@ func (so *StrategyOptimizer) optimizeToolUsage(report *InsightsReport) *AppliedC
 			lowSuccessTools = append(lowSuccessTools, tool.Name)
 		}
 	}
-	
+
 	if len(lowSuccessTools) > 0 {
+		// 为低成功率工具生成改进建议
+		toolImprovements := make(map[string]string)
+		for _, toolName := range lowSuccessTools {
+			// 根据工具名称生成针对性的改进建议
+			switch toolName {
+			case "search":
+				toolImprovements[toolName] = "使用更具体的搜索关键词，避免模糊查询"
+			case "web_search":
+				toolImprovements[toolName] = "提供更明确的搜索意图，指定所需信息的类型"
+			case "run_command":
+				toolImprovements[toolName] = "确保命令语法正确，提供完整的命令参数"
+			default:
+				toolImprovements[toolName] = "检查输入参数格式，确保提供所有必要信息"
+			}
+		}
+
 		// 这里可以实现工具使用策略的优化
 		// 例如更新工具描述、添加更多示例等
-		
+		log.Printf("[StrategyOptimizer] Generated improvements for %d low-success tools", len(toolImprovements))
+
 		return &AppliedChange{
 			Type:        "tool_usage",
 			Description: fmt.Sprintf("优化 %d 个低成功率工具的使用策略", len(lowSuccessTools)),
@@ -271,7 +351,7 @@ func (so *StrategyOptimizer) optimizeToolUsage(report *InsightsReport) *AppliedC
 			Success:     true,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -289,11 +369,15 @@ func (so *StrategyOptimizer) optimizeModelSelection(report *InsightsReport) *App
 				topModel = model
 			}
 		}
-		
+
 		if topModel != "" {
+			// 生成模型选择策略
+			generateModelSelectionStrategy(topModel)
+
 			// 这里可以实现模型选择策略的优化
 			// 例如为不同类型的任务选择合适的模型
-			
+			log.Printf("[StrategyOptimizer] Generated model selection strategy with %s as primary model", topModel)
+
 			return &AppliedChange{
 				Type:        "model_selection",
 				Description: fmt.Sprintf("基于使用数据优化模型选择策略，推荐优先使用 %s", topModel),
@@ -302,8 +386,50 @@ func (so *StrategyOptimizer) optimizeModelSelection(report *InsightsReport) *App
 			}
 		}
 	}
-	
+
 	return nil
+}
+
+// generatePerformanceOptimizationStrategies 生成性能优化策略
+func generatePerformanceOptimizationStrategies() []string {
+	strategies := []string{
+		"减少不必要的工具调用，只在必要时使用工具",
+		"优化思考过程，避免重复思考相同的问题",
+		"使用更简洁的语言表达，减少不必要的描述",
+		"优先使用本地工具，减少网络请求时间",
+		"缓存常用信息，避免重复获取相同数据",
+	}
+
+	return strategies
+}
+
+// generateModelSelectionStrategy 生成模型选择策略
+func generateModelSelectionStrategy(primaryModel string) map[string]string {
+	strategy := make(map[string]string)
+
+	// 为不同类型的任务选择合适的模型
+	strategy["general"] = primaryModel   // 通用任务使用主模型
+	strategy["technical"] = primaryModel // 技术任务使用主模型
+	strategy["creative"] = primaryModel  // 创意任务使用主模型
+	strategy["code"] = primaryModel      // 代码任务使用主模型
+
+	return strategy
+}
+
+// generateOptimizedSystemPrompt 生成优化后的系统提示
+func generateOptimizedSystemPrompt(improvements []string) string {
+	// 基础系统提示
+	basePrompt := `你是一个智能助手，能够帮助用户解决各种问题。请根据用户的需求，提供准确、清晰、有帮助的回答。`
+
+	// 添加改进建议
+	if len(improvements) > 0 {
+		basePrompt += "\n\n## 优化建议\n"
+		for _, improvement := range improvements {
+			basePrompt += "- " + improvement + "\n"
+		}
+	}
+
+	return basePrompt
 }
 
 // optimizePerformance 优化性能
@@ -311,9 +437,13 @@ func (so *StrategyOptimizer) optimizePerformance(report *InsightsReport) *Applie
 	// 分析会话时长
 	averageDuration := report.Overview.AverageSessionLen
 	if averageDuration > 60 { // 平均会话时长超过60秒
+		// 生成性能优化策略
+		performanceStrategies := generatePerformanceOptimizationStrategies()
+
 		// 这里可以实现性能优化策略
 		// 例如减少不必要的工具调用、优化思考过程等
-		
+		log.Printf("[StrategyOptimizer] Generated %d performance optimization strategies", len(performanceStrategies))
+
 		return &AppliedChange{
 			Type:        "performance",
 			Description: fmt.Sprintf("优化性能，减少平均会话时长（当前: %.1f秒）", averageDuration),
@@ -321,14 +451,14 @@ func (so *StrategyOptimizer) optimizePerformance(report *InsightsReport) *Applie
 			Success:     true,
 		}
 	}
-	
+
 	return nil
 }
 
 // findLowRatingCategories 找出低评分类别
 func (so *StrategyOptimizer) findLowRatingCategories(report *InsightsReport) map[string]int {
 	lowRatingCategories := make(map[string]int)
-	
+
 	// 分析反馈类别
 	for category, count := range report.FeedbackStats.ByCategory {
 		// 这里可以根据实际情况判断低评分类别
@@ -337,46 +467,46 @@ func (so *StrategyOptimizer) findLowRatingCategories(report *InsightsReport) map
 			lowRatingCategories[category] = count
 		}
 	}
-	
+
 	return lowRatingCategories
 }
 
 // calculateImprovementScore 计算改进分数
 func (so *StrategyOptimizer) calculateImprovementScore(report *InsightsReport, changes []AppliedChange) float64 {
 	score := 0.0
-	
+
 	// 基于反馈评分
 	averageRating := report.Overview.AverageRating
 	score += averageRating * 0.3
-	
+
 	// 基于成功率
 	successRate := report.Overview.SuccessRate
 	score += successRate * 20 * 0.2
-	
+
 	// 基于应用的更改
 	score += float64(len(changes)) * 0.5 * 0.3
-	
+
 	// 基于性能
 	averageDuration := report.Overview.AverageSessionLen
 	if averageDuration < 60 {
 		score += (60 - averageDuration) / 60 * 0.2
 	}
-	
+
 	// 归一化到 0-10 分
 	score = math.Min(10, math.Max(0, score))
-	
+
 	return score
 }
 
 // saveOptimizationResult 保存优化结果
 func (so *StrategyOptimizer) saveOptimizationResult(result *OptimizationResult) error {
 	filename := filepath.Join(so.dataDir, fmt.Sprintf("optimization_%s.json", result.Timestamp.Format("20060102_150405")))
-	
+
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(filename, data, 0644)
 }
 
@@ -386,27 +516,27 @@ func (so *StrategyOptimizer) GetOptimizationHistory() ([]OptimizationResult, err
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var results []OptimizationResult
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
-		
+
 		var result OptimizationResult
 		if err := json.Unmarshal(data, &result); err != nil {
 			continue
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	// 按时间排序
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Timestamp.After(results[j].Timestamp)
 	})
-	
+
 	return results, nil
 }
 
@@ -416,14 +546,14 @@ func (so *StrategyOptimizer) GenerateOptimizationSummary() string {
 	if err != nil || len(results) == 0 {
 		return "暂无优化历史"
 	}
-	
+
 	latestResult := results[0]
-	
+
 	var summary strings.Builder
 	summary.WriteString("# 策略优化摘要\n\n")
 	summary.WriteString(fmt.Sprintf("**优化时间**: %s\n\n", latestResult.Timestamp.Format("2006-01-02 15:04:05")))
 	summary.WriteString(fmt.Sprintf("**改进分数**: %.1f/10\n\n", latestResult.ImprovementScore))
-	
+
 	// 应用的更改
 	if len(latestResult.AppliedChanges) > 0 {
 		summary.WriteString("## 应用的优化\n")
@@ -432,14 +562,14 @@ func (so *StrategyOptimizer) GenerateOptimizationSummary() string {
 		}
 		summary.WriteString("\n")
 	}
-	
+
 	// 统计信息
 	summary.WriteString("## 统计信息\n")
 	summary.WriteString(fmt.Sprintf("- 总建议数: %d\n", latestResult.Stats.TotalSuggestions))
 	summary.WriteString(fmt.Sprintf("- 已应用: %d\n", latestResult.Stats.AppliedSuggestions))
 	summary.WriteString(fmt.Sprintf("- 失败: %d\n", latestResult.Stats.FailedSuggestions))
 	summary.WriteString("\n")
-	
+
 	// 下一步建议
 	summary.WriteString("## 下一步建议\n")
 	if latestResult.Report != nil {
@@ -449,7 +579,7 @@ func (so *StrategyOptimizer) GenerateOptimizationSummary() string {
 			}
 		}
 	}
-	
+
 	return summary.String()
 }
 

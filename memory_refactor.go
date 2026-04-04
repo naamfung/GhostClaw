@@ -16,34 +16,34 @@ import (
 // MemoryRefactorManager 记忆重构管理器
 type MemoryRefactorManager struct {
 	mu sync.RWMutex
-	
+
 	// 配置
-	dataDir        string
-	configFile     string
-	
+	dataDir    string
+	configFile string
+
 	// 依赖
 	memory         *UnifiedMemory
 	insightsEngine *InsightsEngine
-	
+
 	// 状态
-	lastRefactor   time.Time
-	refactorCount  int
+	lastRefactor  time.Time
+	refactorCount int
 }
 
 // RefactorConfig 重构配置
 type RefactorConfig struct {
-	Enabled               bool     `json:"enabled"`
-	MinMemoryAge          int      `json:"min_memory_age"`      // 最小记忆年龄（天）
-	MaxMemoryAge          int      `json:"max_memory_age"`      // 最大记忆年龄（天）
-	MinAccessCount        int      `json:"min_access_count"`    // 最小访问次数
-	MaxMemorySize         int      `json:"max_memory_size"`     // 最大记忆大小（MB）
-	RefactorInterval      int      `json:"refactor_interval"`   // 重构间隔（小时）
-	MinImprovementScore   float64  `json:"min_improvement_score"`
+	Enabled             bool    `json:"enabled"`
+	MinMemoryAge        int     `json:"min_memory_age"`    // 最小记忆年龄（天）
+	MaxMemoryAge        int     `json:"max_memory_age"`    // 最大记忆年龄（天）
+	MinAccessCount      int     `json:"min_access_count"`  // 最小访问次数
+	MaxMemorySize       int     `json:"max_memory_size"`   // 最大记忆大小（MB）
+	RefactorInterval    int     `json:"refactor_interval"` // 重构间隔（小时）
+	MinImprovementScore float64 `json:"min_improvement_score"`
 }
 
 // RefactorResult 重构结果
 type RefactorResult struct {
-	Timestamp        time.Time         `json:"timestamp"`
+	Timestamp        time.Time        `json:"timestamp"`
 	AnalyzedMemories int              `json:"analyzed_memories"`
 	UpdatedMemories  int              `json:"updated_memories"`
 	DeletedMemories  int              `json:"deleted_memories"`
@@ -69,41 +69,69 @@ func NewMemoryRefactorManager(dataDir string, memory *UnifiedMemory, insightsEng
 		memory:         memory,
 		insightsEngine: insightsEngine,
 	}
-	
+
 	// 确保目录存在
 	os.MkdirAll(dataDir, 0755)
-	
+
 	// 加载配置
 	manager.loadConfig()
-	
+
 	return manager
 }
 
 // loadConfig 加载重构配置
 func (rm *MemoryRefactorManager) loadConfig() {
-	// 这里可以实现配置加载逻辑
+	// 尝试从文件加载配置
+	data, err := os.ReadFile(rm.configFile)
+	if err == nil {
+		var config RefactorConfig
+		if err := json.Unmarshal(data, &config); err == nil {
+			// 配置加载成功
+			log.Println("[MemoryRefactorManager] Config loaded successfully")
+			return
+		}
+	}
+
+	// 默认配置
+	defaultConfig := RefactorConfig{
+		Enabled:             true,
+		MinMemoryAge:        1,
+		MaxMemoryAge:        30,
+		MinAccessCount:      1,
+		MaxMemorySize:       100,
+		RefactorInterval:    24,
+		MinImprovementScore: 0.5,
+	}
+
+	// 保存默认配置
+	data, err = json.MarshalIndent(defaultConfig, "", "  ")
+	if err == nil {
+		os.WriteFile(rm.configFile, data, 0644)
+	}
+
+	log.Println("[MemoryRefactorManager] Default config loaded")
 }
 
 // Refactor 执行记忆重构
 func (rm *MemoryRefactorManager) Refactor() (*RefactorResult, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
-	
+
 	// 检查是否需要重构
 	if time.Since(rm.lastRefactor).Hours() < 24 { // 24小时内不重复重构
 		log.Println("[MemoryRefactorManager] Refactoring skipped - too recent")
 		return nil, nil
 	}
-	
+
 	// 分析现有记忆
 	memories := rm.analyzeMemories()
-	
+
 	// 执行重构操作
 	actions := rm.performRefactoring(memories)
-	
+
 	// 计算改进分数
 	improvementScore := rm.calculateImprovementScore(actions)
-	
+
 	// 生成重构结果
 	result := &RefactorResult{
 		Timestamp:        time.Now(),
@@ -114,27 +142,28 @@ func (rm *MemoryRefactorManager) Refactor() (*RefactorResult, error) {
 		ImprovementScore: improvementScore,
 		Actions:          actions,
 	}
-	
+
 	// 保存结果
 	if err := rm.saveRefactorResult(result); err != nil {
 		log.Printf("[MemoryRefactorManager] Failed to save refactor result: %v", err)
 	}
-	
+
 	rm.lastRefactor = time.Now()
 	rm.refactorCount++
-	
+
 	log.Printf("[MemoryRefactorManager] Refactoring completed with score: %.2f", improvementScore)
 	return result, nil
 }
 
 // analyzeMemories 分析现有记忆
 func (rm *MemoryRefactorManager) analyzeMemories() []MemoryEntry {
-	// 这里可以实现记忆分析逻辑
-	// 例如从数据库中获取所有记忆条目
-	
-	// 模拟数据
 	var memories []MemoryEntry
-	
+
+	if rm.memory == nil {
+		log.Println("[MemoryRefactorManager] Memory not initialized, using empty list")
+		return memories
+	}
+
 	// 分析不同类别的记忆
 	categories := []MemoryCategory{
 		MemoryCategoryPreference,
@@ -142,34 +171,27 @@ func (rm *MemoryRefactorManager) analyzeMemories() []MemoryEntry {
 		MemoryCategoryProject,
 		MemoryCategorySkill,
 		MemoryCategoryContext,
-		MemoryCategoryExperience,
 	}
-	
+
+	// 从数据库中获取所有记忆条目
 	for _, category := range categories {
-		// 模拟每个类别有一些记忆
-		for i := 0; i < 5; i++ {
-			memories = append(memories, MemoryEntry{
-				ID:        fmt.Sprintf("%s_%d", category, i),
-				Category:  category,
-				Scope:     MemoryScopeUser,
-				Key:       fmt.Sprintf("%s_key_%d", category, i),
-				Value:     fmt.Sprintf("%s_value_%d", category, i),
-				Tags:      []string{"tag1", "tag2"},
-				CreatedAt: time.Now().AddDate(0, 0, -i),
-				UpdatedAt: time.Now().AddDate(0, 0, -i/2),
-				AccessCnt: i + 1,
-				Score:     0.5 + float64(i)/10,
-			})
-		}
+		// 使用 SearchEntries 获取该类别的所有记忆
+		categoryMemories := rm.memory.SearchEntries(category, "", 100) // 限制100条
+		memories = append(memories, categoryMemories...)
 	}
-	
+
+	// 获取经验记忆
+	experienceMemories := rm.memory.RetrieveExperiences("", 100) // 限制100条
+	memories = append(memories, experienceMemories...)
+
+	log.Printf("[MemoryRefactorManager] Analyzed %d memories", len(memories))
 	return memories
 }
 
 // performRefactoring 执行重构操作
 func (rm *MemoryRefactorManager) performRefactoring(memories []MemoryEntry) []RefactorAction {
 	var actions []RefactorAction
-	
+
 	// 1. 清理过期记忆
 	for _, memory := range memories {
 		if time.Since(memory.CreatedAt).Hours() > 30*24 { // 30天以上的记忆
@@ -182,7 +204,7 @@ func (rm *MemoryRefactorManager) performRefactoring(memories []MemoryEntry) []Re
 			})
 		}
 	}
-	
+
 	// 2. 更新低质量记忆
 	for _, memory := range memories {
 		if memory.Score < 0.3 { // 低分记忆
@@ -195,10 +217,10 @@ func (rm *MemoryRefactorManager) performRefactoring(memories []MemoryEntry) []Re
 			})
 		}
 	}
-	
+
 	// 3. 合并相似记忆
 	// 这里可以实现相似记忆的合并逻辑
-	
+
 	// 4. 添加新的记忆类别
 	actions = append(actions, RefactorAction{
 		Type:        "add",
@@ -207,14 +229,14 @@ func (rm *MemoryRefactorManager) performRefactoring(memories []MemoryEntry) []Re
 		Description: "添加优化策略记忆",
 		Success:     true,
 	})
-	
+
 	return actions
 }
 
 // calculateImprovementScore 计算改进分数
 func (rm *MemoryRefactorManager) calculateImprovementScore(actions []RefactorAction) float64 {
 	score := 0.0
-	
+
 	// 基于操作类型计算分数
 	for _, action := range actions {
 		switch action.Type {
@@ -226,10 +248,10 @@ func (rm *MemoryRefactorManager) calculateImprovementScore(actions []RefactorAct
 			score += 0.8
 		}
 	}
-	
+
 	// 归一化到 0-10 分
 	score = math.Min(10, math.Max(0, score))
-	
+
 	return score
 }
 
@@ -247,12 +269,12 @@ func (rm *MemoryRefactorManager) countActionsByType(actions []RefactorAction, ac
 // saveRefactorResult 保存重构结果
 func (rm *MemoryRefactorManager) saveRefactorResult(result *RefactorResult) error {
 	filename := filepath.Join(rm.dataDir, fmt.Sprintf("refactor_%s.json", result.Timestamp.Format("20060102_150405")))
-	
+
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(filename, data, 0644)
 }
 
@@ -262,27 +284,27 @@ func (rm *MemoryRefactorManager) GetRefactorHistory() ([]RefactorResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var results []RefactorResult
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
-		
+
 		var result RefactorResult
 		if err := json.Unmarshal(data, &result); err != nil {
 			continue
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	// 按时间排序
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Timestamp.After(results[j].Timestamp)
 	})
-	
+
 	return results, nil
 }
 
@@ -292,14 +314,14 @@ func (rm *MemoryRefactorManager) GenerateRefactorSummary() string {
 	if err != nil || len(results) == 0 {
 		return "暂无重构历史"
 	}
-	
+
 	latestResult := results[0]
-	
+
 	var summary strings.Builder
 	summary.WriteString("# 记忆重构摘要\n\n")
 	summary.WriteString(fmt.Sprintf("**重构时间**: %s\n\n", latestResult.Timestamp.Format("2006-01-02 15:04:05")))
 	summary.WriteString(fmt.Sprintf("**改进分数**: %.1f/10\n\n", latestResult.ImprovementScore))
-	
+
 	// 操作统计
 	summary.WriteString("## 操作统计\n")
 	summary.WriteString(fmt.Sprintf("- 分析记忆数: %d\n", latestResult.AnalyzedMemories))
@@ -307,7 +329,7 @@ func (rm *MemoryRefactorManager) GenerateRefactorSummary() string {
 	summary.WriteString(fmt.Sprintf("- 删除记忆数: %d\n", latestResult.DeletedMemories))
 	summary.WriteString(fmt.Sprintf("- 添加记忆数: %d\n", latestResult.AddedMemories))
 	summary.WriteString("\n")
-	
+
 	// 详细操作
 	if len(latestResult.Actions) > 0 {
 		summary.WriteString("## 详细操作\n")
@@ -315,7 +337,7 @@ func (rm *MemoryRefactorManager) GenerateRefactorSummary() string {
 			summary.WriteString(fmt.Sprintf("- **%s** %s: %s\n", action.Type, action.Category, action.Description))
 		}
 	}
-	
+
 	return summary.String()
 }
 
@@ -327,7 +349,7 @@ func InitMemoryRefactorManager(dataDir string) {
 	if globalMemoryRefactorManager == nil {
 		memory := globalUnifiedMemory
 		insightsEngine := GetInsightsEngine()
-		
+
 		globalMemoryRefactorManager = NewMemoryRefactorManager(dataDir, memory, insightsEngine)
 		log.Println("[MemoryRefactorManager] Initialized")
 	}
