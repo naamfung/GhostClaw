@@ -7,7 +7,7 @@ func getOpenAITools() []map[string]interface{} {
 		{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":        "smart_shell",
+				"name": "smart_shell",
 				"description": `智能执行 shell 命令，自动判断同步或异步执行模式。
 
 ✅ 快速命令（ls, cat, grep 等）：同步执行，立即返回结果
@@ -55,7 +55,7 @@ func getOpenAITools() []map[string]interface{} {
 		{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":        "shell",
+				"name": "shell",
 				"description": `Execute a shell command synchronously with a timeout (default 60s). This tool BLOCKS until the command completes or times out.
 
 ✅ USE THIS FOR: ls, cat, mkdir, rm, cp, mv, grep, find, echo, pwd, which, stat, date, simple git commands, and other quick operations under 60 seconds.
@@ -111,6 +111,10 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 							"type":        "integer",
 							"description": "The line number to read (starting from 1).",
 						},
+						"verbose": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Whether to return verbose information (line number, encoding, file size, etc.). Default: false (only returns content).",
+						},
 					},
 					"required":             []string{"filename", "line_num"},
 					"additionalProperties": false,
@@ -155,6 +159,10 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 							"type":        "string",
 							"description": "The path to the file to read.",
 						},
+						"verbose": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Whether to return verbose information (line numbers, encoding, file size, etc.). Default: false (only returns lines content).",
+						},
 					},
 					"required":             []string{"filename"},
 					"additionalProperties": false,
@@ -165,7 +173,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "write_all_lines",
-				"description": "Write all lines to a file, overwriting the existing content.",
+				"description": "Write all lines to a file.",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -180,8 +188,68 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 							},
 							"description": "The list of lines to write to the file. Each element in the array corresponds to one line in the file. Do NOT pass a single string; it must be an array of strings. Example: [\"line1\", \"line2\", \"line3\"]",
 						},
+						"append": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Whether to append to the end of the file. Default is false (overwrite the entire file).",
+						},
 					},
 					"required":             []string{"filename", "lines"},
+					"additionalProperties": false,
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "append_to_file",
+				"description": "Append content to the end of a file.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"filename": map[string]interface{}{
+							"type":        "string",
+							"description": "The path to the file to append to.",
+						},
+						"content": map[string]interface{}{
+							"type":        "string",
+							"description": "The content to append to the file.",
+						},
+						"line_break": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Whether to add a line break after the content. Default is true.",
+						},
+					},
+					"required":             []string{"filename", "content"},
+					"additionalProperties": false,
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "write_file_range",
+				"description": "Write content to a specific range of lines in a file.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"filename": map[string]interface{}{
+							"type":        "string",
+							"description": "The path to the file to write to.",
+						},
+						"start_line": map[string]interface{}{
+							"type":        "integer",
+							"description": "The starting line number (1-based).",
+						},
+						"end_line": map[string]interface{}{
+							"type":        "integer",
+							"description": "The ending line number (1-based). If not specified, only the start_line will be written.",
+						},
+						"content": map[string]interface{}{
+							"type":        "string",
+							"description": "The content to write. Each line in the content will replace one line in the file range.",
+						},
+					},
+					"required":             []string{"filename", "start_line", "content"},
 					"additionalProperties": false,
 				},
 			},
@@ -1934,30 +2002,30 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"name":        "ssh_connect",
 				"description": "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 ssh_exec 命令使用。支持密码或私钥认证。",
 				"parameters": map[string]interface{}{
-				    "type": "object",
-				    "properties": map[string]interface{}{
-				        "username": map[string]interface{}{
-				            "type":        "string",
-				            "description": "SSH 用户名",
-				        },
-				        "host": map[string]interface{}{
-				            "type":        "string",
-				            "description": "远程服务器地址 (IP 或域名)",
-				        },
-				        "password": map[string]interface{}{
-				            "type":        "string",
-				            "description": "密码（与 private_key_path 二选一）",
-				        },
-				        "private_key_path": map[string]interface{}{
-				            "type":        "string",
-				            "description": "私钥文件路径（与 password 二选一）",
-				        },
-				        "port": map[string]interface{}{
-				            "type":        "integer",
-				            "description": "SSH 端口，默认 22",
-				        },
-				    },
-				    "required": []string{"username", "host"},
+					"type": "object",
+					"properties": map[string]interface{}{
+						"username": map[string]interface{}{
+							"type":        "string",
+							"description": "SSH 用户名",
+						},
+						"host": map[string]interface{}{
+							"type":        "string",
+							"description": "远程服务器地址 (IP 或域名)",
+						},
+						"password": map[string]interface{}{
+							"type":        "string",
+							"description": "密码（与 private_key_path 二选一）",
+						},
+						"private_key_path": map[string]interface{}{
+							"type":        "string",
+							"description": "私钥文件路径（与 password 二选一）",
+						},
+						"port": map[string]interface{}{
+							"type":        "integer",
+							"description": "SSH 端口，默认 22",
+						},
+					},
+					"required": []string{"username", "host"},
 				},
 			},
 		},
@@ -1967,30 +2035,30 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"name":        "ssh_exec",
 				"description": "在一个已建立的持久化 SSH 连接上执行命令。支持同步和异步模式，可以维护会话上下文（如当前目录、环境变量）。",
 				"parameters": map[string]interface{}{
-				    "type": "object",
-				    "properties": map[string]interface{}{
-				        "session_id": map[string]interface{}{
-				            "type":        "string",
-				            "description": "由 ssh_connect 返回的会话 ID",
-				        },
-				        "command": map[string]interface{}{
-				            "type":        "string",
-				            "description": "要执行的命令",
-				        },
-				        "async": map[string]interface{}{
-				            "type":        "boolean",
-				            "description": "是否异步执行（适用于长时间命令），默认 false",
-				        },
-				        "timeout_secs": map[string]interface{}{
-				            "type":        "integer",
-				            "description": "同步命令超时时间（秒），默认 60",
-				        },
-				        "wake_after_minutes": map[string]interface{}{
-				            "type":        "integer",
-				            "description": "异步执行时的唤醒时间（分钟），默认 5",
-				        },
-				    },
-				    "required": []string{"session_id", "command"},
+					"type": "object",
+					"properties": map[string]interface{}{
+						"session_id": map[string]interface{}{
+							"type":        "string",
+							"description": "由 ssh_connect 返回的会话 ID",
+						},
+						"command": map[string]interface{}{
+							"type":        "string",
+							"description": "要执行的命令",
+						},
+						"async": map[string]interface{}{
+							"type":        "boolean",
+							"description": "是否异步执行（适用于长时间命令），默认 false",
+						},
+						"timeout_secs": map[string]interface{}{
+							"type":        "integer",
+							"description": "同步命令超时时间（秒），默认 60",
+						},
+						"wake_after_minutes": map[string]interface{}{
+							"type":        "integer",
+							"description": "异步执行时的唤醒时间（分钟），默认 5",
+						},
+					},
+					"required": []string{"session_id", "command"},
 				},
 			},
 		},
@@ -2000,8 +2068,8 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"name":        "ssh_list",
 				"description": "列出当前所有活跃的持久化 SSH 连接。",
 				"parameters": map[string]interface{}{
-				    "type":       "object",
-				    "properties": map[string]interface{}{},
+					"type":       "object",
+					"properties": map[string]interface{}{},
 				},
 			},
 		},
@@ -2011,14 +2079,14 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"name":        "ssh_close",
 				"description": "关闭一个指定的持久化 SSH 连接，释放资源。",
 				"parameters": map[string]interface{}{
-				    "type": "object",
-				    "properties": map[string]interface{}{
-				        "session_id": map[string]interface{}{
-				            "type":        "string",
-				            "description": "要关闭的会话 ID",
-				        },
-				    },
-				    "required": []string{"session_id"},
+					"type": "object",
+					"properties": map[string]interface{}{
+						"session_id": map[string]interface{}{
+							"type":        "string",
+							"description": "要关闭的会话 ID",
+						},
+					},
+					"required": []string{"session_id"},
 				},
 			},
 		},
@@ -2026,7 +2094,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 		{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":        "scheme_eval",
+				"name": "scheme_eval",
 				"description": `执行 Clojure/Lisp (S-表达式) 并返回计算结果。
 
 		✅ 适用场景：
@@ -2048,15 +2116,15 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
 		⚠️ 每次调用创建独立的沙箱环境，不会保留上一次的变量定义。`,
 				"parameters": map[string]interface{}{
-				    "type": "object",
-				    "properties": map[string]interface{}{
-				        "expression": map[string]interface{}{
-				            "type":        "string",
-				            "description": "Clojure/Lisp S-表达式。示例: (+ 1 2 3), (defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10)",
-				        },
-				    },
-				    "required":             []string{"expression"},
-				    "additionalProperties": false,
+					"type": "object",
+					"properties": map[string]interface{}{
+						"expression": map[string]interface{}{
+							"type":        "string",
+							"description": "Clojure/Lisp S-表达式。示例: (+ 1 2 3), (defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10)",
+						},
+					},
+					"required":             []string{"expression"},
+					"additionalProperties": false,
 				},
 			},
 		},

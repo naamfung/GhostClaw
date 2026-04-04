@@ -578,7 +578,7 @@ func main() {
 
         // 初始化 MCP 服务器
         if config.MCP.Enabled {
-                globalMCPServer = NewMCPServer("GhostClaw", "1.0.0")
+                globalMCPServer = NewMCPServer("GhostClaw", Version)
                 initMCPTools(globalMCPServer)
                 log.Printf("MCP server started (transport: %s)", config.MCP.Transport)
 

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/toon-format/toon-go"
 )
@@ -123,7 +126,29 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 			if err != nil {
 				content = "Error: " + err.Error()
 			} else {
-				content = c
+				// 检查是否需要详细信息
+				verbose := false
+				if v, ok := argsMap["verbose"].(bool); ok {
+					verbose = v
+				}
+
+				if verbose {
+					// 获取文件信息
+					info, _ := os.Stat(filename)
+					result := map[string]interface{}{
+						"content":   c,
+						"line":      lineNum,
+						"filename":  filename,
+						"encoding":  "utf-8", // 假设 UTF-8 编码
+						"file_size": info.Size(),
+						"modified":  info.ModTime().Format(time.RFC3339),
+					}
+					resultTOON, _ := toon.Marshal(result)
+					content = string(resultTOON)
+				} else {
+					// 默认只返回内容
+					content = c
+				}
 			}
 			fmt.Println(TruncateString(content, 200))
 		}
@@ -132,15 +157,35 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 		filename, ok1 := argsMap["filename"].(string)
 		lineNumFloat, ok2 := argsMap["line_num"].(float64)
 		text, ok3 := argsMap["content"].(string)
-		if !ok1 || !ok2 || !ok3 || filename == "" || lineNumFloat < 1 {
+		if !ok1 || !ok2 || !ok3 || filename == "" {
 			content = "Error: Invalid arguments for write_file_line"
 		} else {
 			lineNum := int(lineNumFloat)
-			err := WriteFileLine(filename, lineNum, text)
-			if err != nil {
-				content = "Error: " + err.Error()
+			if lineNum == 0 {
+				// 创建空文件
+				file, err := os.Create(filename)
+				if err != nil {
+					content = "Error: " + err.Error()
+				} else {
+					file.Close()
+					content = "Successfully created empty file: " + filename
+				}
+			} else if lineNum < 0 {
+				// 追加到文件末尾
+				err := AppendFileLine(filename, text)
+				if err != nil {
+					content = "Error: " + err.Error()
+				} else {
+					content = "Successfully appended to end of file"
+				}
 			} else {
-				content = "Successfully wrote to line " + strconv.Itoa(lineNum)
+				// 写入指定行
+				err := WriteFileLine(filename, lineNum, text)
+				if err != nil {
+					content = "Error: " + err.Error()
+				} else {
+					content = "Successfully wrote to line " + strconv.Itoa(lineNum)
+				}
 			}
 			fmt.Println(content)
 		}
@@ -154,11 +199,48 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 			if err != nil {
 				content = "Error: " + err.Error()
 			} else {
-				linesJSON, err := json.Marshal(lines)
-				if err != nil {
-					content = "Error: " + err.Error()
+				// 检查是否需要详细信息
+				verbose := false
+				if v, ok := argsMap["verbose"].(bool); ok {
+					verbose = v
+				}
+
+				if verbose {
+					// 获取文件信息
+					info, _ := os.Stat(filename)
+
+					// 构建带有行号的结果
+					linedContent := make([]map[string]interface{}, len(lines))
+					for i, line := range lines {
+						linedContent[i] = map[string]interface{}{
+							"line":    i + 1,
+							"content": line,
+						}
+					}
+
+					result := map[string]interface{}{
+						"lines":       linedContent,
+						"total_lines": len(lines),
+						"filename":    filename,
+						"encoding":    "utf-8", // 假设 UTF-8 编码
+						"file_size":   info.Size(),
+						"modified":    info.ModTime().Format(time.RFC3339),
+					}
+
+					resultTOON, err := toon.Marshal(result)
+					if err != nil {
+						content = "Error: " + err.Error()
+					} else {
+						content = string(resultTOON)
+					}
 				} else {
-					content = string(linesJSON)
+					// 默认只返回内容列表
+					resultTOON, err := toon.Marshal(lines)
+					if err != nil {
+						content = "Error: " + err.Error()
+					} else {
+						content = string(resultTOON)
+					}
 				}
 			}
 			fmt.Println(TruncateString(content, 200))
@@ -182,14 +264,92 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 				}
 			}
 			if valid {
-				err := WriteAllLines(filename, lines)
+				appendMode := false
+				if appendVal, ok := argsMap["append"].(bool); ok {
+					appendMode = appendVal
+				}
+
+				var err error
+				if appendMode {
+					err = AppendAllLines(filename, lines)
+				} else {
+					err = WriteAllLines(filename, lines)
+				}
+
 				if err != nil {
 					content = "Error: " + err.Error()
 				} else {
-					content = "Successfully wrote " + strconv.Itoa(len(lines)) + " lines to " + filename
+					if appendMode {
+						content = "Successfully appended " + strconv.Itoa(len(lines)) + " lines to " + filename
+					} else {
+						content = "Successfully wrote " + strconv.Itoa(len(lines)) + " lines to " + filename
+					}
 				}
 				fmt.Println(content)
 			}
+		}
+
+	case "append_to_file":
+		filename, ok1 := argsMap["filename"].(string)
+		contentStr, ok2 := argsMap["content"].(string)
+		if !ok1 || !ok2 || filename == "" {
+			content = "Error: Invalid arguments for append_to_file"
+		} else {
+			lineBreak := true
+			if lineBreakVal, ok := argsMap["line_break"].(bool); ok {
+				lineBreak = lineBreakVal
+			}
+
+			file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			if err != nil {
+				content = "Error: " + err.Error()
+			} else {
+				defer file.Close()
+				writer := bufio.NewWriter(file)
+				_, err := writer.WriteString(contentStr)
+				if err != nil {
+					content = "Error: " + err.Error()
+				} else {
+					if lineBreak {
+						_, err = writer.WriteString("\n")
+						if err != nil {
+							content = "Error: " + err.Error()
+						}
+					}
+					if err := writer.Flush(); err != nil {
+						content = "Error: " + err.Error()
+					} else {
+						content = "Successfully appended content to " + filename
+					}
+				}
+			}
+			fmt.Println(content)
+		}
+
+	case "write_file_range":
+		filename, ok1 := argsMap["filename"].(string)
+		startLineFloat, ok2 := argsMap["start_line"].(float64)
+		contentStr, ok3 := argsMap["content"].(string)
+		if !ok1 || !ok2 || !ok3 || filename == "" || startLineFloat < 1 {
+			content = "Error: Invalid arguments for write_file_range"
+		} else {
+			startLine := int(startLineFloat)
+			endLine := startLine
+			if endLineFloat, ok := argsMap["end_line"].(float64); ok && endLineFloat >= float64(startLine) {
+				endLine = int(endLineFloat)
+			}
+
+			err := WriteFileRange(filename, startLine, endLine, contentStr)
+			if err != nil {
+				content = "Error: " + err.Error()
+			} else {
+				if startLine == endLine {
+					content = "Successfully wrote to line " + strconv.Itoa(startLine)
+				} else {
+					content = "Successfully wrote to lines " + strconv.Itoa(startLine) + "-" + strconv.Itoa(endLine)
+				}
+			}
+			fmt.Println(content)
 		}
 
 	case "browser_search":
@@ -1070,12 +1230,12 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 						resp.Suggestions = append(resp.Suggestions, s.SkillName)
 					}
 				}
-				skillsJSON, err := json.Marshal(resp)
+				skillsTOON, err := toon.Marshal(resp)
 				if err != nil {
 					content = "Error: failed to marshal skills"
 					status = TaskStatusFailed
 				} else {
-					content = string(skillsJSON)
+					content = string(skillsTOON)
 				}
 			}
 			fmt.Println("Skill list completed")
@@ -1160,12 +1320,12 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 					content = "Error: skill not found"
 					status = TaskStatusFailed
 				} else {
-					skillJSON, err := json.Marshal(skill)
+					skillTOON, err := toon.Marshal(skill)
 					if err != nil {
 						content = "Error: failed to marshal skill"
 						status = TaskStatusFailed
 					} else {
-						content = string(skillJSON)
+						content = string(skillTOON)
 					}
 				}
 				fmt.Println("Skill get completed")
@@ -1260,12 +1420,12 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 					content = "Error: " + err.Error()
 					status = TaskStatusFailed
 				} else {
-					suggestionsJSON, err := json.Marshal(suggestions)
+					suggestionsTOON, err := toon.Marshal(suggestions)
 					if err != nil {
 						content = "Error: failed to marshal suggestions"
 						status = TaskStatusFailed
 					} else {
-						content = string(suggestionsJSON)
+						content = string(suggestionsTOON)
 					}
 				}
 				fmt.Println("Skill suggest completed")
@@ -1282,12 +1442,12 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 				content = "Error: " + err.Error()
 				status = TaskStatusFailed
 			} else {
-				statsJSON, err := json.Marshal(stats)
+				statsTOON, err := toon.Marshal(stats)
 				if err != nil {
 					content = "Error: failed to marshal stats"
 					status = TaskStatusFailed
 				} else {
-					content = string(statsJSON)
+					content = string(statsTOON)
 				}
 			}
 			fmt.Println("Skill stats completed")
@@ -1308,12 +1468,12 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 					content = "Error: " + err.Error()
 					status = TaskStatusFailed
 				} else {
-					reportJSON, err := json.Marshal(report)
+					reportTOON, err := toon.Marshal(report)
 					if err != nil {
 						content = "Error: failed to marshal report"
 						status = TaskStatusFailed
 					} else {
-						content = string(reportJSON)
+						content = string(reportTOON)
 					}
 				}
 				fmt.Println("Skill evaluate completed")

@@ -123,19 +123,28 @@ func (sm *SkillManagerV2) RebuildIndex() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// 扫描目录
-	entries, err := os.ReadDir(sm.skillsDir)
+	// 递归扫描目录，收集所有技能文件
+	var skillFiles []string
+	err := filepath.Walk(sm.skillsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".md") {
+			// 支持两种格式：
+			// 1. 新格式：子目录中的 skill.md
+			// 2. 旧格式：直接在 skills 目录下的 *.md 文件
+			skillFiles = append(skillFiles, path)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to read skills directory: %w", err)
+		return fmt.Errorf("failed to walk skills directory: %w", err)
 	}
 
 	// 收集当前文件
 	currentFiles := make(map[string]bool)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-		currentFiles[entry.Name()] = true
+	for _, filePath := range skillFiles {
+		currentFiles[filepath.Base(filePath)] = true
 	}
 
 	// 获取数据库中已有的技能
@@ -150,14 +159,9 @@ func (sm *SkillManagerV2) RebuildIndex() error {
 	}
 
 	// 更新或添加新技能
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-
-		filePath := filepath.Join(sm.skillsDir, entry.Name())
+	for _, filePath := range skillFiles {
 		if err := sm.indexSkillFile(filePath); err != nil {
-			fmt.Printf("Warning: failed to index skill %s: %v\n", entry.Name(), err)
+			fmt.Printf("Warning: failed to index skill %s: %v\n", filePath, err)
 		}
 	}
 
@@ -392,9 +396,18 @@ func (sm *SkillManagerV2) DeleteSkill(name string) error {
 		return fmt.Errorf("skill not found: %s", name)
 	}
 
-	// 删除文件
-	if err := os.Remove(meta.FilePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete skill file: %w", err)
+	// 判断是新格式（子目录中的 skill.md）还是旧格式（直接在 skills 目录下的 *.md）
+	if filepath.Base(meta.FilePath) == "skill.md" {
+		// 新格式：删除整个目录
+		skillDir := filepath.Dir(meta.FilePath)
+		if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to delete skill directory: %w", err)
+		}
+	} else {
+		// 旧格式：删除单个文件
+		if err := os.Remove(meta.FilePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to delete skill file: %w", err)
+		}
 	}
 
 	// 删除数据库记录
@@ -421,8 +434,14 @@ func (sm *SkillManagerV2) CreateSkill(skill *Skill) error {
 	// 构建文件内容
 	content := buildSkillContent(skill)
 
+	// 创建技能目录
+	skillDir := filepath.Join(sm.skillsDir, skill.Name)
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
 	// 写入文件
-	filePath := filepath.Join(sm.skillsDir, skill.Name+".md")
+	filePath := filepath.Join(skillDir, "skill.md")
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write skill file: %w", err)
 	}

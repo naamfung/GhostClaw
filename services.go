@@ -37,9 +37,9 @@ func init() {
 
 // detectBrowser 尝试查找系统安装的 Chromium/Chrome 浏览器
 func detectBrowser() {
-        // 常见浏览器可执行文件名称
+        // 常见浏览器可执行文件名称（优先搜索 Chrome/Chromium）
         browserNames := []string{
-                "chromium", "chromium-browser", "google-chrome", "chrome",
+                "chrome", "google-chrome", "chromium", "chromium-browser",
                 "brave-browser", "microsoft-edge", "edge",
         }
 
@@ -80,12 +80,26 @@ func detectBrowser() {
                         driveLetters = append(driveLetters, string(i))
                 }
                 basePaths := []string{
+                        // 标准安装路径
                         "Program Files/Google/Chrome/Application/chrome.exe",
                         "Program Files (x86)/Google/Chrome/Application/chrome.exe",
                         "Users/" + os.Getenv("USERNAME") + "/AppData/Local/Google/Chrome/Application/chrome.exe",
                         "Users/" + os.Getenv("USERNAME") + "/AppData/Local/Chromium/Application/chrome.exe",
                         "Program Files/Microsoft/Edge/Application/msedge.exe",
                         "Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+                        // 自定义安装路径（支持用户自定义安装位置）
+                        "Chrome/App/chrome.exe",
+                        "Chrome/Application/chrome.exe",
+                        "Google/Chrome/Application/chrome.exe",
+                        "Browser/chrome.exe",
+                        "Browser/Chrome/Application/chrome.exe",
+                        "Tools/Chrome/Application/chrome.exe",
+                        "Software/Chrome/Application/chrome.exe",
+                        "Software/Google/Chrome/Application/chrome.exe",
+                        // 便携版/绿色版常见路径
+                        "Chrome/chrome.exe",
+                        "Chromium/chrome.exe",
+                        "Chromium/Application/chrome.exe",
                 }
                 for _, drive := range driveLetters {
                         for _, basePath := range basePaths {
@@ -399,9 +413,9 @@ func Visit(url string) (result *VisitResult, err error) {
                         fileName := fmt.Sprintf("browser_visit_%s_%s.txt", timestamp, urlHash)
                         filePath := filepath.Join(downloadDir, fileName)
 
-                        // 写入文件
+                        // 写入文件（清理非法控制字符）
                         contentToSave := fmt.Sprintf("URL: %s\nTitle: %s\nLength: %d\nDate: %s\n\n%s",
-                                url, pageTitle, originalLen, time.Now().Format("2006-01-02 15:04:05"), pageTextStr)
+                                url, pageTitle, originalLen, time.Now().Format("2006-01-02 15:04:05"), cleanControlChars(pageTextStr))
                         if err := os.WriteFile(filePath, []byte(contentToSave), 0644); err != nil {
                                 // 写入失败，降级为截断
                                 returnText = pageTextStr[:maxDirectLen] + "\n... [内容已截断，原始长度: " + fmt.Sprintf("%d", originalLen) + " 字符，保存文件失败]"

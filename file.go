@@ -10,7 +10,29 @@ import (
         "regexp"
         "runtime"
         "strings"
+        "unicode"
 )
+
+// cleanControlChars 清理字符串中的非法控制字符
+// 保留正常的换行符(\n)、回车符(\r)、制表符(\t)等常用控制字符
+// 移除其他可能导致读取问题的控制字符（如 NULL、BEL、BS 等）
+func cleanControlChars(s string) string {
+        var result strings.Builder
+        for _, r := range s {
+                // 保留有效的 Unicode 字符和常用控制字符
+                if r == '\n' || r == '\r' || r == '\t' || r == '\f' || r == '\v' {
+                        // 保留常用空白控制字符
+                        result.WriteRune(r)
+                } else if unicode.IsControl(r) {
+                        // 跳过其他控制字符（如 NULL \x00, BEL \x07, BS \x08 等）
+                        continue
+                } else {
+                        // 保留所有非控制字符
+                        result.WriteRune(r)
+                }
+        }
+        return result.String()
+}
 
 // ReadFileLine 读取文件的指定行（行号从1开始）
 func ReadFileLine(filename string, lineNum int) (string, error) {
@@ -33,7 +55,8 @@ func ReadFileLine(filename string, lineNum int) (string, error) {
         for scanner.Scan() {
                 currentLine++
                 if currentLine == lineNum {
-                        return scanner.Text(), nil
+                        // 清理非法控制字符后返回
+                        return cleanControlChars(scanner.Text()), nil
                 }
         }
 
@@ -88,7 +111,8 @@ func ReadAllLines(filename string) ([]string, error) {
         scanner.Buffer(buf, maxBufSize)
 
         for scanner.Scan() {
-                lines = append(lines, scanner.Text())
+                // 清理非法控制字符后添加到行列表
+                lines = append(lines, cleanControlChars(scanner.Text()))
         }
         if err := scanner.Err(); err != nil {
                 return nil, err
@@ -114,9 +138,79 @@ func WriteAllLines(filename string, lines []string) error {
         return writer.Flush()
 }
 
+// AppendAllLines appends multiple lines to the end of a file
+func AppendAllLines(filename string, lines []string) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	for _, line := range lines {
+		_, err := writer.WriteString(line + "\n")
+		if err != nil {
+			return err
+		}
+	}
+	return writer.Flush()
+}
+
+// AppendFileLine appends a single line to the end of a file
+func AppendFileLine(filename string, content string) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	_, err = writer.WriteString(content + "\n")
+	if err != nil {
+		return err
+	}
+	return writer.Flush()
+}
+
+// WriteFileRange writes content to a specific range of lines in a file
+func WriteFileRange(filename string, startLine, endLine int, content string) error {
+	// 读取文件内容
+	lines, err := ReadAllLines(filename)
+	if err != nil {
+		return err
+	}
+
+	// 检查行号范围
+	if startLine < 1 || startLine > len(lines) {
+		return fmt.Errorf("start_line out of range (1-%d)", len(lines))
+	}
+	if endLine < startLine {
+		endLine = startLine
+	}
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+
+	// 分割内容为行
+	newLines := strings.Split(content, "\n")
+	// 移除最后一个空行（如果有）
+	if len(newLines) > 0 && newLines[len(newLines)-1] == "" {
+		newLines = newLines[:len(newLines)-1]
+	}
+
+	// 替换指定范围的行
+	result := make([]string, 0, len(lines)- (endLine-startLine+1) + len(newLines))
+	result = append(result, lines[:startLine-1]...)
+	result = append(result, newLines...)
+	result = append(result, lines[endLine:]...)
+
+	// 写回文件
+	return WriteAllLines(filename, result)
+}
+
 // TextSearchResult 表示单个文本搜索结果
 type TextSearchResult struct {
-        FilePath  string `toon:"file_path" json:"file_path"`
+	FilePath  string `toon:"file_path" json:"file_path"`
         LineNum   int    `toon:"line_num" json:"line_num"`
         LineText  string `toon:"line_text" json:"line_text"`
         MatchText string `toon:"match_text" json:"match_text"`
