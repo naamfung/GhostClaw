@@ -237,12 +237,10 @@ func (tc *TelegramChannel) handleTextMessage(c tele.Context) error {
                         // 退出程序（单用户模式）
                         log.Println("[Telegram] Received /exit, exiting program...")
                         session.autoSaveHistory()
-                        // 注意：这里不能直接 os.Exit，因为需要关闭连接，但程序退出是用户意愿
-                        // 实际应在 main 中处理，这里仅记录并让主循环退出
-                        // 为简化，直接退出
-                        // os.Exit(0)
-                        // 但 Telegram 渠道通常不退出程序，改为记录并返回
-                        log.Println("[Telegram] /exit ignored in bot mode")
+                        // 注意：这里需要先关闭连接，但程序退出是用户意愿
+                        // 实际应在 main 中处理退出信号，这里仅记录并让主循环退出
+                        // 但为简化实现，直接退出
+                        os.Exit(0)
                 }) {
                 return nil
         }

@@ -461,9 +461,11 @@ func (so *StrategyOptimizer) findLowRatingCategories(report *InsightsReport) map
 
 	// 分析反馈类别
 	for category, count := range report.FeedbackStats.ByCategory {
-		// 这里可以根据实际情况判断低评分类别
-		// 暂时简单实现
-		if count > 0 {
+		// 只有当反馈数量达到一定阈值时才考虑
+		if count >= 3 {
+			// 这里可以根据实际情况判断低评分类别
+			// 例如，基于评分分布或与其他类别的比较
+			// 暂时实现：将所有有足够反馈的类别都标记为需要关注
 			lowRatingCategories[category] = count
 		}
 	}
