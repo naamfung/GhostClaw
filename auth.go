@@ -322,7 +322,7 @@ func GetLoginPageHTML(errorMsg string) string {
     <div class="login-container">
         <div class="login-box">
             <div class="logo">
-                <h1>Gar<span>Claw</span></h1>
+                <h1>Ghost<span>Claw</span></h1>
             </div>
             %s
             <form method="POST" action="/login">

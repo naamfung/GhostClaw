@@ -551,7 +551,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             })
         }
 
-        // 记录助手消息到记忆整合器（使用原始内容，无隐式总结）
+        // 记录助手消息到记忆整合器（使用原始内容）
         if globalMemoryConsolidator != nil {
             contentStr, _ := respContent.(string)
             globalMemoryConsolidator.AddMessage("default", ConsolidationMessage{

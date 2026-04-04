@@ -14,14 +14,14 @@ import (
 
 // InsightsReport 分析报告
 type InsightsReport struct {
-	Overview        OverviewStats        `json:"overview"`
-	ModelBreakdown  ModelBreakdown       `json:"model_breakdown"`
-	ToolUsage       ToolUsageStats       `json:"tool_usage"`
-	ActivityPattern ActivityPattern      `json:"activity_pattern"`
-	FeedbackStats   FeedbackStats        `json:"feedback_stats"`
-	TopSessions     []TopSession         `json:"top_sessions"`
-	Recommendations []Recommendation     `json:"recommendations"`
-	Timestamp       time.Time            `json:"timestamp"`
+	Overview        OverviewStats    `json:"overview"`
+	ModelBreakdown  ModelBreakdown   `json:"model_breakdown"`
+	ToolUsage       ToolUsageStats   `json:"tool_usage"`
+	ActivityPattern ActivityPattern  `json:"activity_pattern"`
+	FeedbackStats   FeedbackStats    `json:"feedback_stats"`
+	TopSessions     []TopSession     `json:"top_sessions"`
+	Recommendations []Recommendation `json:"recommendations"`
+	Timestamp       time.Time        `json:"timestamp"`
 }
 
 // OverviewStats 概览统计
@@ -38,20 +38,20 @@ type OverviewStats struct {
 
 // ModelBreakdown 模型使用统计
 type ModelBreakdown struct {
-	Usage     map[string]int `json:"usage"`     // 模型名称 -> 使用次数
+	Usage      map[string]int `json:"usage"`       // 模型名称 -> 使用次数
 	TokenUsage map[string]int `json:"token_usage"` // 模型名称 -> Token 消耗
 }
 
 // ToolUsageStats 工具使用统计
 type ToolUsageStats struct {
-	TopTools     []ToolUsageItem `json:"top_tools"`
+	TopTools     []ToolUsageItem    `json:"top_tools"`
 	SuccessRates map[string]float64 `json:"success_rates"`
 }
 
 // ToolUsageItem 工具使用项
 type ToolUsageItem struct {
-	Name      string `json:"name"`
-	Count     int    `json:"count"`
+	Name        string  `json:"name"`
+	Count       int     `json:"count"`
 	SuccessRate float64 `json:"success_rate"`
 }
 
@@ -64,9 +64,9 @@ type ActivityPattern struct {
 
 // FeedbackStats 反馈统计
 type FeedbackStats struct {
-	RatingDistribution map[int]int `json:"rating_distribution"` // 评分 -> 次数
+	RatingDistribution map[int]int    `json:"rating_distribution"` // 评分 -> 次数
 	ByCategory         map[string]int `json:"by_category"`         // 类别 -> 次数
-	Trend              []RatingTrend `json:"trend"`              // 评分趋势
+	Trend              []RatingTrend  `json:"trend"`               // 评分趋势
 }
 
 // RatingTrend 评分趋势
@@ -97,11 +97,11 @@ type Recommendation struct {
 // InsightsEngine 分析引擎
 type InsightsEngine struct {
 	mu sync.RWMutex
-	
+
 	// 配置
-	dataDir          string
-	reportFile       string
-	
+	dataDir    string
+	reportFile string
+
 	// 依赖
 	trajectoryManager *TrajectoryManager
 	feedbackCollector *FeedbackCollector
@@ -110,22 +110,22 @@ type InsightsEngine struct {
 // NewInsightsEngine 创建新的分析引擎
 func NewInsightsEngine(dataDir string, trajectoryManager *TrajectoryManager, feedbackCollector *FeedbackCollector) *InsightsEngine {
 	engine := &InsightsEngine{
-		dataDir:          dataDir,
-		reportFile:       filepath.Join(dataDir, "insights_report.json"),
+		dataDir:           dataDir,
+		reportFile:        filepath.Join(dataDir, "insights_report.json"),
 		trajectoryManager: trajectoryManager,
 		feedbackCollector: feedbackCollector,
 	}
-	
+
 	// 确保目录存在
 	os.MkdirAll(dataDir, 0755)
-	
+
 	return engine
 }
 
 // GetMemoryStats 获取记忆统计
 func (ie *InsightsEngine) GetMemoryStats() map[string]interface{} {
 	memoryStats := make(map[string]interface{})
-	
+
 	// 获取全局记忆系统
 	if globalUnifiedMemory != nil {
 		// 这里可以实现记忆统计逻辑
@@ -136,7 +136,7 @@ func (ie *InsightsEngine) GetMemoryStats() map[string]interface{} {
 		memoryStats["available"] = false
 		memoryStats["message"] = "Memory system not initialized"
 	}
-	
+
 	return memoryStats
 }
 
@@ -144,9 +144,9 @@ func (ie *InsightsEngine) GetMemoryStats() map[string]interface{} {
 func (ie *InsightsEngine) GenerateReport(days int) *InsightsReport {
 	ie.mu.Lock()
 	defer ie.mu.Unlock()
-	
+
 	startTime := time.Now().AddDate(0, 0, -days)
-	
+
 	report := &InsightsReport{
 		Overview:        ie.computeOverview(startTime),
 		ModelBreakdown:  ie.computeModelBreakdown(startTime),
@@ -157,12 +157,12 @@ func (ie *InsightsEngine) GenerateReport(days int) *InsightsReport {
 		Recommendations: ie.generateRecommendations(startTime),
 		Timestamp:       time.Now(),
 	}
-	
+
 	// 保存报告
 	if err := ie.saveReport(report); err != nil {
 		log.Printf("[InsightsEngine] Failed to save report: %v", err)
 	}
-	
+
 	log.Printf("[InsightsEngine] Generated report for last %d days", days)
 	return report
 }
@@ -172,15 +172,15 @@ func (ie *InsightsEngine) computeOverview(startTime time.Time) OverviewStats {
 	if ie.trajectoryManager == nil {
 		return OverviewStats{}
 	}
-	
+
 	stats := ie.trajectoryManager.GetTrajectoryStats()
-	
+
 	totalSessions := 0
 	totalMessages := 0
 	totalToolCalls := 0
 	totalTokens := 0
 	successCount := 0
-	
+
 	if val, ok := stats["total_trajectories"].(int); ok {
 		totalSessions = val
 	}
@@ -196,17 +196,17 @@ func (ie *InsightsEngine) computeOverview(startTime time.Time) OverviewStats {
 	if val, ok := stats["average_tokens"].(float64); ok {
 		totalTokens = int(val * float64(totalSessions))
 	}
-	
+
 	averageSessionLen := 0.0
 	if val, ok := stats["average_duration"].(float64); ok {
 		averageSessionLen = val
 	}
-	
+
 	successRate := 0.0
 	if totalSessions > 0 {
 		successRate = float64(successCount) / float64(totalSessions)
 	}
-	
+
 	totalFeedback := 0
 	averageRating := 0.0
 	if ie.feedbackCollector != nil {
@@ -218,7 +218,7 @@ func (ie *InsightsEngine) computeOverview(startTime time.Time) OverviewStats {
 			averageRating = val
 		}
 	}
-	
+
 	return OverviewStats{
 		TotalSessions:     totalSessions,
 		TotalMessages:     totalMessages,
@@ -236,17 +236,23 @@ func (ie *InsightsEngine) computeModelBreakdown(startTime time.Time) ModelBreakd
 	if ie.trajectoryManager == nil {
 		return ModelBreakdown{}
 	}
-	
+
 	stats := ie.trajectoryManager.GetTrajectoryStats()
-	
+
 	modelUsage := make(map[string]int)
 	if val, ok := stats["model_usage"].(map[string]int); ok {
 		modelUsage = val
 	}
-	
+
+	tokenUsage := make(map[string]int)
+	// 初始化 Token 使用统计
+	for model := range modelUsage {
+		tokenUsage[model] = 0
+	}
+
 	return ModelBreakdown{
-		Usage:     modelUsage,
-		TokenUsage: make(map[string]int), // 暂时为空，需要从轨迹中提取
+		Usage:      modelUsage,
+		TokenUsage: tokenUsage,
 	}
 }
 
@@ -255,61 +261,66 @@ func (ie *InsightsEngine) computeToolUsage(startTime time.Time) ToolUsageStats {
 	if ie.trajectoryManager == nil {
 		return ToolUsageStats{}
 	}
-	
+
 	stats := ie.trajectoryManager.GetTrajectoryStats()
-	
+
 	toolUsage := make(map[string]int)
 	if val, ok := stats["tool_usage"].(map[string]int); ok {
 		toolUsage = val
 	}
-	
+
 	// 转换为排序的工具使用项
 	var toolItems []ToolUsageItem
 	for name, count := range toolUsage {
 		toolItems = append(toolItems, ToolUsageItem{
-			Name:      name,
-			Count:     count,
-			SuccessRate: 0.8, // 暂时硬编码，需要从轨迹中提取
+			Name:        name,
+			Count:       count,
+			SuccessRate: 0.0, // 初始化为 0，实际需要从轨迹中提取
 		})
 	}
-	
+
 	// 按使用次数排序
 	sort.Slice(toolItems, func(i, j int) bool {
 		return toolItems[i].Count > toolItems[j].Count
 	})
-	
+
 	// 只取前10个
 	if len(toolItems) > 10 {
 		toolItems = toolItems[:10]
 	}
-	
+
+	successRates := make(map[string]float64)
+	// 初始化成功率
+	for name := range toolUsage {
+		successRates[name] = 0.0
+	}
+
 	return ToolUsageStats{
 		TopTools:     toolItems,
-		SuccessRates: make(map[string]float64), // 暂时为空，需要从轨迹中提取
+		SuccessRates: successRates,
 	}
 }
 
 // computeActivityPattern 计算活动模式
 func (ie *InsightsEngine) computeActivityPattern(startTime time.Time) ActivityPattern {
-	// 模拟数据，实际需要从轨迹中提取
+	// 从轨迹数据中提取活动模式
+	// 由于无法直接访问轨迹数据，我们使用默认值
+	// 实际实现时，需要在 TrajectoryManager 中添加相应的方法
+
 	byDay := make(map[string]int)
 	byHour := make(map[int]int)
-	
+
 	// 生成过去7天的数据
 	for i := 0; i < 7; i++ {
 		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
-		byDay[date] = 10 + i*2
+		byDay[date] = 0
 	}
-	
+
 	// 生成24小时的数据
 	for i := 0; i < 24; i++ {
-		if i >= 8 && i <= 22 {
-			byHour[i] = 5 + (i%5)*3
-		} else {
-			byHour[i] = 1
-		}
+		byHour[i] = 0
 	}
-	
+
 	// 找出峰值小时
 	var peakHours []int
 	maxCount := 0
@@ -321,7 +332,7 @@ func (ie *InsightsEngine) computeActivityPattern(startTime time.Time) ActivityPa
 			peakHours = append(peakHours, hour)
 		}
 	}
-	
+
 	return ActivityPattern{
 		ByDay:     byDay,
 		ByHour:    byHour,
@@ -334,36 +345,52 @@ func (ie *InsightsEngine) computeFeedbackStats(startTime time.Time) FeedbackStat
 	if ie.feedbackCollector == nil {
 		return FeedbackStats{}
 	}
-	
+
 	stats := ie.feedbackCollector.GetFeedbackStats()
-	
+
 	ratingDistribution := make(map[int]int)
-	// 模拟评分分布
-	ratingDistribution[5] = 60
-	ratingDistribution[4] = 25
-	ratingDistribution[3] = 10
-	ratingDistribution[2] = 3
-	ratingDistribution[1] = 2
-	
+	// 初始化评分分布
+	for i := 1; i <= 5; i++ {
+		ratingDistribution[i] = 0
+	}
+
 	byCategory := make(map[string]int)
 	if val, ok := stats["by_category"].(map[string]int); ok {
 		byCategory = val
 	} else {
-		// 模拟类别分布
-		byCategory["helpfulness"] = 45
-		byCategory["accuracy"] = 30
-		byCategory["clarity"] = 15
-		byCategory["speed"] = 10
+		// 初始化类别分布
+		byCategory["helpfulness"] = 0
+		byCategory["accuracy"] = 0
+		byCategory["clarity"] = 0
+		byCategory["speed"] = 0
+		byCategory["general"] = 0
 	}
-	
+
 	// 生成评分趋势
 	var trend []RatingTrend
-	for i := 6; i >= 0; i-- {
-		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
-		rating := 4.2 + float64(i%3)*0.1
-		trend = append(trend, RatingTrend{Date: date, Rating: rating})
+	// 从反馈收集器获取真实数据
+	if dailyTrend, ok := stats["daily_trend"].(map[string]int); ok {
+		// 按日期排序
+		dates := make([]string, 0, len(dailyTrend))
+		for date := range dailyTrend {
+			dates = append(dates, date)
+		}
+		sort.Strings(dates)
+
+		for _, date := range dates {
+			// 使用平均评分 0，实际需要从轨迹中提取
+			trend = append(trend, RatingTrend{Date: date, Rating: 0})
+		}
 	}
-	
+
+	// 如果没有数据，生成默认趋势
+	if len(trend) == 0 {
+		for i := 6; i >= 0; i-- {
+			date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+			trend = append(trend, RatingTrend{Date: date, Rating: 0})
+		}
+	}
+
 	return FeedbackStats{
 		RatingDistribution: ratingDistribution,
 		ByCategory:         byCategory,
@@ -373,21 +400,11 @@ func (ie *InsightsEngine) computeFeedbackStats(startTime time.Time) FeedbackStat
 
 // computeTopSessions 计算顶级会话
 func (ie *InsightsEngine) computeTopSessions(startTime time.Time) []TopSession {
-	// 模拟数据，实际需要从轨迹中提取
 	var topSessions []TopSession
-	
-	for i := 0; i < 5; i++ {
-		topSessions = append(topSessions, TopSession{
-			ID:            fmt.Sprintf("session_%d", i+1),
-			Timestamp:     time.Now().AddDate(0, 0, -i),
-			MessageCount:  15 + i*3,
-			ToolCallCount: 5 + i*2,
-			Duration:      300 + i*60,
-			Rating:        5 - i%2,
-			Model:         "gpt-4",
-		})
-	}
-	
+
+	// 由于无法直接访问轨迹数据，我们使用空数组
+	// 实际实现时，需要在 TrajectoryManager 中添加相应的方法
+
 	return topSessions
 }
 
@@ -419,7 +436,7 @@ func (ie *InsightsEngine) generateRecommendations(startTime time.Time) []Recomme
 			Priority:    "high",
 		},
 	}
-	
+
 	return recommendations
 }
 
@@ -429,7 +446,7 @@ func (ie *InsightsEngine) saveReport(report *InsightsReport) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(ie.reportFile, data, 0644)
 }
 
@@ -442,23 +459,23 @@ func (ie *InsightsEngine) GetReport() (*InsightsReport, error) {
 		}
 		return nil, err
 	}
-	
+
 	var report InsightsReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, err
 	}
-	
+
 	return &report, nil
 }
 
 // GenerateSummary 生成摘要
 func (ie *InsightsEngine) GenerateSummary(days int) string {
 	report := ie.GenerateReport(days)
-	
+
 	var summary strings.Builder
 	summary.WriteString("# 系统使用分析报告\n\n")
 	summary.WriteString(fmt.Sprintf("**生成时间**: %s\n\n", report.Timestamp.Format("2006-01-02 15:04:05")))
-	
+
 	// 概览
 	summary.WriteString("## 概览\n")
 	summary.WriteString(fmt.Sprintf("- 总会话数: %d\n", report.Overview.TotalSessions))
@@ -469,7 +486,7 @@ func (ie *InsightsEngine) GenerateSummary(days int) string {
 	summary.WriteString(fmt.Sprintf("- 成功率: %.1f%%\n", report.Overview.SuccessRate*100))
 	summary.WriteString(fmt.Sprintf("- 平均会话时长: %.1f 秒\n", report.Overview.AverageSessionLen))
 	summary.WriteString(fmt.Sprintf("- 总Token消耗: %d\n\n", report.Overview.TotalTokens))
-	
+
 	// 模型使用
 	if len(report.ModelBreakdown.Usage) > 0 {
 		summary.WriteString("## 模型使用\n")
@@ -478,17 +495,17 @@ func (ie *InsightsEngine) GenerateSummary(days int) string {
 		}
 		summary.WriteString("\n")
 	}
-	
+
 	// 工具使用
 	if len(report.ToolUsage.TopTools) > 0 {
 		summary.WriteString("## 工具使用\n")
 		for _, tool := range report.ToolUsage.TopTools {
-			summary.WriteString(fmt.Sprintf("- %s: %d 次 (成功率: %.1f%%)\n", 
+			summary.WriteString(fmt.Sprintf("- %s: %d 次 (成功率: %.1f%%)\n",
 				tool.Name, tool.Count, tool.SuccessRate*100))
 		}
 		summary.WriteString("\n")
 	}
-	
+
 	// 反馈统计
 	if len(report.FeedbackStats.RatingDistribution) > 0 {
 		summary.WriteString("## 反馈统计\n")
@@ -498,7 +515,7 @@ func (ie *InsightsEngine) GenerateSummary(days int) string {
 		}
 		summary.WriteString("\n")
 	}
-	
+
 	// 改进建议
 	if len(report.Recommendations) > 0 {
 		summary.WriteString("## 改进建议\n")
@@ -507,7 +524,7 @@ func (ie *InsightsEngine) GenerateSummary(days int) string {
 			summary.WriteString(fmt.Sprintf("%s\n\n", rec.Description))
 		}
 	}
-	
+
 	return summary.String()
 }
 
@@ -519,7 +536,7 @@ func InitInsightsEngine(dataDir string) {
 	if globalInsightsEngine == nil {
 		trajectoryManager := GetTrajectoryManager()
 		feedbackCollector := GetFeedbackCollector()
-		
+
 		globalInsightsEngine = NewInsightsEngine(dataDir, trajectoryManager, feedbackCollector)
 		log.Println("[InsightsEngine] Initialized")
 	}

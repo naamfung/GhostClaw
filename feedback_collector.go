@@ -84,19 +84,19 @@ func NewFeedbackCollector(dataDir string) *FeedbackCollector {
 			},
 			{
 				Name:        "gratitude",
-				Pattern:     "谢谢|感谢|有用|帮了大忙",
+				Pattern:     "多谢|谢谢|感谢|有用|帮了大忙",
 				Weight:      0.5,
 				Description: "用户表达感谢，表示回答有帮助",
 			},
 			{
 				Name:        "satisfaction",
-				Pattern:     "完美|很好|不错|正是|exactly",
+				Pattern:     "完美|好好|很好|不错|正是|非常好",
 				Weight:      0.8,
 				Description: "用户表达满意",
 			},
 			{
 				Name:        "dissatisfaction",
-				Pattern:     "不对|不行|没用|还是|仍然",
+				Pattern:     "不对|不成|不行|无用|无鸠用|无卵用|无屌用|无閪用|没用|还是|仍然",
 				Weight:      -0.6,
 				Description: "用户表达不满",
 			},
@@ -151,10 +151,10 @@ func (fc *FeedbackCollector) isTaskCompleted(messages []Message) bool {
 	
 	// 检查助手回复是否包含任务完成的信号
 	completionSignals := []string{
-		"完成", "完成了", "已完成", "已经完成",
-		"搞定", "解决", "解决了", "已经解决",
+		"完成", "完成了", "已完成","经已完成", "已经完成",
+		"搞定", "解决", "解决了", "经已解决","已经解决",
 		"好的", "明白了", "知道了", "了解",
-		"可以了", "没问题", "完成任务", "任务完成",
+		"可以了", "没问题", "冇问题", "完成任务", "任务完成",
 	}
 	
 	lastAssistantMsg = strings.ToLower(lastAssistantMsg)
@@ -166,7 +166,7 @@ func (fc *FeedbackCollector) isTaskCompleted(messages []Message) bool {
 	
 	// 检查是否有明确的总结或结论
 	conclusionSignals := []string{
-		"总结", "综上所述", "总之", "总的来说",
+		"总结", "综上所述", "总之", "总的来说", "总体而言",
 		"最终", "最后", "结果", "答案",
 	}
 	

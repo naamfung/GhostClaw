@@ -313,7 +313,7 @@ func (cm *CronManager) executeJob(job *CronJob) {
     taskDone := make(chan struct{})
     defer close(taskDone)
 
-    // 启动一个 goroutine 来监听 stopChan 和 taskDone
+    // 启动一个 goroutine 来监听 stopChan 与 taskDone
     go func() {
         select {
         case <-cm.stopChan:

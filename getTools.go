@@ -98,7 +98,7 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		disabledTools["shell_delayed_remove"] = true
 	}
 
-	// 如果没有需要过滤的工具，直接返回
+	// 如果未有需要过滤的工具，直接返回
 	if len(disabledTools) == 0 {
 		return tools
 	}

@@ -353,7 +353,7 @@ func (s *HTTPServer) corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 只允许 HTTP 和 HTTPS 协议
+	// 只允许 HTTP 与 HTTPS 协议
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		http.Error(w, "Invalid URL scheme", http.StatusBadRequest)
 		return
@@ -390,7 +390,7 @@ func (s *HTTPServer) corsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// 设置 CORS 头
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// 复制响应状态码和体
+	// 复制响应状态码与体
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }

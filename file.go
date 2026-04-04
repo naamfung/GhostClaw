@@ -19,7 +19,7 @@ import (
 func cleanControlChars(s string) string {
         var result strings.Builder
         for _, r := range s {
-                // 保留有效的 Unicode 字符和常用控制字符
+                // 保留有效的 Unicode 字符与常用控制字符
                 if r == '\n' || r == '\r' || r == '\t' || r == '\f' || r == '\v' {
                         // 保留常用空白控制字符
                         result.WriteRune(r)
@@ -93,7 +93,7 @@ func WriteFileLine(filename string, lineNum int, content string) error {
 }
 
 // ReadAllLines 读取文件所有行，返回字符串切片
-// 若文件不存在，返回空切片和 nil 错误
+// 若文件不存在，返回空切片与 nil 错误
 func ReadAllLines(filename string) ([]string, error) {
         file, err := os.Open(filename)
         if err != nil {

@@ -26,12 +26,11 @@ import (
 //
 // # 配置示例
 //
-//      heartbeat = {
-//          enabled = true
-//          interval_seconds = 1800    # 检查间隔（秒），默认 30 分钟
-//          keep_recent_messages = 8   # 保留的最近消息数
-//          max_concurrent_checks = 3  # 最大并发检查数
-//      }
+//      heartbeat:
+//          enabled: true
+//          interval_seconds: 1800    # 检查间隔（秒），默认 30 分钟
+//          keep_recent_messages: 8   # 保留的最近消息数
+//          max_concurrent_checks: 3  # 最大并发检查数
 type HeartbeatService struct {
         config        HeartbeatConfig
         heartbeatFile string
@@ -79,7 +78,7 @@ func NewHeartbeatService(config HeartbeatConfig, workDir string) *HeartbeatServi
 // Start 启动心跳服务
 // 启用前提检查顺序：
 //  1. 检查 config.Enabled 是否为 true，否则直接返回
-//  2. 检查 LLM API 配置，没有会警告但不会阻止启动
+//  2. 检查 LLM API 配置，未有会警告但不会阻止启动
 //  3. 确保 HEARTBEAT.md 文件存在（自动创建）
 //  4. 验证心跳间隔（最小 60 秒，最大 24 小时）
 //  5. 检查通知器是否可用（可选）
@@ -310,10 +309,9 @@ func (s *HeartbeatService) ensureHeartbeatFile() error {
 
 在 config.toon 中启用心跳：
 
-heartbeat = {
-    enabled = true
-    interval_seconds = 1800    # 检查间隔（秒），默认 30 分钟
-}
+heartbeat:
+    enabled: true
+    interval_seconds: 1800    # 检查间隔（秒），默认 30 分钟
 
 ## 注意事项
 
