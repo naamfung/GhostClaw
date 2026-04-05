@@ -957,13 +957,13 @@ Example commands:
 		},
 		{
 			"name":        "plugin_reload",
-			"description": "Reload a plugin from disk (useful after code update).",
+			"description": "Reload a specific plugin from disk (useful after code update). This only reloads one plugin at a time, not all plugins.",
 			"input_schema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "Plugin name.",
+						"description": "Specific plugin name to reload.",
 					},
 				},
 				"required": []string{"name"},
@@ -1030,6 +1030,24 @@ Example commands:
 			"input_schema": map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			"name":        "plugin_detail",
+			"description": "Get detailed information about a specific plugin, including its functions, source code, and metadata.",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Plugin name to get details for.",
+					},
+					"include_source": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Whether to include the full source code. Default: false.",
+					},
+				},
+				"required": []string{"name"},
 			},
 		},
 		// ========== Cron 管理工具 ==========

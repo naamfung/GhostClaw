@@ -609,6 +609,80 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 		return 2
 	}))
 
+	// ghostclaw.download_file(url, save_path, headers) - 下载文件到本地
+	L.SetField(ghostclaw, "download_file", L.NewFunction(func(L *lua.LState) int {
+		url := L.CheckString(1)
+		save_path := L.CheckString(2)
+
+		// 创建HTTP请求（固定使用GET方法）
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString("Error creating request: " + err.Error()))
+			return 2
+		}
+
+		// 设置自定义HTTP头部（如果有）
+		if L.GetTop() >= 3 && L.Get(3).Type() == lua.LTTable {
+			headersTable := L.CheckTable(3)
+			headersTable.ForEach(func(key, value lua.LValue) {
+				if k, ok := key.(lua.LString); ok {
+					if v, ok := value.(lua.LString); ok {
+						req.Header.Set(string(k), string(v))
+					}
+				}
+			})
+		}
+
+		// 发送请求
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString("Error downloading: " + err.Error()))
+			return 2
+		}
+		defer resp.Body.Close()
+
+		// 检查响应状态
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString(fmt.Sprintf("HTTP error: %d", resp.StatusCode)))
+			return 2
+		}
+
+		// 创建保存文件的目录（如果需要）
+		save_dir := filepath.Dir(save_path)
+		if save_dir != "." && save_dir != "" {
+			if err := os.MkdirAll(save_dir, 0755); err != nil {
+				L.Push(lua.LBool(false))
+				L.Push(lua.LString("Error creating directory: " + err.Error()))
+				return 2
+			}
+		}
+
+		// 创建保存文件
+		out, err := os.Create(save_path)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString("Error creating file: " + err.Error()))
+			return 2
+		}
+		defer out.Close()
+
+		// 写入文件内容
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString("Error writing file: " + err.Error()))
+			return 2
+		}
+
+		L.Push(lua.LBool(true))
+		L.Push(lua.LString("File downloaded successfully"))
+		return 2
+	}))
+
 	// ghostclaw.stat(path) - 获取文件信息
 	L.SetField(ghostclaw, "stat", L.NewFunction(func(L *lua.LState) int {
 		path := L.CheckString(1)

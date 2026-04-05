@@ -1125,13 +1125,13 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "plugin_reload",
-				"description": "Reload a plugin from disk (useful after code update).",
+				"description": "Reload a specific plugin from disk (useful after code update). This only reloads one plugin at a time, not all plugins.",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
 						"name": map[string]interface{}{
 							"type":        "string",
-							"description": "Plugin name.",
+							"description": "Specific plugin name to reload.",
 						},
 					},
 					"required": []string{"name"},
