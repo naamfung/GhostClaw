@@ -304,7 +304,14 @@ func main() {
 	promptFlagLong := flag.String("prompt", "", "调试模式：直接传入提示词，模型输出完成后自动退出（长格式）")
 	debugFlag := flag.Bool("debug", false, "启用调试输出")
 	replFlag := flag.Bool("repl", false, "启动 REPL 交互模式（与模型直接对话）")
+	pluginTestFlag := flag.Bool("plugin-test", false, "测试插件系统")
 	flag.Parse()
+	
+	// 测试插件系统
+	if *pluginTestFlag {
+		testPluginSystem()
+		return
+	}
 
 	prompt := *promptFlag
 	if prompt == "" {
@@ -948,4 +955,64 @@ func runDebugMode(prompt string, session *GlobalSession) {
 		}
 	}
 	log.Println("[Debug Mode] Completed.")
+}
+
+// testPluginSystem 测试插件系统的核心功能
+func testPluginSystem() {
+	log.Println("[Test Plugin System] Starting...")
+	
+	// 初始化程序所在目录
+	execPath, err := os.Executable()
+	if err != nil {
+		log.Printf("Warning: cannot get executable path: %v", err)
+		execPath = "."
+	}
+	globalExecDir = filepath.Dir(execPath)
+	
+	// 切换到程序所在目录
+	if err := os.Chdir(globalExecDir); err != nil {
+		log.Printf("Warning: cannot change to executable directory: %v", err)
+	}
+	
+	// 打印当前工作目录
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Printf("Warning: cannot get current working directory: %v", err)
+	} else {
+		log.Printf("Current working directory: %s", cwd)
+	}
+	
+	// 初始化上传目录
+	initUploadDir()
+	
+	// 初始化插件管理器
+	pluginsDir := filepath.Join(".", "plugins")
+	pm := NewPluginManager(pluginsDir)
+	
+	// 加载插件
+	if err := pm.LoadPluginsFromDir(); err != nil {
+		log.Printf("Error loading plugins: %v", err)
+		return
+	}
+	
+	// 列出所有插件
+	plugins := pm.ListPlugins()
+	log.Printf("Loaded %d plugin(s):", len(plugins))
+	for _, p := range plugins {
+		log.Printf("  - %s (%s)", p["name"], p["file"])
+	}
+	
+	// 测试调用temp_uploader插件的upload_file函数
+	ctx := context.Background()
+	result, err := pm.CallPluginFunction(ctx, "temp_uploader", "upload_file", "testing.txt", nil)
+	if err != nil {
+		log.Printf("Error calling plugin function: %v", err)
+		return
+	}
+	
+	log.Printf("Plugin call result: %s", result)
+	if result == "" {
+		log.Println("Note: Result is empty. This may be because the file 'testing.txt' does not exist.")
+	}
+	log.Println("[Test Plugin System] Completed successfully!")
 }
