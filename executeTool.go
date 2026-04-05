@@ -1473,31 +1473,54 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 		}
 
 	case "skill_evaluate":
-		if globalSkillManagerV2 == nil {
-			content = "Error: skill manager v2 not initialized"
-			status = TaskStatusFailed
-		} else {
-			name, ok := argsMap["name"].(string)
-			if !ok || name == "" {
-				content = "Error: missing required parameter 'name'"
+			if globalSkillManagerV2 == nil {
+				content = "Error: skill manager v2 not initialized"
 				status = TaskStatusFailed
 			} else {
-				report, err := globalSkillManagerV2.EvolutionOptimizer().EvaluateSkillQuality(name)
-				if err != nil {
-					content = "Error: " + err.Error()
+				name, ok := argsMap["name"].(string)
+				if !ok || name == "" {
+					content = "Error: missing required parameter 'name'"
 					status = TaskStatusFailed
 				} else {
-					reportTOON, err := toon.Marshal(report)
+					report, err := globalSkillManagerV2.EvolutionOptimizer().EvaluateSkillQuality(name)
 					if err != nil {
-						content = "Error: failed to marshal report"
+						content = "Error: " + err.Error()
 						status = TaskStatusFailed
 					} else {
-						content = string(reportTOON)
+						reportTOON, err := toon.Marshal(report)
+						if err != nil {
+							content = "Error: failed to marshal report"
+							status = TaskStatusFailed
+						} else {
+							content = string(reportTOON)
+						}
 					}
+					fmt.Println("Skill evaluate completed")
 				}
-				fmt.Println("Skill evaluate completed")
 			}
-		}
+		case "skill_load":
+			if globalSkillManagerV2 == nil {
+				content = "Error: skill manager v2 not initialized"
+				status = TaskStatusFailed
+			} else {
+				name, ok := argsMap["name"].(string)
+				if !ok || name == "" {
+					content = "Error: missing required parameter 'name'"
+					status = TaskStatusFailed
+				} else {
+					// 检查技能是否存在
+					skill, err := globalSkillManagerV2.GetSkill(name)
+					if err != nil {
+						content = "Error: " + err.Error()
+						status = TaskStatusFailed
+					} else {
+						// 技能加载成功
+						content = fmt.Sprintf("Skill '%s' loaded successfully", skill.Name)
+						status = TaskStatusSuccess
+					}
+					fmt.Println("Skill load completed")
+				}
+			}
 
 	case "text_search":
 		keyword, ok := argsMap["keyword"].(string)
@@ -1563,7 +1586,7 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 	case "plugin_call":
 			content, _ = handlePluginCall(ctx, argsMap, ch)
 			// 检查是否是插件不存在的错误
-			if strings.Contains(content, "plugin not found") || strings.Contains(content, "Error calling plugin function") {
+			if strings.Contains(content, "Error:") || strings.Contains(content, "error:") {
 				// 确保错误消息格式正确，以Error:开头
 				if !strings.HasPrefix(content, "Error:") {
 					content = "Error: " + content
@@ -1671,18 +1694,18 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 		}
 
 	default:
-		if strings.HasPrefix(toolName, "mcp_") && globalMCPClientManager != nil {
-			result, err := globalMCPClientManager.CallTool(ctx, toolName, argsMap)
-			if err != nil {
-				content = fmt.Sprintf("Error: %v", err)
-				status = TaskStatusFailed
+			if strings.HasPrefix(toolName, "mcp_") && globalMCPClientManager != nil {
+				result, err := globalMCPClientManager.CallTool(ctx, toolName, argsMap)
+				if err != nil {
+					content = fmt.Sprintf("Error: %v", err)
+					status = TaskStatusFailed
+				} else {
+					content = result
+				}
 			} else {
-				content = result
+				content = "Error: Unknown tool name: " + toolName
+				status = TaskStatusFailed
 			}
-		} else {
-			content = "Error: Unknown tool name"
-			status = TaskStatusFailed
-		}
 	}
 
 	if status == TaskStatusSuccess && (strings.HasPrefix(content, "Error:") || strings.HasPrefix(content, "error:")) {

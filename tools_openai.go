@@ -1582,6 +1582,23 @@ Example commands:
 		{
 			"type": "function",
 			"function": map[string]interface{}{
+				"name":        "skill_load",
+				"description": "加载指定的技能。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的名称",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
 				"name":        "skill_update",
 				"description": "更新技能的部分内容，支持YAML frontmatter和关联文件。",
 				"parameters": map[string]interface{}{

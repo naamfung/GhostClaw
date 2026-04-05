@@ -5,7 +5,7 @@ func getAnthropicTools() []map[string]interface{} {
 	return []map[string]interface{}{
 		// ========== 原有工具 ==========
 		{
-			"name":        "smart_shell",
+			"name": "smart_shell",
 			"description": `智能执行 shell 命令，自动判断同步或异步执行模式。
 
 ✅ 快速命令（ls, cat, grep 等）：同步执行，立即返回结果
@@ -50,7 +50,7 @@ func getAnthropicTools() []map[string]interface{} {
 			},
 		},
 		{
-			"name":        "shell",
+			"name": "shell",
 			"description": `Execute a shell command synchronously with a timeout (default 60s). This tool BLOCKS until the command completes or times out.
 
 ✅ USE THIS FOR: ls, cat, mkdir, rm, cp, mv, grep, find, echo, pwd, which, stat, date, simple git commands, and other quick operations under 60 seconds.
@@ -1495,6 +1495,20 @@ Example commands:
 				"required": []string{"name"},
 			},
 		},
+		{
+			"name":        "skill_load",
+			"description": "加载指定的技能。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的名称",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
 		// ========== 文本搜索工具 ==========
 		{
 			"name":        "text_search",
@@ -1847,26 +1861,26 @@ Example commands:
 			"input_schema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-				    "username": map[string]interface{}{
-				        "type":        "string",
-				        "description": "SSH 用户名",
-				    },
-				    "host": map[string]interface{}{
-				        "type":        "string",
-				        "description": "远程服务器地址 (IP 或域名)",
-				    },
-				    "password": map[string]interface{}{
-				        "type":        "string",
-				        "description": "密码（与 private_key_path 二选一）",
-				    },
-				    "private_key_path": map[string]interface{}{
-				        "type":        "string",
-				        "description": "私钥文件路径（与 password 二选一）",
-				    },
-				    "port": map[string]interface{}{
-				        "type":        "integer",
-				        "description": "SSH 端口，默认 22",
-				    },
+					"username": map[string]interface{}{
+						"type":        "string",
+						"description": "SSH 用户名",
+					},
+					"host": map[string]interface{}{
+						"type":        "string",
+						"description": "远程服务器地址 (IP 或域名)",
+					},
+					"password": map[string]interface{}{
+						"type":        "string",
+						"description": "密码（与 private_key_path 二选一）",
+					},
+					"private_key_path": map[string]interface{}{
+						"type":        "string",
+						"description": "私钥文件路径（与 password 二选一）",
+					},
+					"port": map[string]interface{}{
+						"type":        "integer",
+						"description": "SSH 端口，默认 22",
+					},
 				},
 				"required": []string{"username", "host"},
 			},
@@ -1877,26 +1891,26 @@ Example commands:
 			"input_schema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-				    "session_id": map[string]interface{}{
-				        "type":        "string",
-				        "description": "由 ssh_connect 返回的会话 ID",
-				    },
-				    "command": map[string]interface{}{
-				        "type":        "string",
-				        "description": "要执行的命令",
-				    },
-				    "async": map[string]interface{}{
-				        "type":        "boolean",
-				        "description": "是否异步执行（适用于长时间命令），默认 false",
-				    },
-				    "timeout_secs": map[string]interface{}{
-				        "type":        "integer",
-				        "description": "同步命令超时时间（秒），默认 60",
-				    },
-				    "wake_after_minutes": map[string]interface{}{
-				        "type":        "integer",
-				        "description": "异步执行时的唤醒时间（分钟），默认 5",
-				    },
+					"session_id": map[string]interface{}{
+						"type":        "string",
+						"description": "由 ssh_connect 返回的会话 ID",
+					},
+					"command": map[string]interface{}{
+						"type":        "string",
+						"description": "要执行的命令",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"description": "是否异步执行（适用于长时间命令），默认 false",
+					},
+					"timeout_secs": map[string]interface{}{
+						"type":        "integer",
+						"description": "同步命令超时时间（秒），默认 60",
+					},
+					"wake_after_minutes": map[string]interface{}{
+						"type":        "integer",
+						"description": "异步执行时的唤醒时间（分钟），默认 5",
+					},
 				},
 				"required": []string{"session_id", "command"},
 			},
@@ -1915,10 +1929,10 @@ Example commands:
 			"input_schema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-				    "session_id": map[string]interface{}{
-				        "type":        "string",
-				        "description": "要关闭的会话 ID",
-				    },
+					"session_id": map[string]interface{}{
+						"type":        "string",
+						"description": "要关闭的会话 ID",
+					},
 				},
 				"required": []string{"session_id"},
 			},

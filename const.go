@@ -373,19 +373,20 @@ func BuildToolSectionForRole(role *Role) string {
 			{"ssh_close", "关闭 SSH 连接"},
 		}},
 		{"技能管理", []struct {
-			name        string
-			description string
-		}{
-			{"skill_list", "列出所有技能"},
-			{"skill_create", "创建新技能"},
-			{"skill_delete", "删除技能"},
-			{"skill_get", "获取技能详情"},
-			{"skill_reload", "重新加载技能"},
-			{"skill_update", "更新技能"},
-			{"skill_suggest", "推荐相关技能"},
-			{"skill_stats", "获取技能系统统计"},
-			{"skill_evaluate", "评估技能质量"},
-		}},
+				name        string
+				description string
+			}{
+				{"skill_list", "列出所有技能"},
+				{"skill_create", "创建新技能"},
+				{"skill_delete", "删除技能"},
+				{"skill_get", "获取技能详情"},
+				{"skill_load", "加载技能"},
+				{"skill_reload", "重新加载技能"},
+				{"skill_update", "更新技能"},
+				{"skill_suggest", "推荐相关技能"},
+				{"skill_stats", "获取技能系统统计"},
+				{"skill_evaluate", "评估技能质量"},
+			}},
 		{"配置管理", []struct {
 			name        string
 			description string
