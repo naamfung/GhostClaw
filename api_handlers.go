@@ -1491,6 +1491,30 @@ func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, _ *http.Request, nam
 		return
 	}
 
+	// 更新全局变量为新的主模型配置
+	if modelConfig := globalActorManager.GetMainModel(); modelConfig != nil {
+		if modelConfig.APIType != "" {
+			apiType = modelConfig.APIType
+		}
+		if modelConfig.BaseURL != "" {
+			baseURL = modelConfig.BaseURL
+		}
+		if modelConfig.APIKey != "" {
+			apiKey = modelConfig.ResolveAPIKey()
+		}
+		if modelConfig.Model != "" {
+			modelID = modelConfig.Model
+		}
+		if modelConfig.Temperature > 0 {
+			temperature = modelConfig.Temperature
+		}
+		if modelConfig.MaxTokens > 0 {
+			maxTokens = modelConfig.MaxTokens
+		}
+		// 其他配置...
+		log.Printf("[API] Updated global model config to: %s (BaseURL: %s)", modelConfig.Model, modelConfig.BaseURL)
+	}
+
 	// 保存到文件
 	if err := globalActorManager.SaveToFile(); err != nil {
 		log.Printf("Warning: failed to save actors: %v", err)

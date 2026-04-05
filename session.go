@@ -272,8 +272,46 @@ func ProcessUserInput(session *GlobalSession, input string) {
 
 	outputChannel := NewSessionChannel(session)
 	history := session.GetHistory()
-	// 使用全局变量
-	newHistory, err := AgentLoop(taskCtx, outputChannel, history, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking)
+
+	// 获取当前模型配置
+	effectiveAPIType := apiType
+	effectiveBaseURL := baseURL
+	effectiveAPIKey := apiKey
+	effectiveModelID := modelID
+	effectiveTemperature := temperature
+	effectiveMaxTokens := maxTokens
+	effectiveStream := stream
+	effectiveThinking := thinking
+
+	// 优先使用从ActorManager获取的模型配置
+	if globalActorManager != nil && globalStage != nil {
+		currentActor := globalStage.GetCurrentActor()
+		if _, ok := globalActorManager.GetActor(currentActor); ok {
+			if modelConfig := globalActorManager.GetActorModel(currentActor); modelConfig != nil {
+				if modelConfig.APIType != "" {
+					effectiveAPIType = modelConfig.APIType
+				}
+				if modelConfig.BaseURL != "" {
+					effectiveBaseURL = modelConfig.BaseURL
+				}
+				if modelConfig.APIKey != "" {
+					effectiveAPIKey = modelConfig.ResolveAPIKey()
+				}
+				if modelConfig.Model != "" {
+					effectiveModelID = modelConfig.Model
+				}
+				if modelConfig.Temperature > 0 {
+					effectiveTemperature = modelConfig.Temperature
+				}
+				if modelConfig.MaxTokens > 0 {
+					effectiveMaxTokens = modelConfig.MaxTokens
+				}
+				// 其他配置...
+			}
+		}
+	}
+
+	newHistory, err := AgentLoop(taskCtx, outputChannel, history, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID, effectiveTemperature, effectiveMaxTokens, effectiveStream, effectiveThinking)
 	if err != nil && err != context.Canceled {
 		session.EnqueueOutput(StreamChunk{Error: err.Error(), Done: true})
 	}
