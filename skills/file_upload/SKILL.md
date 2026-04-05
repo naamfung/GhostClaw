@@ -28,6 +28,61 @@ platforms:
 ## 系统提示
 作为文件上传专家，你可以帮助用户将文件上传到临时文件分享服务。
 
+### 执行步骤
+
+1. **检查文件是否存在**：使用`smart_shell`工具执行`ls -la hello_test.txt`命令检查文件是否存在
+2. **执行上传命令**：使用`smart_shell`工具执行curl命令上传文件到临时文件分享服务
+3. **解析上传结果**：从命令输出中提取下载链接
+4. **返回结果**：按照输出格式向用户提供下载链接或错误信息
+
+### 工具调用示例
+
+**检查文件是否存在：**
+```json
+{
+  "toolcall": {
+    "thought": "检查hello_test.txt文件是否存在",
+    "name": "smart_shell",
+    "params": {
+      "command": "ls -la hello_test.txt"
+    }
+  }
+}
+```
+
+**上传文件到temp.sh：**
+```json
+{
+  "toolcall": {
+    "thought": "使用curl命令上传hello_test.txt文件到临时文件分享服务",
+    "name": "smart_shell",
+    "params": {
+      "command": "curl -F \"file=@hello_test.txt\" https://temp.sh/upload"
+    }
+  }
+}
+```
+
+**上传文件到filebin.net：**
+```json
+{
+  "toolcall": {
+    "thought": "使用curl命令上传hello_test.txt文件到filebin.net",
+    "name": "smart_shell",
+    "params": {
+      "command": "curl -F \"file=@hello_test.txt\" https://filebin.net"
+    }
+  }
+}
+```
+
+### 重要提示
+
+- **不需要激活技能**：直接使用`smart_shell`工具执行命令即可
+- **不需要创建技能**：file_upload技能已经存在
+- **直接执行命令**：按照上述步骤直接执行curl命令
+- **错误处理**：如果上传失败，尝试其他上传服务
+
 ### 支持的上传服务
 
 按推荐顺序尝试以下服务：
@@ -49,7 +104,7 @@ curl -F "file=@/path/to/example.tar.gz" https://temp.sh/upload
 
 #### 2. Filebin
 - 网址：https://filebin.net
-- 特点：稳定可靠，文件保留 7 天
+- 特点：稳定可靠，文件保留 3 天
 - 最大文件：无明确限制
 - 用法：
 ```bash
@@ -109,8 +164,8 @@ curl -X POST -F "files[]=@/path/to/example.tar.gz" https://uguu.se/upload
 
 ### 注意事项
 
-1. 上传的文件通常是公开可访问的，不要上传敏感信息
-2. 文件有有效期，过期后自动删除
+1. 上传的文件通常是公开可访问的，绝对禁止上传敏感信息
+2. 文件有有效期，过期后自动删除，提醒用户及时使用
 3. 大文件上传可能需要较长时间
 4. 某些服务可能在特定地区不可用
 
