@@ -976,6 +976,31 @@ func isThinkingSupported(baseURL string) (supported bool, format string) {
 	return false, ""
 }
 
+// isContextLengthError 检测错误消息是否为上下文长度超过限制的错误
+func isContextLengthError(errorBody string) bool {
+	lowerError := strings.ToLower(errorBody)
+	// 常见的上下文长度错误关键词
+	contextLengthKeywords := []string{
+		"context length",
+		"token limit",
+		"context window",
+		"max tokens",
+		"token count",
+		"context size",
+		"input length",
+		"message length",
+		"tokens exceed",
+		"context exceeds",
+		"exceeds the maximum",
+	}
+	for _, keyword := range contextLengthKeywords {
+		if strings.Contains(lowerError, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 // 发送请求（支持 Context）
 func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, apiKey, apiType string) (*http.Response, error) {
 	jsonData, err := json.Marshal(data)
@@ -1013,15 +1038,20 @@ func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, api
 	if resp.StatusCode != http.StatusOK {
 		errorBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		errorBodyStr := string(errorBody)
 		if IsDebug {
 			fmt.Printf("Error response status: %d\n", resp.StatusCode)
-			fmt.Printf("Error response body: %s\n", string(errorBody))
+			fmt.Printf("Error response body: %s\n", errorBodyStr)
 			// 记录发送的消息，帮助诊断问题
 			if messagesData, ok := data["messages"]; ok {
 				fmt.Printf("Messages that caused error: %v\n", messagesData)
 			}
 		}
-		return nil, fmt.Errorf("API returned error status: %d, body: %s", resp.StatusCode, string(errorBody))
+		// 检测上下文长度超过限制的错误
+		if isContextLengthError(errorBodyStr) {
+			return nil, fmt.Errorf("context_length_exceeded: %s", errorBodyStr)
+		}
+		return nil, fmt.Errorf("API returned error status: %d, body: %s", resp.StatusCode, errorBodyStr)
 	}
 
 	return resp, nil
@@ -1496,6 +1526,92 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, e
 	return chunkChan, nil
 }
 
+// estimateMessagesTokens 估算消息列表的词元数
+func estimateMessagesTokens(messages []Message) int {
+	total := 0
+	for _, msg := range messages {
+		if content, ok := msg.Content.(string); ok {
+			total += EstimateTokens(content)
+		}
+		if msg.ToolCalls != nil {
+			total += 50 // tool_calls 的额外开销估算
+		}
+		total += 10 // 每条消息的基础开销
+	}
+	return total
+}
+
+// getModelContextLength 获取模型的上下文长度限制
+func getModelContextLength(modelID string) int {
+	// 常见模型的上下文长度限制
+	modelContextLimits := map[string]int{
+		// OpenAI
+		"gpt-4":                  128000,
+		"gpt-4-1106-preview":     128000,
+		"gpt-4-0125-preview":     128000,
+		"gpt-4-0613":             8192,
+		"gpt-4-32k":              32768,
+		"gpt-3.5-turbo":          16384,
+		"gpt-3.5-turbo-1106":     16384,
+		"gpt-3.5-turbo-0125":     16384,
+		"gpt-3.5-turbo-16k":      16384,
+		"gpt-3.5-turbo-instruct": 4096,
+		// Anthropic
+		"claude-3-opus-20240229":   200000,
+		"claude-3-sonnet-20240229": 200000,
+		"claude-3-haiku-20240307":  200000,
+		"claude-2.1":               200000,
+		"claude-2":                 100000,
+		// Google
+		"gemini-pro":          32768,
+		"gemini-1.5-pro-lite": 1048576,
+		"gemini-1.5-pro":      1048576,
+		"gemini-1.5-flash":    1048576,
+		// DeepSeek
+		"deepseek-chat": 128000,
+		"deepseek-llm":  128000,
+		// Meta
+		"llama3-70b": 131072,
+		"llama3-8b":  131072,
+		"llama2-70b": 4096,
+		"llama2-13b": 4096,
+		"llama2-7b":  4096,
+		// Qwen
+		"qwen3.5-32b":  131072,
+		"qwen3.5-72b":  131072,
+		"qwen3.5-14b":  131072,
+		"qwen3.5-1.8b": 131072,
+		"qwen2-72b":    131072,
+		"qwen2-32b":    131072,
+		"qwen2-14b":    131072,
+		"qwen2-7b":     131072,
+		// MiniMax
+		"minimax": 204800,
+		// GLM
+		"glm-4":       202752,
+		"glm-3-turbo": 100000,
+		// Kimi
+		"kimi": 262144,
+		// Default
+		"default": 64000,
+	}
+
+	// 检查是否有精确匹配
+	if limit, ok := modelContextLimits[modelID]; ok {
+		return limit
+	}
+
+	// 检查是否有模糊匹配（模型名称包含关键词）
+	for key, limit := range modelContextLimits {
+		if strings.Contains(modelID, key) {
+			return limit
+		}
+	}
+
+	// 默认值
+	return 64000
+}
+
 // CallModel 调用 LLM API，返回流式数据块通道
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
@@ -1506,6 +1622,18 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 	}
 	if modelID == "" {
 		modelID = DEFAULT_MODEL_ID
+	}
+
+	// 估算消息的词元数
+	tokenCount := estimateMessagesTokens(messages)
+	// 获取模型的上下文长度限制
+	contextLimit := getModelContextLength(modelID)
+	log.Printf("[CallModel] Estimated tokens: %d, Context limit: %d", tokenCount, contextLimit)
+
+	// 检查是否接近或超过上下文限制
+	if tokenCount >= contextLimit*9/10 { // 90% 阈值
+		// 上下文长度接近或超过限制，尝试自动创建新会话
+		return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
 	}
 
 	// 准备请求数据（初始尝试）
@@ -1519,20 +1647,46 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 	maxSize := globalAPIConfig.MaxRequestSizeBytes
 	if maxSize == 0 || len(reqBody) <= maxSize || IsDebug {
 		// 大小合适或调试模式，直接发送
-		return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+		chunkChan, err := sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+		if err != nil {
+			// 检查是否是上下文长度超过限制的错误
+			if strings.Contains(err.Error(), "context_length_exceeded") {
+				// 上下文长度超过限制，尝试自动创建新会话
+				return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+			}
+			return nil, err
+		}
+		return chunkChan, nil
 	}
 
 	// 压缩重试
 	compressLevels := []int{0, 1, 2}
 	for _, level := range compressLevels {
 		compressedMsgs := compressMessages(messages, level)
+		// 估算压缩后消息的词元数
+		compressedTokenCount := estimateMessagesTokens(compressedMsgs)
+		log.Printf("[CallModel] Compressed tokens: %d, Context limit: %d", compressedTokenCount, contextLimit)
+		// 检查压缩后是否仍接近或超过上下文限制
+		if compressedTokenCount >= contextLimit*9/10 {
+			// 压缩后仍接近或超过限制，尝试自动创建新会话
+			return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+		}
 		data, endpoint, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
 		if err != nil {
 			continue
 		}
 		reqBody, _ = json.Marshal(data)
 		if maxSize == 0 || len(reqBody) <= maxSize {
-			return sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+			chunkChan, err := sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+			if err != nil {
+				// 检查是否是上下文长度超过限制的错误
+				if strings.Contains(err.Error(), "context_length_exceeded") {
+					// 上下文长度超过限制，尝试自动创建新会话
+					return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+				}
+				return nil, err
+			}
+			return chunkChan, nil
 		}
 	}
 
@@ -1548,6 +1702,30 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 	errChan <- StreamChunk{Error: errMsg, Done: true}
 	close(errChan)
 	return errChan, nil
+}
+
+// handleContextLengthExceeded 处理上下文长度超过限制的情况，自动创建新会话并使用现有压缩策略初始化新会话
+func handleContextLengthExceeded(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
+	temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
+	log.Printf("[CallModel] Context length exceeded, creating new session with compressed context")
+
+	// 压缩消息，保留头尾中间摘要
+	// 使用最高级别的压缩，确保消息大小在限制范围内
+	compressedMsgs := compressMessages(messages, 2)
+
+	// 准备新会话的请求数据
+	data, endpoint, err := prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+	if err != nil {
+		return nil, err
+	}
+
+	// 发送请求到新会话
+	chunkChan, err := sendRequestAndGetChunks(ctx, data, endpoint, apiKey, apiType, stream)
+	if err != nil {
+		return nil, err
+	}
+
+	return chunkChan, nil
 }
 
 // CallModelSync 同步调用 LLM API，返回完整响应（用于子代理）
