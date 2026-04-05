@@ -1281,6 +1281,51 @@ Example commands:
 				},
 			},
 		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "todos",
+				"description": "管理待办事项列表，用于规划和跟踪任务进度。",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"todos": map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"id": map[string]interface{}{
+										"type":        "string",
+										"description": "任务唯一标识",
+									},
+									"content": map[string]interface{}{
+										"type":        "string",
+										"description": "任务内容",
+									},
+									"status": map[string]interface{}{
+										"type":        "string",
+										"enum":        []string{"pending", "in_progress", "completed"},
+										"description": "任务状态：pending（待处理）、in_progress（进行中）、completed（已完成）",
+									},
+									"priority": map[string]interface{}{
+										"type":        "string",
+										"enum":        []string{"high", "medium", "low"},
+										"description": "任务优先级：high（高）、medium（中）、low（低）",
+									},
+								},
+								"required": []string{"id", "content", "status"},
+							},
+							"description": "待办事项列表",
+						},
+						"summary": map[string]interface{}{
+							"type":        "string",
+							"description": "任务执行摘要（可选）",
+						},
+					},
+					"required": []string{"todos"},
+				},
+			},
+		},
 		// ========== 记忆管理工具 ==========
 		{
 			"type": "function",

@@ -1110,10 +1110,10 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 			}
 		}
 
-	case "todo":
-		itemsInterface, ok := argsMap["items"].([]interface{})
+	case "todos":
+		itemsInterface, ok := argsMap["todos"].([]interface{})
 		if !ok {
-			content = "Error: Invalid items in todo tool call"
+			content = "Error: Invalid todos in todos tool call"
 		} else {
 			var items []TodoItem
 			valid := true
@@ -1128,10 +1128,10 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 				if id, ok := itemMap["id"].(string); ok {
 					item.ID = id
 				}
-				if text, ok := itemMap["text"].(string); ok {
+				if text, ok := itemMap["content"].(string); ok {
 					item.Text = text
 				} else {
-					content = "Error: Item missing text"
+					content = "Error: Item missing content"
 					valid = false
 					break
 				}
@@ -1597,14 +1597,14 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 			// 构建完整的 opencli 命令
 			fullCommand := "opencli " + command
 			result := runShellWithTimeout(ctx, fullCommand, false, false)
-			
+
 			if result.ConfirmRequired {
 				var confirmResult strings.Builder
 				confirmResult.WriteString("⚠️ **确认请求**\n\n")
 				confirmResult.WriteString(result.ConfirmMessage)
 				confirmResult.WriteString("\n\n---\n")
 				confirmResult.WriteString("要强制执行此命令，请使用: `opencli(command=\"...\")`\n")
-				
+
 				content = confirmResult.String()
 				status = TaskStatusSuccess
 			} else if result.Err != nil {

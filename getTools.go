@@ -115,14 +115,14 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
 		disabledTools["shell_delayed_remove"] = true
 	}
 
-	// 检查 opencli 是否可用，如果可用，禁用所有 browser_ 前缀的工具
-	if isOpenCLIAvailable() {
+	// 检查 opencli 是否可用，如果可用且配置为禁用浏览器工具，才禁用所有 browser_ 前缀的工具
+	if isOpenCLIAvailable() && DisableBrowserTools {
 		log.Println("[Tools] opencli is available, disabling browser_* tools")
 		// 这里我们会在后续的过滤逻辑中处理 browser_ 前缀的工具
 	}
 
 	// 如果未有需要过滤的工具，直接返回
-	if len(disabledTools) == 0 && !isOpenCLIAvailable() {
+	if len(disabledTools) == 0 && !(isOpenCLIAvailable() && DisableBrowserTools) {
 		return tools
 	}
 
