@@ -79,12 +79,31 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 					return CancelToolResult(toolID, CancelByUser, "Command cancelled by user", toolName)
 				} else {
 					content = fmt.Sprintf("Error: %v", result.Err)
+					if result.Stderr != "" {
+						content += "\n" + result.Stderr
+						// 检查是否是未知命令错误
+						if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
+							// 执行 opencli help 命令获取帮助信息
+							helpResult := runShellWithTimeout(ctx, "opencli help", false, false)
+							if helpResult.Err == nil {
+								content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
+							}
+						}
+					}
 					status = TaskStatusFailed
 				}
 			} else {
 				content = result.Stdout
 				if result.ExitCode != 0 && result.Stderr != "" {
 					content += "\n" + result.Stderr
+					// 检查是否是未知命令错误
+					if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
+						// 执行 opencli help 命令获取帮助信息
+						helpResult := runShellWithTimeout(ctx, "opencli help", false, false)
+						if helpResult.Err == nil {
+							content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
+						}
+					}
 					status = TaskStatusFailed
 				}
 			}
@@ -1612,12 +1631,31 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 					return CancelToolResult(toolID, CancelByUser, "Command cancelled by user", toolName)
 				} else {
 					content = fmt.Sprintf("Error: %v", result.Err)
+					if result.Stderr != "" {
+						content += "\n" + result.Stderr
+						// 检查是否是未知命令错误
+						if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
+							// 执行 opencli help 命令获取帮助信息
+							helpResult := runShellWithTimeout(ctx, "opencli help", false, false)
+							if helpResult.Err == nil {
+								content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
+							}
+						}
+					}
 					status = TaskStatusFailed
 				}
 			} else {
 				content = result.Stdout
 				if result.ExitCode != 0 && result.Stderr != "" {
 					content += "\n" + result.Stderr
+					// 检查是否是未知命令错误
+					if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
+						// 执行 opencli help 命令获取帮助信息
+						helpResult := runShellWithTimeout(ctx, "opencli help", false, false)
+						if helpResult.Err == nil {
+							content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
+						}
+					}
 					status = TaskStatusFailed
 				}
 			}
