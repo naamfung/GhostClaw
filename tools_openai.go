@@ -1213,6 +1213,27 @@ Example commands:
 				},
 			},
 		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "plugin_detail",
+				"description": "Get detailed information about a specific plugin, including its functions, source code, and metadata.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "Plugin name to get details for.",
+						},
+						"include_source": map[string]interface{}{
+							"type":        "boolean",
+							"description": "Whether to include the full source code. Default: false.",
+						},
+					},
+					"required": []string{"name"},
+				},
+			},
+		},
 		// ========== Cron 管理工具 ==========
 		{
 			"type": "function",

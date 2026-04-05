@@ -5,6 +5,7 @@ import (
         "fmt"
         "os"
         "path/filepath"
+        "strings"
 
         "github.com/toon-format/toon-go"
 )
@@ -247,6 +248,7 @@ return {
 			"plugin_compile": "Compile a plugin for syntax checking.",
 			"plugin_delete": "Delete a plugin and its files.",
 			"plugin_apis": "Show this API documentation.",
+			"plugin_detail": "Get detailed information about a specific plugin.",
 		},
 	}
 	
@@ -257,6 +259,83 @@ return {
 	}
 	
 	return string(apiDocsTOON), false
+}
+
+// handlePluginDetail 处理plugin_detail工具调用，返回插件的详细信息
+func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
+	name, ok := argsMap["name"].(string)
+	if !ok || name == "" {
+		return "Error: missing or invalid 'name' parameter. Example: plugin_detail(name=\"temp_uploader\")", false
+	}
+	includeSource, _ := argsMap["include_source"].(bool)
+
+	if globalPluginManager == nil {
+		return "Error: plugin manager not initialized. Please restart the application.", false
+	}
+
+	// 检查插件是否存在
+	plugins := globalPluginManager.ListPlugins()
+	var targetPlugin map[string]interface{}
+	for _, p := range plugins {
+		if p["name"] == name {
+			targetPlugin = p
+			break
+		}
+	}
+
+	if targetPlugin == nil {
+		return fmt.Sprintf("Error: plugin '%s' not found. Use plugin_list to see available plugins.", name), false
+	}
+
+	// 构建插件详情
+	detail := map[string]interface{}{
+		"name":        name,
+		"description": targetPlugin["description"],
+		"path":        targetPlugin["path"],
+		"functions":   []string{},
+	}
+
+	// 尝试读取插件源代码以获取函数列表
+	pluginPath := filepath.Join(globalPluginManager.pluginsDir, name, name+".lua")
+	data, err := os.ReadFile(pluginPath)
+	if err == nil {
+		source := string(data)
+		
+		// 简单解析Lua函数定义
+		var functions []string
+		lines := strings.Split(source, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "function ") {
+				funcName := strings.TrimPrefix(line, "function ")
+				funcName = strings.Split(funcName, "(")[0]
+				funcName = strings.TrimSpace(funcName)
+				if funcName != "" {
+					functions = append(functions, funcName)
+				}
+			} else if strings.HasPrefix(line, "local function ") {
+				funcName := strings.TrimPrefix(line, "local function ")
+				funcName = strings.Split(funcName, "(")[0]
+				funcName = strings.TrimSpace(funcName)
+				if funcName != "" {
+					functions = append(functions, funcName)
+				}
+			}
+		}
+		detail["functions"] = functions
+
+		if includeSource {
+			detail["source"] = source
+		}
+	}
+
+	// 转换为TOON格式
+	detailTOON, err := toon.Marshal(detail)
+	if err != nil {
+		return fmt.Sprintf("Error: failed to generate plugin details: %v", err), false
+	}
+
+	return string(detailTOON), false
 }
 
 // callToolInternal 执行一个工具并返回结果字符串（无流式输出）
