@@ -11,6 +11,8 @@ import (
         "github.com/google/uuid"
 )
 
+
+
 // subscriber 输出广播订阅者
 type subscriber struct {
         ch   chan StreamChunk
@@ -166,9 +168,34 @@ func (s *GlobalSession) CancelTask() {
 
 // IsTaskRunning 检查是否有任务在运行
 func (s *GlobalSession) IsTaskRunning() bool {
-        s.mu.RLock()
-        defer s.mu.RUnlock()
-        return s.TaskRunning
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.TaskRunning
+}
+
+// ProcessUserInput 处理用户输入并触发模型调用
+func ProcessUserInput(session *GlobalSession, input string) {
+	ok, taskID := session.TryStartTask()
+	if !ok {
+		session.EnqueueOutput(StreamChunk{Error: "已有任务在执行中，请使用 /stop 取消后再试"})
+		return
+	}
+	taskCtx := session.GetTaskCtx()
+	session.EnqueueOutput(StreamChunk{TaskRunning: true})
+	defer func() {
+		session.SetTaskRunning(false, taskID)
+		session.EnqueueOutput(StreamChunk{TaskRunning: false})
+	}()
+	outputChannel := NewSessionChannel(session)
+	history := session.GetHistory()
+	// 使用全局变量
+	newHistory, err := AgentLoop(taskCtx, outputChannel, history, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking)
+	if err != nil && err != context.Canceled {
+		session.EnqueueOutput(StreamChunk{Error: err.Error(), Done: true})
+	}
+	if len(newHistory) > len(history) {
+		session.SetHistory(newHistory)
+	}
 }
 
 // GetTaskCtx 返回当前任务的 context

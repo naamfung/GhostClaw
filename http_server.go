@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -181,32 +180,11 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		session.AddToHistory("user", trimmed)
-		go processUserInput(session, trimmed)
+		go ProcessUserInput(session, trimmed)
 	}
 }
 
-func processUserInput(session *GlobalSession, input string) {
-	ok, taskID := session.TryStartTask()
-	if !ok {
-		session.EnqueueOutput(StreamChunk{Error: "已有任务在执行中，请使用 /stop 取消后再试"})
-		return
-	}
-	taskCtx := session.GetTaskCtx()
-	session.EnqueueOutput(StreamChunk{TaskRunning: true})
-	defer func() {
-		session.SetTaskRunning(false, taskID)
-		session.EnqueueOutput(StreamChunk{TaskRunning: false})
-	}()
-	outputChannel := NewSessionChannel(session)
-	history := session.GetHistory()
-	newHistory, err := AgentLoop(taskCtx, outputChannel, history, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking)
-	if err != nil && err != context.Canceled {
-		session.EnqueueOutput(StreamChunk{Error: err.Error(), Done: true})
-	}
-	if len(newHistory) > len(history) {
-		session.SetHistory(newHistory)
-	}
-}
+
 
 // propsHandler 返回服务器属性
 func (s *HTTPServer) propsHandler(w http.ResponseWriter, r *http.Request) {

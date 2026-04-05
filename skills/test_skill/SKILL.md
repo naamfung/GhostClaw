@@ -13,7 +13,7 @@ platforms:
 # 测试技能
 
 ## 描述
-这是一个测试技能，用于验证GhostClaw新的技能系统功能，包括层次化目录结构、YAML frontmatter和关联文件。
+这是一个测试技能，用于验证GhostClaw新的技能系统功能，包括层次化目录结构、YAML frontmatter与关联文件。
 
 ## 触发关键词
 - 测试

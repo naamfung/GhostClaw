@@ -475,13 +475,20 @@ func main() {
 			log.Printf("[TaskManager] Wake notification sent for task %s to session %s", task.ID, task.SessionID)
 
 			session := GetGlobalSession()
-			if !session.IsTaskRunning() {
-				session.AddToHistory("user", wakeMsg)
+			session.mu.Lock()
+			taskRunning := session.TaskRunning
+			session.mu.Unlock()
+			
+			// 无论模型是否繁忙，都先将唤醒通知添加到历史
+			session.AddToHistory("user", wakeMsg)
+			
+			if !taskRunning {
+				// 模型未在处理任务，触发模型调用处理唤醒通知
 				log.Printf("[TaskManager] Triggering model call for global session")
+				go ProcessUserInput(session, wakeMsg)
 			} else {
-				session.EnqueueOutput(StreamChunk{
-					Content: "\n\n" + wakeMsg + "\n\n",
-				})
+				// 模型正在处理任务，等待模型处理完成后自动触发
+				log.Printf("[TaskManager] Model is busy, wake notification added to history for session %s", task.SessionID)
 			}
 		} else {
 			log.Printf("[TaskManager] Task %s has no session ID, cannot send wake notification", task.ID)
