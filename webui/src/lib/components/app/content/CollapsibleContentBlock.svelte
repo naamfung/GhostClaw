@@ -100,12 +100,12 @@
                         </div>
                 </Collapsible.Trigger>
 
-                <Collapsible.Content>
+                <Collapsible.Content style="position: relative;">
                         <div
                                 bind:this={contentContainer}
                                 class="overflow-y-auto border-t {contentBorderClass} px-3 pb-3"
                                 onscroll={handleScroll}
-                                style="min-height: var(--min-message-height); max-height: var(--max-message-height);"
+                                style="min-height: var(--min-message-height); max-height: var(--max-message-height); position: relative;"
                         >
                                 {@render children()}
                         </div>
