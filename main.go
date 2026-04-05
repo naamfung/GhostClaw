@@ -84,6 +84,8 @@ var (
 	cmdModeActive bool = false
 )
 
+
+
 // initUploadDir 初始化上传目录（在 main 中调用，确保 globalExecDir 已设置）
 func initUploadDir() {
 	globalUploadDir = filepath.Join(globalExecDir, "uploads")
@@ -475,21 +477,17 @@ func main() {
 			log.Printf("[TaskManager] Wake notification sent for task %s to session %s", task.ID, task.SessionID)
 
 			session := GetGlobalSession()
-			session.mu.Lock()
-			taskRunning := session.TaskRunning
-			session.mu.Unlock()
 			
-			// 无论模型是否繁忙，都先将唤醒通知添加到历史
-			session.AddToHistory("user", wakeMsg)
+			// 将唤醒通知添加到输入消息列表中（自动增长，不会满）
+			session.inputMu.Lock()
+			session.InputMessages = append(session.InputMessages, wakeMsg)
+			session.inputMu.Unlock()
 			
-			if !taskRunning {
-				// 模型未在处理任务，触发模型调用处理唤醒通知
-				log.Printf("[TaskManager] Triggering model call for global session")
-				go ProcessUserInput(session, wakeMsg)
-			} else {
-				// 模型正在处理任务，等待模型处理完成后自动触发
-				log.Printf("[TaskManager] Model is busy, wake notification added to history for session %s", task.SessionID)
-			}
+			log.Printf("[TaskManager] Wake notification added to input messages for session %s", task.SessionID)
+			
+			// 不立即处理，等待模型处理完成后自动处理队列中的消息
+			// 这样可以确保唤醒通知在模型下线后才被处理
+			log.Printf("[TaskManager] Wake notification queued for session %s, will be processed when model is idle", task.SessionID)
 		} else {
 			log.Printf("[TaskManager] Task %s has no session ID, cannot send wake notification", task.ID)
 		}
@@ -735,6 +733,10 @@ func main() {
 		fmt.Println("\n✋ 收到终止信号，正在关闭...")
 		cancel()
 		session.autoSaveHistory()
+		// 保存未处理消息队列
+		if err := session.SavePendingMessages(); err != nil {
+			log.Printf("Failed to save pending messages: %v", err)
+		}
 		if emailPoller != nil {
 			emailPoller.Stop()
 		}
@@ -751,6 +753,10 @@ func main() {
 	}
 
 	session.autoSaveHistory()
+	// 保存未处理消息队列
+	if err := session.SavePendingMessages(); err != nil {
+		log.Printf("Failed to save pending messages: %v", err)
+	}
 	if emailPoller != nil {
 		emailPoller.Stop()
 	}

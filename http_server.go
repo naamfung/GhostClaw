@@ -179,8 +179,22 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			}) {
 			continue
 		}
-		session.AddToHistory("user", trimmed)
-		go ProcessUserInput(session, trimmed)
+		// 将用户输入添加到输入消息列表中（自动增长，不会满）
+		session.inputMu.Lock()
+		session.InputMessages = append(session.InputMessages, trimmed)
+		session.inputMu.Unlock()
+		
+		log.Printf("[HTTP Server] User input added to input messages")
+		
+		// 检查是否有任务在运行
+		session.mu.RLock()
+		taskRunning := session.TaskRunning
+		session.mu.RUnlock()
+		
+		if !taskRunning {
+			// 模型未在处理任务，触发模型调用处理队列中的消息
+			go processInputQueue(session)
+		}
 	}
 }
 
