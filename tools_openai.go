@@ -1202,6 +1202,17 @@ Example commands:
 				},
 			},
 		},
+		{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "plugin_apis",
+				"description": "List plugin system internal API documentation for model reference.",
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+				},
+			},
+		},
 		// ========== Cron 管理工具 ==========
 		{
 			"type": "function",

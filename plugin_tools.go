@@ -195,15 +195,79 @@ func handlePluginCompile(ctx context.Context, argsMap map[string]interface{}, ch
         return fmt.Sprintf("Plugin '%s' compiled successfully (syntax OK).", name), false
 }
 
+// handlePluginAPIs 处理plugin_apis工具调用，返回插件系统的内部接口信息
+func handlePluginAPIs(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
+	// 构建插件系统内部接口文档
+	apiDocs := map[string]interface{}{
+		"title": "GhostClaw Plugin System API Documentation",
+		"version": "1.0.0",
+		"description": "This document provides information about the internal APIs available to plugins in GhostClaw.",
+		"apis": map[string]interface{}{
+			"Lua Standard Library": "All standard Lua 5.4 libraries are available, including string, table, math, etc.",
+			"GhostClaw Core APIs": map[string]interface{}{
+				"print(...)" : "Print messages to the console.",
+				"log(...)" : "Log messages to the system log.",
+				"error(...)" : "Throw an error.",
+			},
+			"Plugin Return Format": "Plugins should return a table containing all exported functions.",
+			"Function Call Convention": "Functions can accept multiple arguments and return multiple values.",
+			"File Operations": "Use standard Lua io library for file operations.",
+			"System Commands": "Use io.popen() to execute system commands.",
+			"HTTP Requests": "Use curl or other command-line tools via io.popen() for HTTP requests.",
+			"Error Handling": "Return error information as part of the function return values.",
+			"Best Practices": []string{
+				"Keep plugins focused on a single task",
+				"Document all functions with comments",
+				"Handle errors gracefully",
+				"Test plugins thoroughly",
+				"Use descriptive function names",
+				"Limit external dependencies",
+			},
+			"Example Plugin Structure": `-- Example Plugin Structure
+local function hello(name)
+    return "Hello, " .. name .. "!"
+end
+
+local function add(a, b)
+    return a + b
+end
+
+return {
+    hello = hello,
+    add = add
+}`,
+		},
+		"plugin_calls": map[string]interface{}{
+			"plugin_list": "List all available plugins.",
+			"plugin_create": "Create a new plugin with the given name and code.",
+			"plugin_load": "Load or reload a plugin from code.",
+			"plugin_unload": "Unload a plugin from memory.",
+			"plugin_reload": "Reload a plugin from its file.",
+			"plugin_call": "Call a function in a plugin with arguments.",
+			"plugin_compile": "Compile a plugin for syntax checking.",
+			"plugin_delete": "Delete a plugin and its files.",
+			"plugin_apis": "Show this API documentation.",
+		},
+	}
+	
+	// 将API文档转换为TOON格式
+	apiDocsTOON, err := toon.Marshal(apiDocs)
+	if err != nil {
+		return "Error: failed to generate API documentation", false
+	}
+	
+	return string(apiDocsTOON), false
+}
+
 // callToolInternal 执行一个工具并返回结果字符串（无流式输出）
 func callToolInternal(ctx context.Context, toolName string, argsMap map[string]interface{}) (string, error) {
-        dummyCh := &dummyChannel{}
-        result := executeTool(ctx, "", toolName, argsMap, dummyCh, nil) // nil = 插件内部调用，跳过权限检查
-        contentStr, _ := result.Content.(string)
-        if result.Meta.Status == TaskStatusFailed {
-                return "", fmt.Errorf("%s", contentStr)
-        }
-        return contentStr, nil
+	dummyCh := &dummyChannel{}
+	result := executeTool(ctx, "", toolName, argsMap, dummyCh, nil) // nil = 插件内部调用，跳过权限检查
+	contentStr, _ := result.Content.(string)
+	if result.Meta.Status == TaskStatusFailed {
+		return "", fmt.Errorf("%s", contentStr)
+	}
+	return contentStr, nil
 }
 
 // dummyChannel 实现 Channel 接口，忽略所有写入

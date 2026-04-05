@@ -1597,6 +1597,8 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 		content, _ = handlePluginCompile(ctx, argsMap, ch)
 	case "plugin_delete":
 		content, _ = handlePluginDelete(ctx, argsMap, ch)
+	case "plugin_apis":
+		content, _ = handlePluginAPIs(ctx, argsMap, ch)
 
 	case "shell_delayed":
 		content, _ = handleDelayedExec(ctx, argsMap, ch)

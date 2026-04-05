@@ -1024,6 +1024,14 @@ Example commands:
 				"required": []string{"name"},
 			},
 		},
+		{
+			"name":        "plugin_apis",
+			"description": "List plugin system internal API documentation for model reference.",
+			"input_schema": map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
 		// ========== Cron 管理工具 ==========
 		{
 			"name":        "cron_add",

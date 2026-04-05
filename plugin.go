@@ -119,6 +119,17 @@ func (pm *PluginManager) LoadPlugin(name, code string, filePath string) error {
         L.Close()
         return fmt.Errorf("execute plugin code failed: %w", err)
     }
+    
+    // 检查是否有返回值（通常是一个包含函数的表）
+    top := L.GetTop()
+    if top > 0 {
+        // 如果返回的是一个表，将其设置为全局变量
+        val := L.Get(top)
+        if val.Type() == lua.LTTable {
+            // 将表设置为全局变量，这样CallPluginFunction可以通过GetGlobal访问其中的函数
+            L.SetGlobal(name, val)
+        }
+    }
 
     plugin := &Plugin{
         Name:     name,
@@ -206,9 +217,21 @@ func (pm *PluginManager) CallPluginFunction(ctx context.Context, name, funcName 
     p.mu.Lock()
     defer p.mu.Unlock()
 
+    // 首先尝试直接从全局变量获取函数
     lv := p.L.GetGlobal(funcName)
     if lv.Type() != lua.LTFunction {
-        return "", fmt.Errorf("function %s not found in plugin %s", funcName, name)
+        // 如果找不到，尝试从插件返回的表中获取函数
+        pluginTable := p.L.GetGlobal(name)
+        if pluginTable.Type() == lua.LTTable {
+            p.L.GetField(pluginTable, funcName)
+            lv = p.L.Get(-1)
+            p.L.Pop(1) // 弹出获取的函数
+            if lv.Type() != lua.LTFunction {
+                return "", fmt.Errorf("function %s not found in plugin %s", funcName, name)
+            }
+        } else {
+            return "", fmt.Errorf("function %s not found in plugin %s", funcName, name)
+        }
     }
 
     params := make([]lua.LValue, len(args))
