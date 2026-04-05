@@ -267,6 +267,238 @@ func isDangerousCommand(command string) bool {
 	return false
 }
 
+// handleInternalLS 在Windows上用Go内部实现ls命令
+func handleInternalLS(args []string) CmdResult {
+	showHidden := false
+	showLongFormat := false
+	var pattern string
+
+	for _, arg := range args {
+		switch arg {
+		case "-a", "-A":
+			showHidden = true
+		case "-l":
+			showLongFormat = true
+		case "-la", "-al", "-lA", "-Al":
+			showHidden = true
+			showLongFormat = true
+		default:
+			if !strings.HasPrefix(arg, "-") {
+				pattern = arg
+			}
+		}
+	}
+
+	if pattern == "" {
+		pattern = "*"
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+	}
+
+	var fileInfos []os.FileInfo
+	if pattern == "*" {
+		entries, err := os.ReadDir(cwd)
+		if err != nil {
+			return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err == nil {
+				fileInfos = append(fileInfos, info)
+			}
+		}
+	} else {
+		matches, err := filepath.Glob(filepath.Join(cwd, pattern))
+		if err != nil {
+			return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err == nil {
+				fileInfos = append(fileInfos, info)
+			}
+		}
+	}
+
+	var sb strings.Builder
+	for _, info := range fileInfos {
+		name := info.Name()
+		if !showHidden && strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		if showLongFormat {
+			perm := info.Mode().String()
+			size := info.Size()
+			modTime := info.ModTime().Format("Jan 02 15:04")
+			sb.WriteString(fmt.Sprintf("%s %8d %s %s\n", perm, size, modTime, name))
+		} else {
+			sb.WriteString(name)
+			sb.WriteString("\n")
+		}
+	}
+
+	return CmdResult{Stdout: sb.String(), ExitCode: 0}
+}
+
+// handleInternalPWD 在Windows上用Go内部实现pwd命令
+func handleInternalPWD() CmdResult {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+	}
+	return CmdResult{Stdout: cwd + "\n", ExitCode: 0}
+}
+
+// handleInternalMkdir 在Windows上用Go内部实现mkdir命令
+func handleInternalMkdir(args []string) CmdResult {
+	if len(args) == 0 {
+		return CmdResult{Stderr: "mkdir: missing operand", ExitCode: 1, Err: errors.New("missing operand")}
+	}
+	for _, arg := range args {
+		if arg == "-p" || strings.HasPrefix(arg, "-p") {
+			continue
+		}
+		err := os.MkdirAll(arg, 0755)
+		if err != nil {
+			return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+	}
+	return CmdResult{ExitCode: 0}
+}
+
+// handleInternalRM 在Windows上用Go内部实现rm命令
+func handleInternalRM(args []string) CmdResult {
+	if len(args) == 0 {
+		return CmdResult{Stderr: "rm: missing operand", ExitCode: 1, Err: errors.New("missing operand")}
+	}
+	recursive := false
+	var files []string
+	for _, arg := range args {
+		if arg == "-r" || arg == "-rf" || arg == "-fr" {
+			recursive = true
+		} else if !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
+		}
+	}
+	for _, file := range files {
+		var err error
+		if recursive {
+			err = os.RemoveAll(file)
+		} else {
+			err = os.Remove(file)
+		}
+		if err != nil {
+			return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+	}
+	return CmdResult{ExitCode: 0}
+}
+
+// handleInternalCP 在Windows上用Go内部实现cp命令
+func handleInternalCP(args []string) CmdResult {
+	if len(args) < 2 {
+		return CmdResult{Stderr: "cp: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+	}
+	src := args[0]
+	dst := args[1]
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+	}
+	err = os.WriteFile(dst, data, 0644)
+	if err != nil {
+		return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+	}
+	return CmdResult{ExitCode: 0}
+}
+
+// handleInternalMV 在Windows上用Go内部实现mv命令
+func handleInternalMV(args []string) CmdResult {
+	if len(args) < 2 {
+		return CmdResult{Stderr: "mv: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+	}
+	src := args[0]
+	dst := args[1]
+	err := os.Rename(src, dst)
+	if err != nil {
+		return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+	}
+	return CmdResult{ExitCode: 0}
+}
+
+// handleInternalCat 在Windows上用Go内部实现cat命令
+func handleInternalCat(args []string) CmdResult {
+	if len(args) == 0 {
+		return CmdResult{Stderr: "cat: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+	}
+	var sb strings.Builder
+	for _, file := range args {
+		if strings.HasPrefix(file, "-") {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+		}
+		sb.Write(data)
+	}
+	return CmdResult{Stdout: sb.String(), ExitCode: 0}
+}
+
+// handleInternalEcho 在Windows上用Go内部实现echo命令
+func handleInternalEcho(args []string) CmdResult {
+	return CmdResult{Stdout: strings.Join(args, " ") + "\n", ExitCode: 0}
+}
+
+// handleInternalDate 在Windows上用Go内部实现date命令
+func handleInternalDate() CmdResult {
+	return CmdResult{Stdout: time.Now().Format(time.RFC1123) + "\n", ExitCode: 0}
+}
+
+// tryInternalCommand 尝试用Go内部实现的命令处理
+func tryInternalCommand(command string) (CmdResult, bool) {
+	if runtime.GOOS != "windows" {
+		return CmdResult{}, false
+	}
+
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return CmdResult{}, false
+	}
+
+	cmd := strings.ToLower(parts[0])
+	args := parts[1:]
+
+	switch cmd {
+	case "ls":
+		return handleInternalLS(args), true
+	case "pwd":
+		return handleInternalPWD(), true
+	case "mkdir":
+		return handleInternalMkdir(args), true
+	case "rm":
+		return handleInternalRM(args), true
+	case "cp":
+		return handleInternalCP(args), true
+	case "mv":
+		return handleInternalMV(args), true
+	case "cat":
+		return handleInternalCat(args), true
+	case "echo":
+		return handleInternalEcho(args), true
+	case "date":
+		return handleInternalDate(), true
+	case "touch":
+		return handleWindowsTouch(command), true
+	default:
+		return CmdResult{}, false
+	}
+}
+
 func runShell(ctx context.Context, command string) CmdResult {
 	return runShellWithTimeout(ctx, command, false, false)
 }
@@ -322,14 +554,16 @@ func runShellWithTimeout(ctx context.Context, command string, force bool, isBloc
 		}
 	}
 
-	if runtime.GOOS == "windows" && strings.HasPrefix(strings.TrimSpace(strings.ToLower(command)), "touch ") {
-		return handleWindowsTouch(command)
+	// 首先尝试用Go内部实现的命令
+	if result, handled := tryInternalCommand(command); handled {
+		return result
 	}
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		command = translateUnixToWindows(command)
-		cmd = exec.CommandContext(ctx, "cmd.exe", "/c", command)
+		// 使用PowerShell执行命令，而不是cmd.exe
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-Command", command)
 	} else {
 		cmd = exec.CommandContext(ctx, "sh", "-c", command)
 	}
@@ -364,18 +598,18 @@ func findExecutableInPath(filename string) string {
 	// 从环境变量PATH中搜索可执行文件
 	path := os.Getenv("PATH")
 	pathDirs := strings.Split(path, string(os.PathListSeparator))
-	
+
 	for _, dir := range pathDirs {
 		if dir == "" {
 			continue
 		}
-		
+
 		execPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(execPath); err == nil {
 			return execPath
 		}
 	}
-	
+
 	return ""
 }
 
@@ -455,38 +689,38 @@ func translateUnixToWindows(command string) string {
 
 	switch strings.ToLower(cmd) {
 	case "ls":
-		dirArgs := []string{}
+		psArgs := []string{}
 		for _, arg := range args {
 			switch strings.ToLower(arg) {
 			case "-l":
-				dirArgs = append(dirArgs, "")
+				psArgs = append(psArgs, "-Detailed")
 			case "-a":
-				dirArgs = append(dirArgs, "/a")
+				psArgs = append(psArgs, "-Force")
 			case "-la", "-al":
-				dirArgs = append(dirArgs, "/a")
+				psArgs = append(psArgs, "-Force", "-Detailed")
 			default:
-				dirArgs = append(dirArgs, arg)
+				psArgs = append(psArgs, arg)
 			}
 		}
-		return "dir " + strings.Join(dirArgs, " ")
+		return "Get-ChildItem " + strings.Join(psArgs, " ")
 	case "pwd":
-		return "cd"
+		return "Get-Location"
 	case "mkdir":
-		return "md " + strings.Join(args, " ")
+		return "New-Item -ItemType Directory -Path " + strings.Join(args, " ")
 	case "rm":
-		return "del " + strings.Join(args, " ")
+		return "Remove-Item -Path " + strings.Join(args, " ")
 	case "rmdir":
-		return "rd " + strings.Join(args, " ")
+		return "Remove-Item -Path " + strings.Join(args, " ") + " -Recurse"
 	case "cp":
-		return "copy " + strings.Join(args, " ")
+		return "Copy-Item -Path " + strings.Join(args, " ")
 	case "mv":
-		return "move " + strings.Join(args, " ")
+		return "Move-Item -Path " + strings.Join(args, " ")
 	case "cat":
-		return "type " + strings.Join(args, " ")
+		return "Get-Content " + strings.Join(args, " ")
 	case "echo":
 		return command
 	case "date":
-		return "date /t"
+		return "Get-Date"
 	case "curl":
 		// 在Windows上，确保使用真正的curl可执行文件，而不是PowerShell的Invoke-WebRequest别名
 		// 从环境变量PATH中搜索curl.exe

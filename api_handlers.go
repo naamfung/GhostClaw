@@ -202,6 +202,7 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
 	thinking = existingConfig.APIConfig.Thinking
 	BlockDangerousCommands = existingConfig.APIConfig.BlockDangerousCommands
 	globalTimeoutConfig = existingConfig.Timeout
+	globalConfig = existingConfig // 同步更新全局配置
 
 	// 保存完整配置到文件
 	data, err := toon.Marshal(existingConfig)
@@ -1511,7 +1512,13 @@ func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, _ *http.Request, nam
 		if modelConfig.MaxTokens > 0 {
 			maxTokens = modelConfig.MaxTokens
 		}
-		// 其他配置...
+		// 更新 globalConfig 同步
+		globalConfig.APIConfig.APIType = apiType
+		globalConfig.APIConfig.BaseURL = baseURL
+		globalConfig.APIConfig.APIKey = apiKey
+		globalConfig.APIConfig.Model = modelID
+		globalConfig.APIConfig.Temperature = temperature
+		globalConfig.APIConfig.MaxTokens = maxTokens
 		log.Printf("[API] Updated global model config to: %s (BaseURL: %s)", modelConfig.Model, modelConfig.BaseURL)
 	}
 
