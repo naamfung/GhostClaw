@@ -2,6 +2,8 @@ package main
 
 // 定义需要替换的词映射
 var stringsReplacements = map[string]string{
+	"</think>":      "",
+	"<think>":       "",
 	"您":            "你",
 	"咱":            "我",
 	"好嘅":           "好的",
