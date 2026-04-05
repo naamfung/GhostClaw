@@ -1378,7 +1378,19 @@ func InitGlobalLoopDetector() {
 		config, err := LoadLoopDetectionConfig(configPath)
 		if err != nil {
 			log.Printf("[LoopDetector] Failed to load config from %s: %v, using defaults", configPath, err)
-			globalLoopDetector = NewLoopDetector(100, 3, 2)
+			// 使用默认配置
+			defaultConfig := getDefaultLoopDetectionConfig()
+			// 将默认配置写回文件
+			if data, marshalErr := toon.Marshal(defaultConfig); marshalErr == nil {
+				if writeErr := os.WriteFile(configPath, data, 0644); writeErr == nil {
+					log.Printf("[LoopDetector] Written default config to %s", configPath)
+				} else {
+					log.Printf("[LoopDetector] Failed to write default config: %v", writeErr)
+				}
+			} else {
+				log.Printf("[LoopDetector] Failed to marshal default config: %v", marshalErr)
+			}
+			globalLoopDetector = NewLoopDetectorWithConfig(defaultConfig)
 		} else {
 			globalLoopDetector = NewLoopDetectorWithConfig(config)
 			log.Printf("[LoopDetector] Initialized with config from %s", configPath)
