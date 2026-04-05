@@ -1,3 +1,17 @@
+---
+name: file_upload
+description: 将文件上传到临时文件分享服务，获取可分享的下载链接。支持多个上传服务，自动尝试可用服务。
+tags:
+  - 上传
+  - 分享
+  - 文件传输
+  - 临时存储
+platforms:
+  - windows
+  - linux
+  - macos
+---
+
 # 文件上传服务
 
 ## 描述
@@ -117,9 +131,3 @@ curl -X POST -F "files[]=@/path/to/example.tar.gz" https://uguu.se/upload
 
 - **错误原因**：[原因]
 - **建议**：[替代方案]
-
-## 标签
-- 上传
-- 分享
-- 文件传输
-- 临时存储

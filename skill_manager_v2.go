@@ -129,10 +129,8 @@ func (sm *SkillManagerV2) RebuildIndex() error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".md") {
-			// 支持两种格式：
-			// 1. 新格式：子目录中的 skill.md
-			// 2. 旧格式：直接在 skills 目录下的 *.md 文件
+		if !info.IsDir() && filepath.Base(path) == "SKILL.md" {
+			// 只支持新格式：子目录中的 SKILL.md
 			skillFiles = append(skillFiles, path)
 		}
 		return nil
@@ -176,8 +174,8 @@ func (sm *SkillManagerV2) indexSkillFile(filePath string) error {
 		return err
 	}
 
-	// 解析技能
-	skill, err := parseSkillContent(string(content), filePath)
+	// 解析技能（使用支持YAML frontmatter的parseSkillFile函数）
+	skill, err := parseSkillFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -344,14 +342,8 @@ func (sm *SkillManagerV2) GetSkill(name string) (*Skill, error) {
 		return nil, fmt.Errorf("skill not found: %s", name)
 	}
 
-	// 读取文件
-	content, err := os.ReadFile(meta.FilePath)
-	if err != nil {
-		return nil, err
-	}
-
-	// 解析技能
-	skill, err := parseSkillContent(string(content), meta.FilePath)
+	// 解析技能（使用支持YAML frontmatter的parseSkillFile函数）
+	skill, err := parseSkillFile(meta.FilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -396,18 +388,10 @@ func (sm *SkillManagerV2) DeleteSkill(name string) error {
 		return fmt.Errorf("skill not found: %s", name)
 	}
 
-	// 判断是新格式（子目录中的 skill.md）还是旧格式（直接在 skills 目录下的 *.md）
-	if filepath.Base(meta.FilePath) == "skill.md" {
-		// 新格式：删除整个目录
-		skillDir := filepath.Dir(meta.FilePath)
-		if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete skill directory: %w", err)
-		}
-	} else {
-		// 旧格式：删除单个文件
-		if err := os.Remove(meta.FilePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete skill file: %w", err)
-		}
+	// 新格式：删除整个目录
+	skillDir := filepath.Dir(meta.FilePath)
+	if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete skill directory: %w", err)
 	}
 
 	// 删除数据库记录
@@ -441,7 +425,7 @@ func (sm *SkillManagerV2) CreateSkill(skill *Skill) error {
 	}
 
 	// 写入文件
-	filePath := filepath.Join(skillDir, "skill.md")
+	filePath := filepath.Join(skillDir, "SKILL.md")
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write skill file: %w", err)
 	}
@@ -465,13 +449,8 @@ func (sm *SkillManagerV2) UpdateSkill(name string, updates map[string]interface{
 		return fmt.Errorf("skill not found: %s", name)
 	}
 
-	// 读取现有内容
-	contentBytes, err := os.ReadFile(meta.FilePath)
-	if err != nil {
-		return err
-	}
-
-	skill, err := parseSkillContent(string(contentBytes), meta.FilePath)
+	// 解析技能（使用支持YAML frontmatter的parseSkillFile函数）
+	skill, err := parseSkillFile(meta.FilePath)
 	if err != nil {
 		return err
 	}

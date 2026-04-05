@@ -19,6 +19,7 @@ require (
 	golang.org/x/crypto v0.49.0
 	golang.org/x/term v0.41.0
 	gopkg.in/telebot.v3 v3.3.8
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
 	maunium.net/go/mautrix v0.26.4
 	mellium.im/sasl v0.3.2

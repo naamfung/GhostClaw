@@ -1447,7 +1447,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_list",
-				"description": "列出所有可用的技能，支持分页、过滤、搜索和排序。",
+				"description": "列出所有可用的技能，支持分页、过滤、搜索和排序。技能采用层次化目录结构，存储在skills/分类/技能名/SKILL.md格式。",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1493,11 +1493,15 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_create",
-				"description": "创建一个新的技能。",
+				"description": "创建一个新的技能，采用层次化目录结构，自动生成SKILL.md文件和相关子目录。",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
 						"name": map[string]interface{}{
+							"type":        "string",
+							"description": "技能的唯一标识符（用于目录名称）",
+						},
+						"display_name": map[string]interface{}{
 							"type":        "string",
 							"description": "技能的显示名称",
 						},
@@ -1519,6 +1523,11 @@ Example commands:
 							"items":       map[string]interface{}{"type": "string"},
 							"description": "标签列表",
 						},
+						"platforms": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "支持的平台列表（windows, linux, macos）",
+						},
 					},
 					"required": []string{"name", "system_prompt"},
 				},
@@ -1528,7 +1537,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_delete",
-				"description": "删除指定的技能。",
+				"description": "删除指定的技能，包括其目录结构和所有关联文件。",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1545,7 +1554,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_get",
-				"description": "获取指定技能的详细信息。",
+				"description": "获取指定技能的详细信息，包括YAML frontmatter和关联文件。",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1562,7 +1571,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_reload",
-				"description": "重新加载所有技能。",
+				"description": "重新加载所有技能，包括新的层次化结构和关联文件。",
 				"parameters": map[string]interface{}{
 					"type":       "object",
 					"properties": map[string]interface{}{},
@@ -1574,7 +1583,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_update",
-				"description": "更新技能的部分内容。",
+				"description": "更新技能的部分内容，支持YAML frontmatter和关联文件。",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1603,6 +1612,11 @@ Example commands:
 							"type":        "array",
 							"items":       map[string]interface{}{"type": "string"},
 							"description": "标签列表",
+						},
+						"platforms": map[string]interface{}{
+							"type":        "array",
+							"items":       map[string]interface{}{"type": "string"},
+							"description": "支持的平台列表（windows, linux, macos）",
 						},
 					},
 					"required": []string{"name"},
@@ -1634,7 +1648,7 @@ Example commands:
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "skill_stats",
-				"description": "获取技能系统的统计信息。",
+				"description": "获取技能系统的统计信息，包括层次化结构和关联文件统计。",
 				"parameters": map[string]interface{}{
 					"type":       "object",
 					"properties": map[string]interface{}{},

@@ -137,8 +137,23 @@ func handleSkillShow(args []string, sm *SkillManager) (bool, string) {
         if len(skill.Tags) > 0 {
                 sb.WriteString("🏷️ **标签**\n")
                 sb.WriteString(strings.Join(skill.Tags, ", "))
+                sb.WriteString("\n\n")
+        }
+
+        // 显示关联文件
+        if len(skill.LinkedFiles) > 0 {
+                sb.WriteString("📁 **关联文件**\n")
+                for dir, files := range skill.LinkedFiles {
+                        sb.WriteString(fmt.Sprintf("- %s：\n", dir))
+                        for _, file := range files {
+                                sb.WriteString(fmt.Sprintf("  - %s\n", file))
+                        }
+                }
                 sb.WriteString("\n")
         }
+
+        // 显示文件路径
+        sb.WriteString(fmt.Sprintf("📄 **文件路径**\n%s\n", skill.FilePath))
 
         return true, sb.String()
 }
@@ -295,7 +310,7 @@ func handleSkillActivate(args []string, sm *SkillManager) (bool, string) {
 
 // GetSkillCommandsHelp 获取技能命令帮助
 func GetSkillCommandsHelp() string {
-        return `🎯 技能管理命令:
+	return `🎯 技能管理命令:
 
   /skill                列出所有技能
   /skill list           列出所有技能
@@ -307,15 +322,48 @@ func GetSkillCommandsHelp() string {
   /skill search <关键词> 搜索技能
   /skill tag <标签>     按标签查找技能
 
-📁 技能文件存储在 skills/ 目录，格式为 Markdown
+📁 技能文件存储在 skills/ 目录，采用层次化结构:
 
-💡 技能文件结构:
-  # 技能名称           -> 显示名称
-  ## 描述              -> 技能简介
-  ## 触发关键词        -> 自动触发的词汇列表
-  ## 系统提示          -> 激活时注入的提示词
-  ## 输出格式          -> 输出格式要求
-  ## 标签              -> 分类标签
+# 技能目录结构:
+  skills/
+  ├── coding/                    # 技能分类
+  │   ├── code_review/           # 技能目录
+  │   │   ├── SKILL.md           # 主技能文件
+  │   │   ├── references/        # 参考资料
+  │   │   ├── templates/         # 模板文件
+  │   │   └── scripts/           # 辅助脚本
+
+# SKILL.md 文件格式:
+  ---  # YAML frontmatter (推荐)
+  name: code_review              # 技能标识符
+  description: 专业的代码审查技能  # 技能描述
+  tags:                          # 技能标签
+    - coding
+    - review
+  platforms:                     # 支持的平台
+    - windows
+    - linux
+    - macos
+  ---  
+
+  # 技能显示名称                 # 技能的友好名称
+  
+  ## 描述                        # 详细描述
+  技能的详细说明...
+  
+  ## 触发关键词                  # 自动触发的词汇
+  - 关键词1
+  - 关键词2
+  
+  ## 系统提示                    # 激活时注入的提示词
+  系统提示内容...
+  
+  ## 输出格式                    # 输出格式要求
+  输出格式说明...
+  
+  ## 示例                        # 示例对话
+  - 示例1
+  - 示例2
 `
 }
 

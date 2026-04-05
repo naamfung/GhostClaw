@@ -1561,7 +1561,15 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 	case "plugin_reload":
 		content, _ = handlePluginReload(ctx, argsMap, ch)
 	case "plugin_call":
-		content, _ = handlePluginCall(ctx, argsMap, ch)
+			content, _ = handlePluginCall(ctx, argsMap, ch)
+			// 检查是否是插件不存在的错误
+			if strings.Contains(content, "plugin not found") || strings.Contains(content, "Error calling plugin function") {
+				// 确保错误消息格式正确，以Error:开头
+				if !strings.HasPrefix(content, "Error:") {
+					content = "Error: " + content
+				}
+				status = TaskStatusFailed
+			}
 	case "plugin_compile":
 		content, _ = handlePluginCompile(ctx, argsMap, ch)
 	case "plugin_delete":

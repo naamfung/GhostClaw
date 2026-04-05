@@ -168,6 +168,52 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 				"additionalProperties": false,
 			},
 		},
+		{
+			"name":        "append_to_file",
+			"description": "Append content to the end of a file. Creates the file if it doesn't exist.",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filename": map[string]interface{}{
+						"type":        "string",
+						"description": "The path to the file to append to.",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "The content to append to the file. Will be written as-is, so include newlines as needed.",
+					},
+				},
+				"required":             []string{"filename", "content"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			"name":        "write_file_range",
+			"description": "Write content to a range of lines in a file, overwriting existing content in that range. If the end line is beyond the current file length, the file will be extended with empty lines.",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filename": map[string]interface{}{
+						"type":        "string",
+						"description": "The path to the file to write to.",
+					},
+					"start_line": map[string]interface{}{
+						"type":        "integer",
+						"description": "The starting line number to write to (1-based).",
+					},
+					"end_line": map[string]interface{}{
+						"type":        "integer",
+						"description": "The ending line number to write to (1-based).",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "The content to write to the specified range. Each line of content will replace the corresponding line in the file. If there are fewer lines of content than the range length, the remaining lines will be cleared.",
+					},
+				},
+				"required":             []string{"filename", "start_line", "end_line", "content"},
+				"additionalProperties": false,
+			},
+		},
 		// ========== 基础浏览器工具 ==========
 		{
 			"name":        "browser_search",
@@ -1045,6 +1091,64 @@ Example commands:
 				"required": []string{"name"},
 			},
 		},
+		{
+			"name":        "todos",
+			"description": "待办事项管理：添加、列出、完成、删除、更新待办事项。跨会话持久化保存。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "操作类型：add（添加）、list（列出）、complete（完成）、delete（删除）、update（更新）",
+					},
+					"id": map[string]interface{}{
+						"type":        "string",
+						"description": "待办事项ID（用于complete、delete、update操作）",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "待办事项内容（用于add、update操作）",
+					},
+					"priority": map[string]interface{}{
+						"type":        "string",
+						"description": "优先级：low、medium、high",
+					},
+					"due_date": map[string]interface{}{
+						"type":        "string",
+						"description": "截止日期（ISO 8601格式，如：2023-12-31）",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"description": "状态：pending、in_progress、completed",
+					},
+					"category": map[string]interface{}{
+						"type":        "string",
+						"description": "分类标签",
+					},
+					"sort_by": map[string]interface{}{
+						"type":        "string",
+						"description": "排序字段：due_date、priority、created_at、updated_at",
+					},
+					"sort_order": map[string]interface{}{
+						"type":        "string",
+						"description": "排序方向：asc、desc",
+					},
+					"filter": map[string]interface{}{
+						"type":        "string",
+						"description": "过滤条件：all、pending、completed、high_priority、due_soon",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "返回数量限制",
+					},
+					"offset": map[string]interface{}{
+						"type":        "integer",
+						"description": "分页偏移量",
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
 		// ========== 记忆管理工具 ==========
 		{
 			"name":        "memory_save",
@@ -1185,6 +1289,210 @@ Example commands:
 				"type":       "object",
 				"properties": map[string]interface{}{},
 				"required":   []string{},
+			},
+		},
+		// ========== 技能管理工具 ==========
+		{
+			"name":        "skill_list",
+			"description": "列出所有可用的技能，支持分页、过滤、搜索和排序。技能采用层次化目录结构，存储在skills/分类/技能名/SKILL.md格式。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"page": map[string]interface{}{
+						"type":        "integer",
+						"description": "页码，从1开始，默认1",
+					},
+					"page_size": map[string]interface{}{
+						"type":        "integer",
+						"description": "每页数量，默认20，最大100",
+					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "标签过滤",
+					},
+					"search": map[string]interface{}{
+						"type":        "string",
+						"description": "全文搜索关键词",
+					},
+					"sort_by": map[string]interface{}{
+						"type":        "string",
+						"description": "排序字段：name, usage, quality, last_used",
+					},
+					"sort_order": map[string]interface{}{
+						"type":        "string",
+						"description": "排序方向：asc, desc",
+					},
+					"context": map[string]interface{}{
+						"type":        "string",
+						"description": "当前上下文，用于智能推荐排序",
+					},
+					"suggest_only": map[string]interface{}{
+						"type":        "boolean",
+						"description": "只返回推荐技能",
+					},
+				},
+				"required": []string{},
+			},
+		},
+		{
+			"name":        "skill_create",
+			"description": "创建一个新的技能，采用层次化目录结构，自动生成SKILL.md文件和相关子目录。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的唯一标识符（用于目录名称）",
+					},
+					"display_name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的显示名称",
+					},
+					"description": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的描述",
+					},
+					"system_prompt": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的系统提示",
+					},
+					"trigger_words": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "触发关键词列表",
+					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "标签列表",
+					},
+					"platforms": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "支持的平台列表（windows, linux, macos）",
+					},
+				},
+				"required": []string{"name", "system_prompt"},
+			},
+		},
+		{
+			"name":        "skill_delete",
+			"description": "删除指定的技能，包括其目录结构和所有关联文件。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的名称",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name":        "skill_get",
+			"description": "获取指定技能的详细信息，包括YAML frontmatter和关联文件。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的名称",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name":        "skill_reload",
+			"description": "重新加载所有技能，包括新的层次化结构和关联文件。",
+			"input_schema": map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+				"required":   []string{},
+			},
+		},
+		{
+			"name":        "skill_update",
+			"description": "更新技能的部分内容，支持YAML frontmatter和关联文件。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的名称",
+					},
+					"display_name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的显示名称",
+					},
+					"description": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的描述",
+					},
+					"system_prompt": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的系统提示",
+					},
+					"trigger_words": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "触发关键词列表",
+					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "标签列表",
+					},
+					"platforms": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "支持的平台列表（windows, linux, macos）",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name":        "skill_suggest",
+			"description": "根据当前上下文智能推荐相关技能。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"context": map[string]interface{}{
+						"type":        "string",
+						"description": "当前对话上下文",
+					},
+					"top_k": map[string]interface{}{
+						"type":        "integer",
+						"description": "返回推荐数量，默认5",
+					},
+				},
+				"required": []string{"context"},
+			},
+		},
+		{
+			"name":        "skill_stats",
+			"description": "获取技能系统的统计信息，包括层次化结构和关联文件统计。",
+			"input_schema": map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+				"required":   []string{},
+			},
+		},
+		{
+			"name":        "skill_evaluate",
+			"description": "评估技能质量，生成详细的质量报告。",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "技能的名称",
+					},
+				},
+				"required": []string{"name"},
 			},
 		},
 		// ========== 文本搜索工具 ==========
