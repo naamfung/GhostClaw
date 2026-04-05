@@ -402,3 +402,21 @@ func (am *ActorManager) UpdateMainModel(m *ModelConfig) {
 
 	am.models["main"] = m
 }
+
+// UpdateModel 更新现有模型配置
+func (am *ActorManager) UpdateModel(m *ModelConfig) error {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	if _, exists := am.models[m.Name]; !exists {
+		return fmt.Errorf("model not found: %s", m.Name)
+	}
+
+	// 保留原有的 API Key（如果新配置没有提供）
+	if m.APIKey == "" && am.models[m.Name] != nil {
+		m.APIKey = am.models[m.Name].APIKey
+	}
+
+	am.models[m.Name] = m
+	return nil
+}

@@ -266,6 +266,32 @@ export { default as DialogChatAttachmentsViewAll } from './DialogChatAttachments
 export { default as DialogChatError } from './DialogChatError.svelte';
 
 /**
+ * **DialogError** - Generic error dialog
+ *
+ * Simple alert dialog for displaying general error messages.
+ *
+ * **Architecture:**
+ * - Uses ShadCN AlertDialog for modal display
+ * - Red destructive styling for error indication
+ * - AlertTriangle icon
+ *
+ * **Features:**
+ * - Customizable title (defaults to "错误")
+ * - Error message display in styled box
+ * - Single "确定" button to dismiss
+ *
+ * @example
+ * ```svelte
+ * <DialogError
+ *   bind:open={showError}
+ *   title="操作失败"
+ *   message="无法完成请求的操作，请稍后重试。"
+ * />
+ * ```
+ */
+export { default as DialogError } from './DialogError.svelte';
+
+/**
  * **DialogEmptyFileAlert** - Empty file upload warning
  *
  * Alert dialog shown when user attempts to upload empty files. Lists the

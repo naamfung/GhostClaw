@@ -5,7 +5,7 @@
         import { Badge } from '$lib/components/ui/badge';
         import { Checkbox } from '$lib/components/ui/checkbox';
         import { ScrollArea } from '$lib/components/ui/scroll-area';
-        import { DialogConfirmation } from '$lib/components/app/dialogs';
+        import { DialogConfirmation, DialogError } from '$lib/components/app/dialogs';
         import { onMount } from 'svelte';
         import { Pencil, Trash2, Plus, Search, Cpu, ChevronLeft } from '@lucide/svelte';
         import { config } from '$lib/stores/settings.svelte';
@@ -33,6 +33,15 @@
         let editingModel = $state<ModelConfig | null>(null);
         let showDeleteConfirm = $state(false);
         let modelToDelete = $state<ModelConfig | null>(null);
+        let showErrorDialog = $state(false);
+        let errorTitle = $state('');
+        let errorMessage = $state('');
+
+        function showError(title: string, message: string) {
+                errorTitle = title;
+                errorMessage = message;
+                showErrorDialog = true;
+        }
 
         // Default Role (global setting from /api/config)
 	let defaultRole = $state('');
@@ -178,11 +187,11 @@
                                 }
                         } else {
                                 const error = await response.json();
-                                alert(error.error || '删除失败');
+                                showError('删除失败', error.error || '删除失败');
                         }
                 } catch (error) {
                         console.error('删除模型失败:', error);
-                        alert('删除模型时发生错误');
+                        showError('删除失败', '删除模型时发生错误');
                 } finally {
                         showDeleteConfirm = false;
                         modelToDelete = null;
@@ -211,7 +220,7 @@
 
         async function handleEditorSave() {
                 if (!editForm.Name.trim()) {
-                        alert('模型名称不能为空');
+                        showError('输入错误', '模型名称不能为空');
                         return;
                 }
 
@@ -239,11 +248,11 @@
                                 loadModels();
                         } else {
                                 const error = await response.json();
-                                alert(error.error || '保存失败');
+                                showError('保存失败', error.error || '保存失败');
                         }
                 } catch (error) {
                         console.error('保存模型失败:', error);
-                        alert('保存模型时发生错误');
+                        showError('保存失败', '保存模型时发生错误');
                 }
         }
 
@@ -651,4 +660,10 @@
                 showDeleteConfirm = false;
                 modelToDelete = null;
         }}
+/>
+
+<DialogError
+        bind:open={showErrorDialog}
+        title={errorTitle}
+        message={errorMessage}
 />

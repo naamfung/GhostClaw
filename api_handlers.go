@@ -1414,23 +1414,17 @@ func (s *HTTPServer) updateModelAPI(w http.ResponseWriter, r *http.Request, name
 		return
 	}
 
-	// 获取现有模型
-	existing, exists := globalActorManager.GetModel(name)
-	if !exists {
+	// 确保模型存在
+	if _, exists := globalActorManager.GetModel(name); !exists {
 		http.Error(w, `{"error": "模型不存在"}`, http.StatusNotFound)
 		return
 	}
 
 	// 保留名称，更新其他字段
 	updates.Name = name
-	// 如果没有提供新的 API 密钥，保留旧的
-	if updates.APIKey == "" {
-		updates.APIKey = existing.APIKey
-	}
 
-	// 删除旧模型，添加新模型
-	globalActorManager.RemoveModel(name)
-	if err := globalActorManager.AddModel(&updates); err != nil {
+	// 使用 UpdateModel 方法直接更新，而不是先删除再添加
+	if err := globalActorManager.UpdateModel(&updates); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error": "更新模型失败: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
