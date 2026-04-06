@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/toon-format/toon-go"
 )
@@ -264,7 +265,26 @@ func loadConfig() (Config, error) {
 
 	// 使用 toon 直接解析到结构体
 	if err := toon.Unmarshal(data, &config); err != nil {
-		return config, fmt.Errorf("error parsing TOON config: %v", err)
+		// 尝试处理旧的 Models 数组格式
+		if strings.Contains(err.Error(), "Models: toon: expected object for map, got []interface {}") {
+			// 先解析到临时结构体，然后转换
+			var tempConfig struct {
+				APIConfig APIConfig     `toon:"APIConfig"`
+				Models    []ModelConfig `toon:"Models"`
+			}
+			if tempErr := toon.Unmarshal(data, &tempConfig); tempErr == nil {
+				// 转换 Models 数组为映射
+				config.APIConfig = tempConfig.APIConfig
+				config.Models = make(map[string]*ModelConfig)
+				for _, model := range tempConfig.Models {
+					config.Models[model.Name] = &model
+				}
+			} else {
+				return config, fmt.Errorf("error parsing TOON config: %v", err)
+			}
+		} else {
+			return config, fmt.Errorf("error parsing TOON config: %v", err)
+		}
 	}
 
 	// 设置默认值
