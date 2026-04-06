@@ -10,9 +10,27 @@ import {
 	MODEL_ID_NOT_FOUND,
 	MODEL_ID_ORG_SEPARATOR,
 	MODEL_ID_SEGMENT_SEPARATOR,
-	MODEL_ID_QUANTIZATION_SEPARATOR,
-	API_MODELS
+	MODEL_ID_QUANTIZATION_SEPARATOR
 } from '$lib/constants';
+
+export interface ModelConfig {
+	Name: string;
+	APIType: string;
+	BaseURL: string;
+	APIKey: string;
+	Model: string;
+	Temperature: number;
+	MaxTokens: number;
+	Stream: boolean;
+	Thinking: boolean;
+	BlockDangerousCommands: boolean;
+	Description: string;
+}
+
+export interface ModelsListResponse {
+	Models: ModelConfig[];
+	MainModel: string;
+}
 
 export class ModelsService {
 	/**
@@ -24,62 +42,69 @@ export class ModelsService {
 	 */
 
 	/**
-	 * Fetch list of models from OpenAI-compatible endpoint.
-	 * Works in both MODEL and ROUTER modes.
+	 * Fetch list of models from GhostClaw API endpoint.
 	 *
-	 * @returns List of available models with basic metadata
+	 * @returns List of available models with configuration
 	 */
-	static async list(): Promise<ApiModelListResponse> {
-		return apiFetch<ApiModelListResponse>(API_MODELS.LIST);
+	static async list(): Promise<ModelsListResponse> {
+		return apiFetch<ModelsListResponse>('/api/models');
 	}
 
 	/**
-	 * Fetch list of all models with detailed metadata (ROUTER mode).
-	 * Returns models with load status, paths, and other metadata
-	 * beyond what the OpenAI-compatible endpoint provides.
+	 * Create a new model
 	 *
-	 * @returns List of models with detailed status and configuration info
+	 * @param model - Model configuration
+	 * @returns Created model configuration
 	 */
-	static async listRouter(): Promise<ApiRouterModelsListResponse> {
-		return apiFetch<ApiRouterModelsListResponse>(API_MODELS.LIST);
+	static async create(model: Omit<ModelConfig, 'Name'> & { Name: string }): Promise<ModelConfig> {
+		return apiPost<ModelConfig>('/api/models', model);
 	}
 
 	/**
+	 * Get model details
 	 *
-	 *
-	 * Load/Unload
-	 *
-	 *
+	 * @param name - Model name
+	 * @returns Model configuration
 	 */
-
-	/**
-	 * Load a model (ROUTER mode only).
-	 * Sends POST request to `/models/load`. Note: the endpoint returns success
-	 * before loading completes — use polling to await actual load status.
-	 *
-	 * @param modelId - Model identifier to load
-	 * @param extraArgs - Optional additional arguments to pass to the model instance
-	 * @returns Load response from the server
-	 */
-	static async load(modelId: string, extraArgs?: string[]): Promise<ApiRouterModelsLoadResponse> {
-		const payload: { model: string; extra_args?: string[] } = { model: modelId };
-		if (extraArgs && extraArgs.length > 0) {
-			payload.extra_args = extraArgs;
-		}
-
-		return apiPost<ApiRouterModelsLoadResponse>(API_MODELS.LOAD, payload);
+	static async get(name: string): Promise<ModelConfig> {
+		return apiFetch<ModelConfig>(`/api/models/${name}`);
 	}
 
 	/**
-	 * Unload a model (ROUTER mode only).
-	 * Sends POST request to `/models/unload`. Note: the endpoint returns success
-	 * before unloading completes — use polling to await actual unload status.
+	 * Update model configuration
 	 *
-	 * @param modelId - Model identifier to unload
-	 * @returns Unload response from the server
+	 * @param name - Model name
+	 * @param model - Model configuration updates
+	 * @returns Updated model configuration
 	 */
-	static async unload(modelId: string): Promise<ApiRouterModelsUnloadResponse> {
-		return apiPost<ApiRouterModelsUnloadResponse>(API_MODELS.UNLOAD, { model: modelId });
+	static async update(name: string, model: Partial<ModelConfig>): Promise<ModelConfig> {
+		return apiPost<ModelConfig>(`/api/models/${name}`, model, {
+			method: 'PUT'
+		});
+	}
+
+	/**
+	 * Delete a model
+	 *
+	 * @param name - Model name
+	 * @returns Success response
+	 */
+	static async delete(name: string): Promise<{ message: string }> {
+		return apiPost<{ message: string }>(`/api/models/${name}`, {}, {
+			method: 'DELETE'
+		});
+	}
+
+	/**
+	 * Set model as main model
+	 *
+	 * @param name - Model name
+	 * @returns Success response
+	 */
+	static async setMain(name: string): Promise<{ message: string }> {
+		return apiPost<{ message: string }>(`/api/models/${name}/set-main`, {}, {
+			method: 'PATCH'
+		});
 	}
 
 	/**

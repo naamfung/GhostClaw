@@ -1,3 +1,5 @@
+import { apiFetch, apiPost } from '$lib/utils';
+
 /**
  * Config Service
  *
@@ -43,38 +45,16 @@ class ConfigService {
 	 * 获取当前配置
 	 */
 	async getConfig(): Promise<ConfigResponse> {
-		const response = await fetch(`${this.baseUrl}/config`, {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			throw new Error(`获取配置失败: ${response.statusText}`);
-		}
-
-		return response.json();
+		return apiFetch<ConfigResponse>(`${this.baseUrl}/config`);
 	}
 
 	/**
 	 * 更新配置
 	 */
 	async updateConfig(config: ConfigUpdateRequest): Promise<{ message: string }> {
-		const response = await fetch(`${this.baseUrl}/config`, {
-			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(config)
+		return apiPost<{ message: string }>(`${this.baseUrl}/config`, config, {
+			method: 'PUT'
 		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || '更新配置失败');
-		}
-
-		return response.json();
 	}
 }
 
