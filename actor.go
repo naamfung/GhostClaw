@@ -47,27 +47,13 @@ func NewActorManager(filePath string, defaultAPIType, defaultBaseURL, defaultAPI
 		actors:    make(map[string]*Actor),
 		models:    make(map[string]*ModelConfig),
 		filePath:  filePath,
-		mainModel: "main",
+		mainModel: "",
 	}
 
 	// 尝试从文件加载配置
 	if _, err := os.Stat(filePath); err == nil {
 		if err := am.loadFromFile(); err != nil {
 			log.Printf("Warning: failed to load actors from file: %v", err)
-		}
-	}
-
-	// 如果没有从文件加载到模型，创建默认主模型配置
-	if _, exists := am.models["main"]; !exists {
-		am.models["main"] = &ModelConfig{
-			Name:        "main",
-			APIType:     defaultAPIType,
-			BaseURL:     defaultBaseURL,
-			APIKey:      defaultAPIKey,
-			Model:       defaultModel,
-			Temperature: defaultTemperature,
-			MaxTokens:   defaultMaxTokens,
-			Description: "主模型 - 默认配置",
 		}
 	}
 
@@ -82,7 +68,7 @@ func NewActorManager(filePath string, defaultAPIType, defaultBaseURL, defaultAPI
 		am.actors["default"] = &Actor{
 			Name:          "default",
 			Role:          roleName,
-			Model:         "main",
+			Model:         "",
 			CharacterName: "助手",
 			Description:   "默认助手角色",
 			IsDefault:     true,
@@ -241,7 +227,17 @@ func (am *ActorManager) GetModel(name string) (*ModelConfig, bool) {
 func (am *ActorManager) GetMainModel() *ModelConfig {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	return am.models[am.mainModel]
+	if am.mainModel != "" {
+		if model, exists := am.models[am.mainModel]; exists {
+			return model
+		}
+	}
+	// 如果主模型不存在，返回第一个可用模型
+	for _, model := range am.models {
+		return model
+	}
+	// 如果都不存在，返回 nil
+	return nil
 }
 
 // AddModel 添加模型配置
@@ -314,11 +310,13 @@ func (am *ActorManager) GetActorModel(actorName string) *ModelConfig {
 	a, ok := am.actors[actorName]
 	if !ok {
 		// 如果找不到演员，返回主模型
-		if model, exists := am.models[am.mainModel]; exists {
-			return model
+		if am.mainModel != "" {
+			if model, exists := am.models[am.mainModel]; exists {
+				return model
+			}
 		}
-		// 如果主模型不存在，返回默认的 main 模型
-		if model, exists := am.models["main"]; exists {
+		// 如果主模型不存在，返回第一个可用模型
+		for _, model := range am.models {
 			return model
 		}
 		// 如果都不存在，返回 nil
@@ -326,17 +324,21 @@ func (am *ActorManager) GetActorModel(actorName string) *ModelConfig {
 	}
 
 	// 如果演员指定了模型，返回该模型
-	if model, exists := am.models[a.Model]; exists {
-		return model
+	if a.Model != "" {
+		if model, exists := am.models[a.Model]; exists {
+			return model
+		}
 	}
 
 	// 如果演员指定的模型不存在，返回主模型
-	if model, exists := am.models[am.mainModel]; exists {
-		return model
+	if am.mainModel != "" {
+		if model, exists := am.models[am.mainModel]; exists {
+			return model
+		}
 	}
 
-	// 如果主模型不存在，返回默认的 main 模型
-	if model, exists := am.models["main"]; exists {
+	// 如果主模型不存在，返回第一个可用模型
+	for _, model := range am.models {
 		return model
 	}
 
@@ -387,11 +389,16 @@ func (am *ActorManager) UpdateMainModel(m *ModelConfig) {
 	defer am.mu.Unlock()
 
 	// 保留原有的 API Key（如果新配置没有提供）
-	if m.APIKey == "" && am.models["main"] != nil {
-		m.APIKey = am.models["main"].APIKey
+	if m.APIKey == "" && am.mainModel != "" && am.models[am.mainModel] != nil {
+		m.APIKey = am.models[am.mainModel].APIKey
 	}
 
-	am.models["main"] = m
+	// 如果主模型名称为空，使用模型的名称作为主模型名称
+	if am.mainModel == "" {
+		am.mainModel = m.Name
+	}
+
+	am.models[am.mainModel] = m
 }
 
 // UpdateModel 更新现有模型配置

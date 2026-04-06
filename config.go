@@ -314,16 +314,8 @@ func loadConfig() (Config, error) {
 	// 如果没有配置模型列表，创建默认模型
 	if config.Models == nil {
 		config.Models = make(map[string]*ModelConfig)
-		config.Models["default"] = &ModelConfig{
-			Name:        "default",
-			Model:       config.APIConfig.Model,
-			APIType:     config.APIConfig.APIType,
-			BaseURL:     config.APIConfig.BaseURL,
-			APIKey:      config.APIConfig.APIKey,
-			Temperature: config.APIConfig.Temperature,
-			MaxTokens:   config.APIConfig.MaxTokens,
-		}
 	}
+
 
 	// 设置超时默认值
 	if config.Timeout.Shell == 0 {

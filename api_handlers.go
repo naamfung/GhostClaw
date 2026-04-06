@@ -242,27 +242,9 @@ func saveConfigToFile() error {
 		existingConfig = Config{
 			Models: make(map[string]*ModelConfig),
 		}
-		existingConfig.Models["default"] = &ModelConfig{
-			Name:        "default",
-			Model:       modelID,
-			APIType:     apiType,
-			BaseURL:     baseURL,
-			APIKey:      apiKey,
-			Temperature: temperature,
-			MaxTokens:   maxTokens,
-		}
 	} else if existingConfig.Models == nil {
-		// 如果现有配置中没有 Models 字段，添加默认模型
+		// 如果现有配置中没有 Models 字段，初始化空映射
 		existingConfig.Models = make(map[string]*ModelConfig)
-		existingConfig.Models["default"] = &ModelConfig{
-			Name:        "default",
-			Model:       modelID,
-			APIType:     apiType,
-			BaseURL:     baseURL,
-			APIKey:      apiKey,
-			Temperature: temperature,
-			MaxTokens:   maxTokens,
-		}
 	}
 
 	// 如果 ActorManager 存在，同步所有模型到 Config
@@ -292,38 +274,23 @@ func saveConfigToFile() error {
 		BlockDangerousCommands: BlockDangerousCommands,
 	}
 
-	// 确保 APIConfig 存在于 Models 中
-	apiConfigExists := false
-	for name := range existingConfig.Models {
-		if name == "main" {
-			// 更新现有的 main 模型
-			existingConfig.Models[name].APIType = apiType
-			existingConfig.Models[name].BaseURL = baseURL
-			existingConfig.Models[name].APIKey = apiKey
-			existingConfig.Models[name].Model = modelID
-			existingConfig.Models[name].Temperature = temperature
-			existingConfig.Models[name].MaxTokens = maxTokens
-			existingConfig.Models[name].Stream = stream
-			existingConfig.Models[name].Thinking = thinking
-			existingConfig.Models[name].BlockDangerousCommands = BlockDangerousCommands
-			apiConfigExists = true
-			break
-		}
-	}
-
-	// 如果不存在，添加 main 模型
-	if !apiConfigExists {
-		existingConfig.Models["main"] = &ModelConfig{
-			Name:                   "main",
-			APIType:                apiType,
-			BaseURL:                baseURL,
-			APIKey:                 apiKey,
-			Model:                  modelID,
-			Temperature:            temperature,
-			MaxTokens:              maxTokens,
-			Stream:                 stream,
-			Thinking:               thinking,
-			BlockDangerousCommands: BlockDangerousCommands,
+	// 同步 APIConfig 到 ActorManager 中的主模型
+	if globalActorManager != nil {
+		// 获取当前主模型
+		mainModel := globalActorManager.GetMainModel()
+		if mainModel != nil {
+			// 更新主模型配置
+			mainModel.APIType = apiType
+			mainModel.BaseURL = baseURL
+			mainModel.APIKey = apiKey
+			mainModel.Model = modelID
+			mainModel.Temperature = temperature
+			mainModel.MaxTokens = maxTokens
+			mainModel.Stream = stream
+			mainModel.Thinking = thinking
+			mainModel.BlockDangerousCommands = BlockDangerousCommands
+			// 保存更新后的主模型
+			globalActorManager.UpdateModel(mainModel)
 		}
 	}
 
@@ -1056,8 +1023,12 @@ func (s *HTTPServer) createActor(w http.ResponseWriter, r *http.Request) {
 	if actor.Role == "" {
 		actor.Role = "coder"
 	}
-	if actor.Model == "" {
-		actor.Model = "main"
+	if actor.Model == "" && globalActorManager != nil {
+		// 使用当前主模型作为默认值
+		mainModel := globalActorManager.GetMainModel()
+		if mainModel != nil {
+			actor.Model = mainModel.Name
+		}
 	}
 
 	// 添加演员
@@ -1338,7 +1309,7 @@ func (s *HTTPServer) listModelsAPI(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	// 获取主模型名称
-	mainModelName := "main"
+	mainModelName := ""
 	if globalActorManager != nil {
 		mainModel := globalActorManager.GetMainModel()
 		if mainModel != nil {
@@ -1377,11 +1348,7 @@ func (s *HTTPServer) createModelAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查名称是否已存在
-	if model.Name == "main" {
-		http.Error(w, `{"error": "不能使用保留名称 'main'"}`, http.StatusBadRequest)
-		return
-	}
+
 
 	if _, exists := globalActorManager.GetModel(model.Name); exists {
 		http.Error(w, `{"error": "模型名称已存在"}`, http.StatusBadRequest)
@@ -1462,42 +1429,7 @@ func (s *HTTPServer) updateModelAPI(w http.ResponseWriter, r *http.Request, name
 		return
 	}
 
-	// 更新 main 模型时，同步更新主配置文件
-	if name == "main" {
-		// 更新全局配置变量
-		if updates.APIType != "" {
-			apiType = updates.APIType
-		}
-		if updates.BaseURL != "" {
-			baseURL = updates.BaseURL
-		}
-		if updates.APIKey != "" {
-			apiKey = updates.APIKey
-		}
-		if updates.Model != "" {
-			modelID = updates.Model
-		}
-		if updates.Temperature != 0 {
-			temperature = updates.Temperature
-		}
-		if updates.MaxTokens != 0 {
-			maxTokens = updates.MaxTokens
-		}
 
-		// 保存到主配置文件
-		if err := saveConfigToFile(); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error": "保存配置失败: %s"}`, err.Error()), http.StatusInternalServerError)
-			return
-		}
-
-		// 同时更新 ActorManager 中的 main 模型缓存
-		updates.Name = "main"
-		globalActorManager.UpdateMainModel(&updates)
-
-		updates.APIKey = "" // 不返回密钥
-		json.NewEncoder(w).Encode(updates)
-		return
-	}
 
 	// 确保模型存在
 	if _, exists := globalActorManager.GetModel(name); !exists {
@@ -1530,11 +1462,7 @@ func (s *HTTPServer) deleteModelAPI(w http.ResponseWriter, _ *http.Request, name
 		return
 	}
 
-	// 不允许删除 main 模型
-	if name == "main" {
-		http.Error(w, `{"error": "不能删除主模型配置"}`, http.StatusBadRequest)
-		return
-	}
+
 
 	// 检查模型是否存在
 	if _, exists := globalActorManager.GetModel(name); !exists {
