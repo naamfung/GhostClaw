@@ -50,16 +50,25 @@ func NewActorManager(filePath string, defaultAPIType, defaultBaseURL, defaultAPI
 		mainModel: "main",
 	}
 
-	// 创建默认主模型配置
-	am.models["main"] = &ModelConfig{
-		Name:        "main",
-		APIType:     defaultAPIType,
-		BaseURL:     defaultBaseURL,
-		APIKey:      defaultAPIKey,
-		Model:       defaultModel,
-		Temperature: defaultTemperature,
-		MaxTokens:   defaultMaxTokens,
-		Description: "主模型 - 默认配置",
+	// 尝试从文件加载配置
+	if _, err := os.Stat(filePath); err == nil {
+		if err := am.loadFromFile(); err != nil {
+			log.Printf("Warning: failed to load actors from file: %v", err)
+		}
+	}
+
+	// 如果没有从文件加载到模型，创建默认主模型配置
+	if _, exists := am.models["main"]; !exists {
+		am.models["main"] = &ModelConfig{
+			Name:        "main",
+			APIType:     defaultAPIType,
+			BaseURL:     defaultBaseURL,
+			APIKey:      defaultAPIKey,
+			Model:       defaultModel,
+			Temperature: defaultTemperature,
+			MaxTokens:   defaultMaxTokens,
+			Description: "主模型 - 默认配置",
+		}
 	}
 
 	// 确定默认人格
@@ -68,20 +77,15 @@ func NewActorManager(filePath string, defaultAPIType, defaultBaseURL, defaultAPI
 		roleName = defaultRole
 	}
 
-	// 创建默认演员
-	am.actors["default"] = &Actor{
-		Name:          "default",
-		Role:          roleName,
-		Model:         "main",
-		CharacterName: "助手",
-		Description:   "默认助手角色",
-		IsDefault:     true,
-	}
-
-	// 尝试从文件加载配置
-	if _, err := os.Stat(filePath); err == nil {
-		if err := am.loadFromFile(); err != nil {
-			log.Printf("Warning: failed to load actors from file: %v", err)
+	// 如果没有从文件加载到演员，创建默认演员
+	if _, exists := am.actors["default"]; !exists {
+		am.actors["default"] = &Actor{
+			Name:          "default",
+			Role:          roleName,
+			Model:         "main",
+			CharacterName: "助手",
+			Description:   "默认助手角色",
+			IsDefault:     true,
 		}
 	}
 
@@ -96,18 +100,12 @@ func (am *ActorManager) loadFromFile() error {
 	}
 
 	var fileData struct {
-		Models    map[string]*ModelConfig `json:"models"`
-		Actors    map[string]*Actor       `json:"actors"`
-		MainModel string                  `json:"main_model"`
+		Actors    map[string]*Actor `json:"actors"`
+		MainModel string            `json:"main_model"`
 	}
 
 	if err := toon.Unmarshal(data, &fileData); err != nil {
 		return err
-	}
-
-	// 加载模型配置
-	for name, m := range fileData.Models {
-		am.models[name] = m
 	}
 
 	// 加载演员配置
@@ -128,27 +126,15 @@ func (am *ActorManager) SaveToFile() error {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 
-	// 只保存非默认配置
-	customModels := make(map[string]*ModelConfig)
-	for name, m := range am.models {
-		if name != "main" {
-			customModels[name] = m
-		}
-	}
-
 	customActors := make(map[string]*Actor)
 	for name, a := range am.actors {
-		if name != "default" {
-			customActors[name] = a
-		}
+		customActors[name] = a
 	}
 
 	fileData := struct {
-		Models    map[string]*ModelConfig `json:"models,omitempty"`
-		Actors    map[string]*Actor       `json:"actors,omitempty"`
-		MainModel string                  `json:"main_model,omitempty"`
+		Actors    map[string]*Actor `json:"actors,omitempty"`
+		MainModel string            `json:"main_model,omitempty"`
 	}{
-		Models:    customModels,
 		Actors:    customActors,
 		MainModel: am.mainModel,
 	}

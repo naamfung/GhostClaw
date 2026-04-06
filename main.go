@@ -570,9 +570,9 @@ func main() {
 		log.Printf("Warning: failed to start actor manager: %v", err)
 	} else {
 		// 从配置文件加载模型列表
-		for _, model := range config.Models {
+		for name, model := range config.Models {
 			// 检查模型是否已经存在
-			if _, exists := globalActorManager.GetModel(model.Name); !exists {
+			if _, exists := globalActorManager.GetModel(name); !exists {
 				// 转换为 ActorManager 使用的 ModelConfig 类型
 				actorModel := &ModelConfig{
 					Name:                  model.Name,

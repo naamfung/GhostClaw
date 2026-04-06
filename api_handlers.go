@@ -240,17 +240,42 @@ func saveConfigToFile() error {
 	if err != nil {
 		// 如果读取失败，创建新配置
 		existingConfig = Config{
-			Models: []ModelConfig{
-				{
-					Name:        "default",
-					Model:       modelID,
-					APIType:     apiType,
-					BaseURL:     baseURL,
-					APIKey:      apiKey,
-					Temperature: temperature,
-					MaxTokens:   maxTokens,
-				},
-			},
+			Models: make(map[string]*ModelConfig),
+		}
+		existingConfig.Models["default"] = &ModelConfig{
+			Name:        "default",
+			Model:       modelID,
+			APIType:     apiType,
+			BaseURL:     baseURL,
+			APIKey:      apiKey,
+			Temperature: temperature,
+			MaxTokens:   maxTokens,
+		}
+	} else if existingConfig.Models == nil {
+		// 如果现有配置中没有 Models 字段，添加默认模型
+		existingConfig.Models = make(map[string]*ModelConfig)
+		existingConfig.Models["default"] = &ModelConfig{
+			Name:        "default",
+			Model:       modelID,
+			APIType:     apiType,
+			BaseURL:     baseURL,
+			APIKey:      apiKey,
+			Temperature: temperature,
+			MaxTokens:   maxTokens,
+		}
+	}
+
+	// 如果 ActorManager 存在，同步所有模型到 Config
+	if globalActorManager != nil {
+		// 获取所有模型
+		allModels := globalActorManager.ListModels()
+		if len(allModels) > 0 {
+			// 清空现有 Models 映射
+			existingConfig.Models = make(map[string]*ModelConfig)
+			// 添加所有模型
+			for _, model := range allModels {
+				existingConfig.Models[model.Name] = model
+			}
 		}
 	}
 
@@ -269,18 +294,18 @@ func saveConfigToFile() error {
 
 	// 确保 APIConfig 存在于 Models 中
 	apiConfigExists := false
-	for i, model := range existingConfig.Models {
-		if model.Name == "main" {
+	for name := range existingConfig.Models {
+		if name == "main" {
 			// 更新现有的 main 模型
-			existingConfig.Models[i].APIType = apiType
-			existingConfig.Models[i].BaseURL = baseURL
-			existingConfig.Models[i].APIKey = apiKey
-			existingConfig.Models[i].Model = modelID
-			existingConfig.Models[i].Temperature = temperature
-			existingConfig.Models[i].MaxTokens = maxTokens
-			existingConfig.Models[i].Stream = stream
-			existingConfig.Models[i].Thinking = thinking
-			existingConfig.Models[i].BlockDangerousCommands = BlockDangerousCommands
+			existingConfig.Models[name].APIType = apiType
+			existingConfig.Models[name].BaseURL = baseURL
+			existingConfig.Models[name].APIKey = apiKey
+			existingConfig.Models[name].Model = modelID
+			existingConfig.Models[name].Temperature = temperature
+			existingConfig.Models[name].MaxTokens = maxTokens
+			existingConfig.Models[name].Stream = stream
+			existingConfig.Models[name].Thinking = thinking
+			existingConfig.Models[name].BlockDangerousCommands = BlockDangerousCommands
 			apiConfigExists = true
 			break
 		}
@@ -288,7 +313,7 @@ func saveConfigToFile() error {
 
 	// 如果不存在，添加 main 模型
 	if !apiConfigExists {
-		existingConfig.Models = append(existingConfig.Models, ModelConfig{
+		existingConfig.Models["main"] = &ModelConfig{
 			Name:                   "main",
 			APIType:                apiType,
 			BaseURL:                baseURL,
@@ -299,7 +324,7 @@ func saveConfigToFile() error {
 			Stream:                 stream,
 			Thinking:               thinking,
 			BlockDangerousCommands: BlockDangerousCommands,
-		})
+		}
 	}
 
 	// 确保 HTTPServer 配置存在

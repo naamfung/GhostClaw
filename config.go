@@ -196,33 +196,33 @@ type ModelConfig struct {
 
 // 主配置结构
 type Config struct {
-	APIConfig       APIConfig        `toon:"APIConfig" json:"APIConfig"`
-	Models          []ModelConfig    `toon:"Models" json:"Models"`
-	HTTPServer      HTTPServerConfig `toon:"HTTPServer" json:"HTTPServer"`
-	EmailConfig     *EmailConfig     `toon:"EmailConfig,omitempty" json:"EmailConfig,omitempty"`
-	TelegramConfig  *TelegramConfig  `toon:"TelegramConfig,omitempty" json:"TelegramConfig,omitempty"`
-	DiscordConfig   *DiscordConfig   `toon:"DiscordConfig,omitempty" json:"DiscordConfig,omitempty"`
-	SlackConfig     *SlackConfig     `toon:"SlackConfig,omitempty" json:"SlackConfig,omitempty"`
-	FeishuConfig    *FeishuConfig    `toon:"FeishuConfig,omitempty" json:"FeishuConfig,omitempty"`
-	IRCConfig       *IRCConfig       `toon:"IRCConfig,omitempty" json:"IRCConfig,omitempty"`
-	WebhookConfig   *WebhookConfig   `toon:"WebhookConfig,omitempty" json:"WebhookConfig,omitempty"`
-	XMPPConfig      *XMPPConfig      `toon:"XMPPConfig,omitempty" json:"XMPPConfig,omitempty"`
-	MatrixConfig    *MatrixConfig    `toon:"MatrixConfig,omitempty" json:"MatrixConfig,omitempty"`
-	BrowserConfig   BrowserConfig    `toon:"BrowserConfig" json:"BrowserConfig"`
-	DataDir         string           `toon:"DataDir" json:"DataDir,omitempty"`
-	CronConfig      CronConfig       `toon:"CronConfig" json:"CronConfig"`
-	DefaultRole     string           `toon:"DefaultRole" json:"DefaultRole"`
-	Timeout         TimeoutConfig    `toon:"Timeout" json:"Timeout"`
-	Security        SecurityConfig   `toon:"Security" json:"Security"`
-	Heartbeat       HeartbeatConfig  `toon:"Heartbeat" json:"Heartbeat"`
-	MCP             MCPConfig        `toon:"MCP" json:"MCP"`
-	Auth            AuthConfig       `toon:"Auth" json:"Auth"`
-	Hooks           *HooksConfig     `toon:"Hooks,omitempty" json:"Hooks,omitempty"`
-	Tools           ToolsConfig      `toon:"Tools" json:"Tools"`
-	Memory          *MemoryConfig    `toon:"Memory,omitempty" json:"Memory,omitempty"`
-	ProfileConfig   ProfileConfig    `toon:"Profile,omitempty" json:"Profile,omitempty"`
-	GroupChatConfig *GroupChatConfig `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
-	SystemInfo      SystemInfoConfig `toon:"SystemInfo" json:"SystemInfo"`
+	APIConfig       APIConfig               `toon:"APIConfig" json:"APIConfig"`
+	Models          map[string]*ModelConfig `toon:"Models" json:"Models"`
+	HTTPServer      HTTPServerConfig        `toon:"HTTPServer" json:"HTTPServer"`
+	EmailConfig     *EmailConfig            `toon:"EmailConfig,omitempty" json:"EmailConfig,omitempty"`
+	TelegramConfig  *TelegramConfig         `toon:"TelegramConfig,omitempty" json:"TelegramConfig,omitempty"`
+	DiscordConfig   *DiscordConfig          `toon:"DiscordConfig,omitempty" json:"DiscordConfig,omitempty"`
+	SlackConfig     *SlackConfig            `toon:"SlackConfig,omitempty" json:"SlackConfig,omitempty"`
+	FeishuConfig    *FeishuConfig           `toon:"FeishuConfig,omitempty" json:"FeishuConfig,omitempty"`
+	IRCConfig       *IRCConfig              `toon:"IRCConfig,omitempty" json:"IRCConfig,omitempty"`
+	WebhookConfig   *WebhookConfig          `toon:"WebhookConfig,omitempty" json:"WebhookConfig,omitempty"`
+	XMPPConfig      *XMPPConfig             `toon:"XMPPConfig,omitempty" json:"XMPPConfig,omitempty"`
+	MatrixConfig    *MatrixConfig           `toon:"MatrixConfig,omitempty" json:"MatrixConfig,omitempty"`
+	BrowserConfig   BrowserConfig           `toon:"BrowserConfig" json:"BrowserConfig"`
+	DataDir         string                  `toon:"DataDir" json:"DataDir,omitempty"`
+	CronConfig      CronConfig              `toon:"CronConfig" json:"CronConfig"`
+	DefaultRole     string                  `toon:"DefaultRole" json:"DefaultRole"`
+	Timeout         TimeoutConfig           `toon:"Timeout" json:"Timeout"`
+	Security        SecurityConfig          `toon:"Security" json:"Security"`
+	Heartbeat       HeartbeatConfig         `toon:"Heartbeat" json:"Heartbeat"`
+	MCP             MCPConfig               `toon:"MCP" json:"MCP"`
+	Auth            AuthConfig              `toon:"Auth" json:"Auth"`
+	Hooks           *HooksConfig            `toon:"Hooks,omitempty" json:"Hooks,omitempty"`
+	Tools           ToolsConfig             `toon:"Tools" json:"Tools"`
+	Memory          *MemoryConfig           `toon:"Memory,omitempty" json:"Memory,omitempty"`
+	ProfileConfig   ProfileConfig           `toon:"Profile,omitempty" json:"Profile,omitempty"`
+	GroupChatConfig *GroupChatConfig        `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
+	SystemInfo      SystemInfoConfig        `toon:"SystemInfo" json:"SystemInfo"`
 }
 
 // 加载配置文件
@@ -292,17 +292,16 @@ func loadConfig() (Config, error) {
 		config.CronConfig.MaxConcurrent = 1
 	}
 	// 如果没有配置模型列表，创建默认模型
-	if len(config.Models) == 0 {
-		config.Models = []ModelConfig{
-			{
-				Name:        "default",
-				Model:       config.APIConfig.Model,
-				APIType:     config.APIConfig.APIType,
-				BaseURL:     config.APIConfig.BaseURL,
-				APIKey:      config.APIConfig.APIKey,
-				Temperature: config.APIConfig.Temperature,
-				MaxTokens:   config.APIConfig.MaxTokens,
-			},
+	if config.Models == nil {
+		config.Models = make(map[string]*ModelConfig)
+		config.Models["default"] = &ModelConfig{
+			Name:        "default",
+			Model:       config.APIConfig.Model,
+			APIType:     config.APIConfig.APIType,
+			BaseURL:     config.APIConfig.BaseURL,
+			APIKey:      config.APIConfig.APIKey,
+			Temperature: config.APIConfig.Temperature,
+			MaxTokens:   config.APIConfig.MaxTokens,
 		}
 	}
 
