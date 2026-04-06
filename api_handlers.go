@@ -267,6 +267,41 @@ func saveConfigToFile() error {
 		BlockDangerousCommands: BlockDangerousCommands,
 	}
 
+	// 确保 APIConfig 存在于 Models 中
+	apiConfigExists := false
+	for i, model := range existingConfig.Models {
+		if model.Name == "main" {
+			// 更新现有的 main 模型
+			existingConfig.Models[i].APIType = apiType
+			existingConfig.Models[i].BaseURL = baseURL
+			existingConfig.Models[i].APIKey = apiKey
+			existingConfig.Models[i].Model = modelID
+			existingConfig.Models[i].Temperature = temperature
+			existingConfig.Models[i].MaxTokens = maxTokens
+			existingConfig.Models[i].Stream = stream
+			existingConfig.Models[i].Thinking = thinking
+			existingConfig.Models[i].BlockDangerousCommands = BlockDangerousCommands
+			apiConfigExists = true
+			break
+		}
+	}
+
+	// 如果不存在，添加 main 模型
+	if !apiConfigExists {
+		existingConfig.Models = append(existingConfig.Models, ModelConfig{
+			Name:                   "main",
+			APIType:                apiType,
+			BaseURL:                baseURL,
+			APIKey:                 apiKey,
+			Model:                  modelID,
+			Temperature:            temperature,
+			MaxTokens:              maxTokens,
+			Stream:                 stream,
+			Thinking:               thinking,
+			BlockDangerousCommands: BlockDangerousCommands,
+		})
+	}
+
 	// 确保 HTTPServer 配置存在
 	if existingConfig.HTTPServer.Listen == "" {
 		existingConfig.HTTPServer.Listen = "0.0.0.0:10086"
