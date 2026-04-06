@@ -155,6 +155,10 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 			fmt.Println("\n✋ 正在退出程序...")
 			rl.Close()
 			session.autoSaveHistory()
+			// 保存未处理消息队列
+			if err := session.SavePendingMessages(); err != nil {
+				log.Printf("Failed to save pending messages: %v", err)
+			}
 			os.Exit(0)
 		}
 
@@ -163,6 +167,10 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
 			fmt.Println("\n✋ 正在退出程序...")
 			rl.Close()
 			session.autoSaveHistory()
+			// 保存未处理消息队列
+			if err := session.SavePendingMessages(); err != nil {
+				log.Printf("Failed to save pending messages: %v", err)
+			}
 			os.Exit(0)
 		}
 
@@ -274,6 +282,11 @@ func runLogMode(ctx context.Context, session *GlobalSession) {
 				case switchToCMD <- struct{}{}:
 				default:
 				}
+				return
+			} else if buf[0] == 3 { // Ctrl+C
+				// 发送中断信号到当前进程
+				process, _ := os.FindProcess(os.Getpid())
+				process.Signal(syscall.SIGINT)
 				return
 			}
 			// 其他按键忽略（不回显，日志照常输出）
@@ -556,6 +569,28 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: failed to start actor manager: %v", err)
 	} else {
+		// 从配置文件加载模型列表
+		for _, model := range config.Models {
+			// 检查模型是否已经存在
+			if _, exists := globalActorManager.GetModel(model.Name); !exists {
+				// 转换为 ActorManager 使用的 ModelConfig 类型
+				actorModel := &ModelConfig{
+					Name:                  model.Name,
+					APIType:               model.APIType,
+					BaseURL:               model.BaseURL,
+					APIKey:                model.APIKey,
+					Model:                 model.Model,
+					Temperature:           model.Temperature,
+					MaxTokens:             model.MaxTokens,
+					Stream:                stream,
+					Thinking:              thinking,
+					BlockDangerousCommands: BlockDangerousCommands,
+				}
+				if err := globalActorManager.AddModel(actorModel); err != nil {
+					log.Printf("Warning: failed to add model from config: %v", err)
+				}
+			}
+		}
 		log.Printf("Actor manager started. %d actors available.", len(globalActorManager.ListActors()))
 	}
 

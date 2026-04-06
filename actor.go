@@ -10,21 +10,6 @@ import (
 	"github.com/toon-format/toon-go"
 )
 
-// ModelConfig 模型配置
-type ModelConfig struct {
-	Name                  string  `json:"Name"`
-	APIType               string  `json:"APIType"`
-	BaseURL               string  `json:"BaseURL"`
-	APIKey                string  `json:"APIKey"` // 支持环境变量 ${VAR}
-	Model                 string  `json:"Model"`
-	Temperature           float64 `json:"Temperature,omitempty"`
-	MaxTokens             int     `json:"MaxTokens,omitempty"`
-	Stream                bool    `json:"Stream,omitempty"`
-	Thinking              bool    `json:"Thinking,omitempty"`
-	BlockDangerousCommands bool   `json:"BlockDangerousCommands,omitempty"`
-	Description           string  `json:"Description,omitempty"`
-}
-
 // ResolveAPIKey 解析 API Key（支持环境变量）
 func (m *ModelConfig) ResolveAPIKey() string {
 	key := m.APIKey
@@ -342,15 +327,35 @@ func (am *ActorManager) GetActorModel(actorName string) *ModelConfig {
 
 	a, ok := am.actors[actorName]
 	if !ok {
-		return am.models[am.mainModel]
+		// 如果找不到演员，返回主模型
+		if model, exists := am.models[am.mainModel]; exists {
+			return model
+		}
+		// 如果主模型不存在，返回默认的 main 模型
+		if model, exists := am.models["main"]; exists {
+			return model
+		}
+		// 如果都不存在，返回 nil
+		return nil
 	}
 
-	m, ok := am.models[a.Model]
-	if !ok {
-		return am.models[am.mainModel]
+	// 如果演员指定了模型，返回该模型
+	if model, exists := am.models[a.Model]; exists {
+		return model
 	}
 
-	return m
+	// 如果演员指定的模型不存在，返回主模型
+	if model, exists := am.models[am.mainModel]; exists {
+		return model
+	}
+
+	// 如果主模型不存在，返回默认的 main 模型
+	if model, exists := am.models["main"]; exists {
+		return model
+	}
+
+	// 如果都不存在，返回 nil
+	return nil
 }
 
 // BuildActorContext 构建演员的完整上下文

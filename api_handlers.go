@@ -235,34 +235,58 @@ func saveConfigToFile() error {
 	execDir := filepath.Dir(execPath)
 	configPath := filepath.Join(execDir, CONFIG_FILE)
 
-	config := Config{
-		APIConfig: APIConfig{
-			APIType:                apiType,
-			BaseURL:                baseURL,
-			APIKey:                 apiKey,
-			Model:                  modelID,
-			Temperature:            temperature,
-			MaxTokens:              maxTokens,
-			Stream:                 stream,
-			Thinking:               thinking,
-			BlockDangerousCommands: BlockDangerousCommands,
-		},
-		HTTPServer: HTTPServerConfig{
-			Listen: "0.0.0.0:10086",
-		},
-		BrowserConfig: BrowserConfig{
-			UserMode:            UserModeBrowser,
-			Headless:            HeadlessBrowser,
-			DisableGPU:          DisableGPUBrowser,
-			DisableDevTools:     DisableDevToolsBrowser,
-			NoSandbox:           NoSandboxBrowser,
-			DisableBrowserTools: DisableBrowserTools,
-		},
-		DefaultRole: defaultRole,
-		Timeout:     globalTimeoutConfig,
+	// 读取现有配置，保留 Models 字段
+	existingConfig, err := loadConfig()
+	if err != nil {
+		// 如果读取失败，创建新配置
+		existingConfig = Config{
+			Models: []ModelConfig{
+				{
+					Name:        "default",
+					Model:       modelID,
+					APIType:     apiType,
+					BaseURL:     baseURL,
+					APIKey:      apiKey,
+					Temperature: temperature,
+					MaxTokens:   maxTokens,
+				},
+			},
+		}
 	}
 
-	data, err := toon.Marshal(config)
+	// 更新 APIConfig 字段
+	existingConfig.APIConfig = APIConfig{
+		APIType:                apiType,
+		BaseURL:                baseURL,
+		APIKey:                 apiKey,
+		Model:                  modelID,
+		Temperature:            temperature,
+		MaxTokens:              maxTokens,
+		Stream:                 stream,
+		Thinking:               thinking,
+		BlockDangerousCommands: BlockDangerousCommands,
+	}
+
+	// 确保 HTTPServer 配置存在
+	if existingConfig.HTTPServer.Listen == "" {
+		existingConfig.HTTPServer.Listen = "0.0.0.0:10086"
+	}
+
+	// 确保 BrowserConfig 配置存在
+	existingConfig.BrowserConfig = BrowserConfig{
+		UserMode:            UserModeBrowser,
+		Headless:            HeadlessBrowser,
+		DisableGPU:          DisableGPUBrowser,
+		DisableDevTools:     DisableDevToolsBrowser,
+		NoSandbox:           NoSandboxBrowser,
+		DisableBrowserTools: DisableBrowserTools,
+	}
+
+	// 更新其他字段
+	existingConfig.DefaultRole = defaultRole
+	existingConfig.Timeout = globalTimeoutConfig
+
+	data, err := toon.Marshal(existingConfig)
 	if err != nil {
 		return err
 	}
@@ -1481,7 +1505,8 @@ func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, _ *http.Request, nam
 	}
 
 	// 检查模型是否存在
-	if _, exists := globalActorManager.GetModel(name); !exists {
+	model, exists := globalActorManager.GetModel(name)
+	if !exists {
 		http.Error(w, `{"error": "模型不存在"}`, http.StatusNotFound)
 		return
 	}
@@ -1493,38 +1518,43 @@ func (s *HTTPServer) setMainModelAPI(w http.ResponseWriter, _ *http.Request, nam
 	}
 
 	// 更新全局变量为新的主模型配置
-	if modelConfig := globalActorManager.GetMainModel(); modelConfig != nil {
-		if modelConfig.APIType != "" {
-			apiType = modelConfig.APIType
+	if model != nil {
+		if model.APIType != "" {
+			apiType = model.APIType
 		}
-		if modelConfig.BaseURL != "" {
-			baseURL = modelConfig.BaseURL
+		if model.BaseURL != "" {
+			baseURL = model.BaseURL
 		}
-		if modelConfig.APIKey != "" {
-			apiKey = modelConfig.ResolveAPIKey()
+		if model.APIKey != "" {
+			apiKey = model.ResolveAPIKey()
 		}
-		if modelConfig.Model != "" {
-			modelID = modelConfig.Model
+		if model.Model != "" {
+			modelID = model.Model
 		}
-		if modelConfig.Temperature > 0 {
-			temperature = modelConfig.Temperature
+		if model.Temperature > 0 {
+			temperature = model.Temperature
 		}
-		if modelConfig.MaxTokens > 0 {
-			maxTokens = modelConfig.MaxTokens
+		if model.MaxTokens > 0 {
+			maxTokens = model.MaxTokens
 		}
 		// 更新 globalConfig 同步
 		globalConfig.APIConfig.APIType = apiType
 		globalConfig.APIConfig.BaseURL = baseURL
-		globalConfig.APIConfig.APIKey = apiKey
+		globalConfig.APIConfig.APIKey = model.APIKey // 保存原始 API Key（包含环境变量引用）
 		globalConfig.APIConfig.Model = modelID
 		globalConfig.APIConfig.Temperature = temperature
 		globalConfig.APIConfig.MaxTokens = maxTokens
-		log.Printf("[API] Updated global model config to: %s (BaseURL: %s)", modelConfig.Model, modelConfig.BaseURL)
+		log.Printf("[API] Updated global model config to: %s (BaseURL: %s)", model.Model, model.BaseURL)
 	}
 
 	// 保存到文件
 	if err := globalActorManager.SaveToFile(); err != nil {
 		log.Printf("Warning: failed to save actors: %v", err)
+	}
+
+	// 保存到主配置文件
+	if err := saveConfigToFile(); err != nil {
+		log.Printf("Warning: failed to save config: %v", err)
 	}
 
 	w.WriteHeader(http.StatusOK)

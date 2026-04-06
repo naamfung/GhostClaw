@@ -13,7 +13,6 @@
         "bits-ui": "^1.3.0",
         "clsx": "^2.1.1",
         "dexie": "^4.0.0",
-        "hast": "^1.0.0",
         "highlight.js": "^11.11.0",
         "katex": "^0.16.21",
         "marked": "^15.0.0",
@@ -46,7 +45,7 @@
         "fflate": "^0.8.2",
         "jsdom": "^26.0.0",
         "mdsvex": "^0.12.3",
-        "sass-embedded": "^1.85.0",
+        "sass": "^1.85.0",
         "svelte": "^5.19.0",
         "svelte-check": "^4.0.0",
         "tailwindcss": "^4.0.0",
@@ -517,8 +516,6 @@
     "has-symbols": ["has-symbols@1.1.0", "", {}, "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="],
 
     "hasown": ["hasown@2.0.2", "", { "dependencies": { "function-bind": "^1.1.2" } }, "sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ=="],
-
-    "hast": ["hast@1.0.0", "", {}, "sha512-vFUqlRV5C+xqP76Wwq2SrM0kipnmpxJm7OfvVXpB35Fp+Fn4MV+ozr+JZr5qFvyR1q/U+Foim2x+3P+x9S1PLA=="],
 
     "hast-util-from-dom": ["hast-util-from-dom@5.0.1", "", { "dependencies": { "@types/hast": "^3.0.0", "hastscript": "^9.0.0", "web-namespaces": "^2.0.0" } }, "sha512-N+LqofjR2zuzTjCPzyDUdSshy4Ma6li7p/c3pA78uTwzFgENbgbUrm2ugwsOdcjI1muO+o6Dgzp9p8WHtn/39Q=="],
 

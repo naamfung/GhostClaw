@@ -284,31 +284,62 @@ func ProcessUserInput(session *GlobalSession, input string) {
 	effectiveThinking := thinking
 
 	// 优先使用从ActorManager获取的模型配置
-	if globalActorManager != nil && globalStage != nil {
-		currentActor := globalStage.GetCurrentActor()
-		if _, ok := globalActorManager.GetActor(currentActor); ok {
-			if modelConfig := globalActorManager.GetActorModel(currentActor); modelConfig != nil {
-				if modelConfig.APIType != "" {
-					effectiveAPIType = modelConfig.APIType
+	if globalActorManager != nil {
+		// 首先尝试获取主模型配置
+		mainModelConfig := globalActorManager.GetMainModel()
+		if mainModelConfig != nil {
+			log.Printf("[Session] Using main model config: %s (API: %s, BaseURL: %s)", mainModelConfig.Model, mainModelConfig.APIType, mainModelConfig.BaseURL)
+			if mainModelConfig.APIType != "" {
+				effectiveAPIType = mainModelConfig.APIType
+			}
+			if mainModelConfig.BaseURL != "" {
+				effectiveBaseURL = mainModelConfig.BaseURL
+			}
+			if mainModelConfig.APIKey != "" {
+				effectiveAPIKey = mainModelConfig.ResolveAPIKey()
+			}
+			if mainModelConfig.Model != "" {
+				effectiveModelID = mainModelConfig.Model
+			}
+			if mainModelConfig.Temperature > 0 {
+				effectiveTemperature = mainModelConfig.Temperature
+			}
+			if mainModelConfig.MaxTokens > 0 {
+				effectiveMaxTokens = mainModelConfig.MaxTokens
+			}
+		} else {
+			log.Printf("[Session] No main model config found, using default: %s (API: %s, BaseURL: %s)", effectiveModelID, effectiveAPIType, effectiveBaseURL)
+		}
+		// 然后检查当前actor的模型配置（如果有）
+		if globalStage != nil {
+			currentActor := globalStage.GetCurrentActor()
+			if _, ok := globalActorManager.GetActor(currentActor); ok {
+				if modelConfig := globalActorManager.GetActorModel(currentActor); modelConfig != nil {
+					log.Printf("[Session] Using actor model config: %s (API: %s, BaseURL: %s)", modelConfig.Model, modelConfig.APIType, modelConfig.BaseURL)
+					if modelConfig.APIType != "" {
+						effectiveAPIType = modelConfig.APIType
+					}
+					if modelConfig.BaseURL != "" {
+						effectiveBaseURL = modelConfig.BaseURL
+					}
+					if modelConfig.APIKey != "" {
+						effectiveAPIKey = modelConfig.ResolveAPIKey()
+					}
+					if modelConfig.Model != "" {
+						effectiveModelID = modelConfig.Model
+					}
+					if modelConfig.Temperature > 0 {
+						effectiveTemperature = modelConfig.Temperature
+					}
+					if modelConfig.MaxTokens > 0 {
+						effectiveMaxTokens = modelConfig.MaxTokens
+					}
+					// 其他配置...
 				}
-				if modelConfig.BaseURL != "" {
-					effectiveBaseURL = modelConfig.BaseURL
-				}
-				if modelConfig.APIKey != "" {
-					effectiveAPIKey = modelConfig.ResolveAPIKey()
-				}
-				if modelConfig.Model != "" {
-					effectiveModelID = modelConfig.Model
-				}
-				if modelConfig.Temperature > 0 {
-					effectiveTemperature = modelConfig.Temperature
-				}
-				if modelConfig.MaxTokens > 0 {
-					effectiveMaxTokens = modelConfig.MaxTokens
-				}
-				// 其他配置...
 			}
 		}
+	} else {
+		log.Printf("[Session] No actor manager found, using default model config: %s (API: %s, BaseURL: %s)", effectiveModelID, effectiveAPIType, effectiveBaseURL)
 	}
 
 	newHistory, err := AgentLoop(taskCtx, outputChannel, history, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID, effectiveTemperature, effectiveMaxTokens, effectiveStream, effectiveThinking)

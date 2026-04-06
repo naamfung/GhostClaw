@@ -179,9 +179,25 @@ type SystemInfoConfig struct {
 	IncludeOSDetails bool `toon:"IncludeOSDetails" json:"IncludeOSDetails"` // 包含详细操作系统信息
 }
 
+// ModelConfig 模型配置
+type ModelConfig struct {
+	Name                   string  `json:"Name"`
+	APIType                string  `json:"APIType"`
+	BaseURL                string  `json:"BaseURL"`
+	APIKey                 string  `json:"APIKey"` // 支持环境变量 ${VAR}
+	Model                  string  `json:"Model"`
+	Temperature            float64 `json:"Temperature,omitempty"`
+	MaxTokens              int     `json:"MaxTokens,omitempty"`
+	Stream                 bool    `json:"Stream,omitempty"`
+	Thinking               bool    `json:"Thinking,omitempty"`
+	BlockDangerousCommands bool    `json:"BlockDangerousCommands,omitempty"`
+	Description            string  `json:"Description,omitempty"`
+}
+
 // 主配置结构
 type Config struct {
 	APIConfig       APIConfig        `toon:"APIConfig" json:"APIConfig"`
+	Models          []ModelConfig    `toon:"Models" json:"Models"`
 	HTTPServer      HTTPServerConfig `toon:"HTTPServer" json:"HTTPServer"`
 	EmailConfig     *EmailConfig     `toon:"EmailConfig,omitempty" json:"EmailConfig,omitempty"`
 	TelegramConfig  *TelegramConfig  `toon:"TelegramConfig,omitempty" json:"TelegramConfig,omitempty"`
@@ -274,6 +290,20 @@ func loadConfig() (Config, error) {
 	}
 	if config.CronConfig.MaxConcurrent == 0 {
 		config.CronConfig.MaxConcurrent = 1
+	}
+	// 如果没有配置模型列表，创建默认模型
+	if len(config.Models) == 0 {
+		config.Models = []ModelConfig{
+			{
+				Name:        "default",
+				Model:       config.APIConfig.Model,
+				APIType:     config.APIConfig.APIType,
+				BaseURL:     config.APIConfig.BaseURL,
+				APIKey:      config.APIConfig.APIKey,
+				Temperature: config.APIConfig.Temperature,
+				MaxTokens:   config.APIConfig.MaxTokens,
+			},
+		}
 	}
 
 	// 设置超时默认值

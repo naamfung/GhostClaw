@@ -13,7 +13,7 @@
 		singleModelName
 	} from '$lib/stores/models.svelte';
 	import { KeyboardKey } from '$lib/enums';
-	import { isRouterMode, serverStore } from '$lib/stores/server.svelte';
+	import { isRouterMode } from '$lib/stores/server.svelte';
 	import {
 		DialogModelInformation,
 		DropdownMenuSearchable,
@@ -135,13 +135,6 @@
 				mainModelName = modelName;
 				await loadConfigModels();
 				await serverStore.fetch();
-				// 重新获取模型列表以确保最新状态
-				await modelsStore.fetch(true);
-				// 找到对应的模型选项并更新选中状态
-				const modelOption = options.find((opt) => opt.id === modelName || opt.model === modelName);
-				if (modelOption) {
-					await modelsStore.selectModelById(modelOption.id);
-				}
 			}
 		} catch (error) {
 			console.error('Failed to set main model:', error);
@@ -300,14 +293,6 @@
 
 		if (activeId) {
 			return options.find((option) => option.id === activeId);
-		}
-
-		// 尝试查找主模型
-		if (mainModelName) {
-			const mainOption = options.find((opt) => opt.id === mainModelName || opt.model === mainModelName);
-			if (mainOption) {
-				return mainOption;
-			}
 		}
 
 		return undefined;
