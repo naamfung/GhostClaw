@@ -18,6 +18,10 @@ func ApplyCommandResult(result CommandResult, session *GlobalSession) {
 		log.Println("[Command] /exit: exiting program")
 		if session != nil {
 			session.autoSaveHistory()
+			// 保存未处理消息队列
+			if err := session.SavePendingMessages(); err != nil {
+				log.Printf("Failed to save pending messages: %v", err)
+			}
 		}
 		os.Exit(0)
 	}
@@ -53,7 +57,12 @@ func HandleSlashCommandWithDefaults(line string, responder func(string), stopFun
 		if exitFunc != nil {
 			exitFunc()
 		} else {
-			GetGlobalSession().autoSaveHistory()
+			session := GetGlobalSession()
+			session.autoSaveHistory()
+			// 保存未处理消息队列
+			if err := session.SavePendingMessages(); err != nil {
+				log.Printf("Failed to save pending messages: %v", err)
+			}
 			os.Exit(0)
 		}
 	}
