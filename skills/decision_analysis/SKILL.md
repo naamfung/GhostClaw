@@ -1,3 +1,18 @@
+---
+name: decision_analysis
+description: 系统化分析问题、评估选项并辅助决策的能力，帮助用户做出更明智的选择。
+tags:
+  - 分析
+  - 决策
+  - 战略
+  - 规划
+platforms:
+  - windows
+  - linux
+  - macos
+  - freebsd
+---
+
 # 决策分析
 
 ## 描述
@@ -89,9 +104,3 @@
 
 **执行建议**:
 - ...
-
-## 标签
-- 分析
-- 决策
-- 战略
-- 规划

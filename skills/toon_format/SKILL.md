@@ -1,3 +1,18 @@
+---
+name: toon_format
+description: TOON (Token-Oriented Object Notation) 是一种面向 LLM 优化的数据格式，比 JSON 更节省 Token，同时保持人类可读性。本技能指导模型正确读写 TOON 格式。
+tags:
+  - 数据格式
+  - Token优化
+  - LLM友好
+  - 序列化
+platforms:
+  - windows
+  - linux
+  - macos
+  - freebsd
+---
+
 # TOON 格式读写
 
 ## 描述
@@ -285,9 +300,3 @@ tags[3]: a,b,c
   "tags": ["a", "b", "c"]
 }
 ```
-
-## 标签
-- 数据格式
-- Token优化
-- LLM友好
-- 序列化

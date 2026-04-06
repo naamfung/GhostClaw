@@ -1,3 +1,18 @@
+---
+name: ghostclaw-plugin-developer
+description: 此技能用于指导 AI 模型编写 GhostClaw Lua 插件。GhostClaw 插件是使用 Lua 脚本语言编写的可扩展功能模块，通过 `ghostclaw` 命名空间提供的 API 与主程序交互。
+tags:
+  - 开发
+  - 插件
+  - lua
+  - 编程
+platforms:
+  - windows
+  - linux
+  - macos
+  - freebsd
+---
+
 # GhostClaw 插件开发专家
 
 ## 描述
@@ -158,13 +173,37 @@ local content, err = ghostclaw.read_file(path)
 local ok, err = ghostclaw.write_file(path, content)
 local exists = ghostclaw.exists(path)
 local entries, err = ghostclaw.list_dir(path)
+local info, err = ghostclaw.stat(path)  -- 获取文件详细信息
+local ok, err = ghostclaw.mkdir(path)  -- 创建目录
+local ok, err = ghostclaw.remove(path)  -- 删除文件或目录
+local ok, err = ghostclaw.rename(old_path, new_path)  -- 重命名/移动
+```
+
+**文件上传**
+```lua
+-- 使用 multipart/form-data 上传
+local success, response = ghostclaw.upload_multipart(path, url, method, file_field)
+
+-- 使用原始数据上传
+local success, response = ghostclaw.upload_raw(path, url, method, content_type)
+
+-- 自动选择上传方式
+local success, response = ghostclaw.upload_file(path, url, method, content_type, file_field)
+```
+
+**文件下载**
+```lua
+-- 下载文件，支持自定义头部
+local success, message = ghostclaw.download_file(url, save_path, headers)
+-- headers 可选，格式: {["User-Agent"] = "GhostClaw/1.0"}
 ```
 
 **时间函数**
 ```lua
-local ts = ghostclaw.time()
-local str = ghostclaw.time_format(timestamp, layout)
-ghostclaw.sleep(seconds)
+local ts = ghostclaw.time()  -- 当前时间戳
+local str = ghostclaw.time_format(timestamp, layout)  -- 格式化时间
+local ts, err = ghostclaw.time_parse(str, layout)  -- 解析时间字符串
+ghostclaw.sleep(seconds)  -- 休眠
 ```
 
 **字符串处理**
@@ -172,15 +211,57 @@ ghostclaw.sleep(seconds)
 local parts = ghostclaw.split(str, separator)
 local trimmed = ghostclaw.trim(str)
 local found = ghostclaw.contains(str, substr)
+local replaced = ghostclaw.replace(str, old, new)  -- 替换字符串
 ```
 
-**其他实用函数**
+**路径操作**
+```lua
+local path = ghostclaw.join_path(part1, part2, part3)  -- 连接路径
+local parts = ghostclaw.split_path(path)  -- 分割路径，返回 {dir, file}
+local abs_path = ghostclaw.abs_path(path)  -- 获取绝对路径
+```
+
+**环境变量**
+```lua
+local value = ghostclaw.getenv(name)  -- 获取环境变量
+local ok, err = ghostclaw.setenv(name, value)  -- 设置环境变量
+```
+
+**工作目录**
+```lua
+local cwd = ghostclaw.getcwd()  -- 获取当前工作目录
+local ok, err = ghostclaw.chdir(path)  -- 切换工作目录
+```
+
+**加密/哈希**
 ```lua
 local hash = ghostclaw.hash(algo, data)  -- "md5", "sha1", "sha256"
-local num = ghostclaw.random(min, max)
-local uuid = ghostclaw.uuid()
-local cwd = ghostclaw.getcwd()
+```
+
+**随机数/UUID**
+```lua
+local num = ghostclaw.random(min, max)  -- 随机数
+local uuid = ghostclaw.uuid()  -- 生成UUID
+```
+
+**工具调用**
+```lua
 local result = ghostclaw.call_tool(tool_name, args_table)
+```
+
+**TOON 格式处理**
+```lua
+-- 将 Lua 表编码为 TOON 格式
+local toon_str = ghostclaw.toon_encode(table)
+
+-- 将 TOON 格式解码为 Lua 表
+local table = ghostclaw.toon_decode(toon_str)
+
+-- 读取 TOON 文件并解码为 Lua 表
+local data, err = ghostclaw.toon_read_file(path)
+
+-- 将 Lua 表编码为 TOON 格式并写入文件
+local success, err = ghostclaw.toon_write_file(path, table)
 ```
 
 ### 插件调用方式
@@ -200,10 +281,3 @@ plugin_call(plugin="weather", function="get_weather", args=["广州"])
 | `attempt to index nil` | 访问 nil 值的成员 | 添加 nil 检查 |
 | 中文参数无效 | URL 未编码 | 使用 url_encode |
 | HTTP 请求被拒绝 | SSRF 防护 | 只访问公网 API |
-
-## 标签
-
-- 开发
-- 插件
-- lua
-- 编程

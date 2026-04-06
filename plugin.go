@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/toon-format/toon-go"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -1055,6 +1056,77 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
 		old := L.CheckString(2)
 		newStr := L.CheckString(3)
 		L.Push(lua.LString(strings.ReplaceAll(str, old, newStr)))
+		return 1
+ 	}))
+
+	// ==================== TOON 格式处理 ====================
+
+	// ghostclaw.toon_encode(table) - 将 Lua 表编码为 TOON 格式
+	L.SetField(ghostclaw, "toon_encode", L.NewFunction(func(L *lua.LState) int {
+		table := L.CheckTable(1)
+		data := luaValueToGo(table)
+		bytes, err := toon.Marshal(data)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(lua.LString(string(bytes)))
+		return 1
+	}))
+
+	// ghostclaw.toon_decode(str) - 将 TOON 格式解码为 Lua 表
+	L.SetField(ghostclaw, "toon_decode", L.NewFunction(func(L *lua.LState) int {
+		str := L.CheckString(1)
+		var data interface{}
+		err := toon.Unmarshal([]byte(str), &data)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(toLuaValue(L, data))
+		return 1
+	}))
+
+	// ghostclaw.toon_read_file(path) - 读取 TOON 文件并解码为 Lua 表
+	L.SetField(ghostclaw, "toon_read_file", L.NewFunction(func(L *lua.LState) int {
+		path := L.CheckString(1)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		var result interface{}
+		err = toon.Unmarshal(data, &result)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(toLuaValue(L, result))
+		return 1
+	}))
+
+	// ghostclaw.toon_write_file(path, table) - 将 Lua 表编码为 TOON 格式并写入文件
+	L.SetField(ghostclaw, "toon_write_file", L.NewFunction(func(L *lua.LState) int {
+		path := L.CheckString(1)
+		table := L.CheckTable(2)
+		data := luaValueToGo(table)
+		bytes, err := toon.Marshal(data)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		err = os.WriteFile(path, bytes, 0644)
+		if err != nil {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(lua.LBool(true))
 		return 1
 	}))
 }

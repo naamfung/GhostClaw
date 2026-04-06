@@ -1,19 +1,28 @@
+---
+name: opencli
+description: 专业的 OpenCLI 安装、配置与使用指南。提供详细的安装步骤、工具使用优先级规范、丰富的命令示例以及常见问题解决方案。当用户要求获取网站数据或进行网页操作时，必须优先使用 OpenCLI 而非内置浏览器工具。
+tags:
+  - opencli
+  - 安装
+  - 命令行工具
+  - bun
+  - pnpm
+  - npm
+  - 浏览器自动化
+  - CLI中心
+  - 工具优先级
+  - 强制使用
+platforms:
+  - windows
+  - linux
+  - macos
+  - freebsd
+---
+
 # OpenCLI 完整指南
 
 ## 描述
 专业的 OpenCLI 安装、配置与使用指南。提供详细的安装步骤、工具使用优先级规范、丰富的命令示例以及常见问题解决方案。当用户要求获取网站数据或进行网页操作时，必须优先使用 OpenCLI 而非内置浏览器工具。
-
-## 标签
-- opencli
-- 安装
-- 命令行工具
-- bun
-- pnpm
-- npm
-- 浏览器自动化
-- CLI中心
-- 工具优先级
-- 强制使用
 
 ## 触发关键词
 - opencli

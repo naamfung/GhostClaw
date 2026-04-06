@@ -10,6 +10,7 @@ platforms:
   - windows
   - linux
   - macos
+  - freebsd
 ---
 
 # 文件上传服务

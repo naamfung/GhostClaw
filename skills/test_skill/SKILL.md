@@ -8,6 +8,7 @@ platforms:
   - windows
   - linux
   - macos
+  - freebsd
 ---
 
 # 测试技能
