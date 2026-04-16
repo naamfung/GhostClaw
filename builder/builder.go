@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	colorRed   = "\033[0;31m"
-	colorGreen = "\033[0;32m"
+	colorRed    = "\033[0;31m"
+	colorGreen  = "\033[0;32m"
 	colorYellow = "\033[0;33m"
-	colorBlue  = "\033[0;34m"
-	colorNC    = "\033[0m"
+	colorBlue   = "\033[0;34m"
+	colorNC     = "\033[0m"
 )
 
 func printColored(color, msg string) {
@@ -32,7 +32,7 @@ func printError(msg string)   { printColored(colorRed, msg) }
 
 // platform 定义目标平台
 type platform struct {
-	Name       string // 用户友好的名称
+	Name       string // 用户友好的名称（命令行参数用）
 	GOOS       string
 	GOARCH     string
 	OutputName string // 最终文件名（不含后缀）
@@ -41,17 +41,17 @@ type platform struct {
 }
 
 // 预定义所有支持的目标平台
+// 注意：freebsd-amd64 和 ghostbsd-amd64 共享同一个输出文件名，构建时会自动去重
 var platforms = []platform{
 	{Name: "linux-amd64", GOOS: "linux", GOARCH: "amd64", OutputName: "ghostclaw-linux-amd64", Suffix: "", Static: true},
 	{Name: "linux-arm64", GOOS: "linux", GOARCH: "arm64", OutputName: "ghostclaw-linux-arm64", Suffix: "", Static: true},
-	{Name: "alpine-amd64", GOOS: "linux", GOARCH: "amd64", OutputName: "ghostclaw-alpine-amd64", Suffix: "", Static: true},
-	{Name: "alpine-arm64", GOOS: "linux", GOARCH: "arm64", OutputName: "ghostclaw-alpine-arm64", Suffix: "", Static: true},
 	{Name: "loong64", GOOS: "linux", GOARCH: "loong64", OutputName: "ghostclaw-linux-loong64", Suffix: "", Static: true},
 	{Name: "darwin-amd64", GOOS: "darwin", GOARCH: "amd64", OutputName: "ghostclaw-darwin-amd64", Suffix: "", Static: true},
 	{Name: "darwin-arm64", GOOS: "darwin", GOARCH: "arm64", OutputName: "ghostclaw-darwin-arm64", Suffix: "", Static: true},
 	{Name: "windows-amd64", GOOS: "windows", GOARCH: "amd64", OutputName: "ghostclaw-windows-amd64", Suffix: ".exe", Static: true},
-	{Name: "freebsd-amd64", GOOS: "freebsd", GOARCH: "amd64", OutputName: "ghostclaw-freebsd-amd64", Suffix: "", Static: true},
-	{Name: "ghostbsd-amd64", GOOS: "freebsd", GOARCH: "amd64", OutputName: "ghostclaw-ghostbsd-amd64", Suffix: "", Static: true},
+	// FreeBSD 和 GhostBSD 本质上是同一个二进制文件，统一命名为 ghostclaw-ghostbsd-or-freebsd-amd64
+	{Name: "freebsd-amd64", GOOS: "freebsd", GOARCH: "amd64", OutputName: "ghostclaw-ghostbsd-or-freebsd-amd64", Suffix: "", Static: true},
+	{Name: "ghostbsd-amd64", GOOS: "freebsd", GOARCH: "amd64", OutputName: "ghostclaw-ghostbsd-or-freebsd-amd64", Suffix: "", Static: true},
 }
 
 func main() {
@@ -170,16 +170,14 @@ func printHelp(progName string) {
   --help, -h               显示此帮助
 
 支持平台列表（cross）:
-  linux-amd64      - Linux x86_64 (glibc/musl 兼容)
+  linux-amd64      - Linux x86_64
   linux-arm64      - Linux ARM64
-  alpine-amd64     - Alpine Linux x86_64 (musl)
-  alpine-arm64     - Alpine Linux ARM64 (musl)
-  loong64          - LoongArch 64位 (龙芯)
+  loong64          - Loong64 龙芯64位 
   darwin-amd64     - macOS Intel
   darwin-arm64     - macOS Apple Silicon
   windows-amd64    - Windows x86_64
-  freebsd-amd64    - FreeBSD x86_64
-  ghostbsd-amd64   - GhostBSD x86_64
+  freebsd-amd64    - FreeBSD x86_64 (与 GhostBSD 共用同一二进制)
+  ghostbsd-amd64   - GhostBSD x86_64 (与 FreeBSD 共用同一二进制)
 
 示例:
   %s                               # 构建当前平台
@@ -193,7 +191,7 @@ func printHelp(progName string) {
   ENABLE_TELEGRAM=1   启用 Telegram 渠道
   ENABLE_DISCORD=1    启用 Discord 渠道
   ENABLE_SLACK=1      启用 Slack 渠道
-  ENABLE_FEISHU=1     启用飞书渠道
+  ENABLE_FEISHU=1     启用 飞书 渠道
   ENABLE_IRC=1        启用 IRC 渠道
   ENABLE_WEBHOOK=1    启用 Webhook 渠道
   ENABLE_XMPP=1       启用 XMPP 渠道
@@ -261,7 +259,7 @@ func crossBuild(args []string) {
 		fmt.Printf("前端构建失败: %v\n", err)
 		os.Exit(1)
 	}
-	// 恢复 tsconfig.json（buildFrontend 内部可能切换目录，但已恢复）
+	// 恢复 tsconfig.json
 	copyFileIgnoreMissing("webui/tsconfig.env.json", "webui/tsconfig.json")
 	os.Remove("webui/tsconfig.env.json")
 
@@ -309,6 +307,17 @@ func crossBuild(args []string) {
 			os.Exit(1)
 		}
 	}
+
+	// 根据 OutputName 去重，避免重复构建 FreeBSD/GhostBSD
+	seen := make(map[string]bool)
+	var dedupTargets []platform
+	for _, p := range targets {
+		if !seen[p.OutputName] {
+			seen[p.OutputName] = true
+			dedupTargets = append(dedupTargets, p)
+		}
+	}
+	targets = dedupTargets
 
 	successCount := 0
 	for _, p := range targets {
