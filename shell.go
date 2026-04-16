@@ -1,0 +1,785 @@
+package main
+
+import (
+        "bytes"
+        "context"
+        "errors"
+        "fmt"
+        "log"
+        "os"
+        "os/exec"
+        "path/filepath"
+        "runtime"
+        "strings"
+        "time"
+)
+
+type CmdResult struct {
+        Stdout          string
+        Stderr          string
+        ExitCode        int
+        Err             error
+        ConfirmRequired bool     `json:"confirm_required,omitempty"`
+        ConfirmMessage  string   `json:"confirm_message,omitempty"`
+        Suggestions     []string `json:"suggestions,omitempty"`
+}
+
+type BlockingCommandInfo struct {
+        IsBlocking  bool
+        Reason      string
+        Suggestions []string
+}
+
+// ExpandAlias 递归展开别名，防止循环
+func ExpandAlias(command string, aliases map[string]string) string {
+        if len(aliases) == 0 {
+                return command
+        }
+
+        visited := make(map[string]bool)
+        return expandAliasRecursive(command, aliases, visited)
+}
+
+func expandAliasRecursive(command string, aliases map[string]string, visited map[string]bool) string {
+        trimmed := strings.TrimSpace(command)
+        if trimmed == "" {
+                return command
+        }
+
+        fields := strings.Fields(trimmed)
+        if len(fields) == 0 {
+                return command
+        }
+
+        firstWord := fields[0]
+        if expanded, ok := aliases[firstWord]; ok {
+                if visited[firstWord] {
+                        log.Printf("[Alias] Circular alias detected: %s", firstWord)
+                        return command
+                }
+                visited[firstWord] = true
+                newCommand := expanded
+                if len(fields) > 1 {
+                        newCommand = newCommand + " " + strings.Join(fields[1:], " ")
+                }
+                return expandAliasRecursive(newCommand, aliases, visited)
+        }
+        return command
+}
+
+func detectBlockingCommand(command string) BlockingCommandInfo {
+        lowerCmd := strings.ToLower(command)
+        cmdFields := strings.Fields(lowerCmd)
+
+        info := BlockingCommandInfo{IsBlocking: false}
+
+        if len(cmdFields) == 0 {
+                return info
+        }
+
+        cmdName := cmdFields[0]
+        if idx := strings.LastIndex(cmdName, "/"); idx >= 0 {
+                cmdName = cmdName[idx+1:]
+        }
+
+        // SSH 检测（增强：检测后台启动但未正确脱离终端，支持 Linux setsid 和 FreeBSD daemon）
+        if cmdName == "ssh" {
+                // 检查是否使用了正确的守护进程启动方式
+                hasSetsid := strings.Contains(lowerCmd, "setsid")
+                hasNohup := strings.Contains(lowerCmd, "nohup")
+                hasDaemon := strings.Contains(lowerCmd, "daemon")
+                hasBackground := strings.Contains(lowerCmd, "&")
+
+                var iSuggestion = "强烈推荐使用原生 SSH 工具：\n" +
+                        "1. 使用 ssh_connect 建立持久连接\n" +
+                        "2. 使用 ssh_exec 执行命令\n" +
+                        "示例：\n" +
+                        "  ssh_connect(username=\"user\", host=\"host\", password=\"pass\") -> 得到 session_id\n" +
+                        "  ssh_exec(session_id=\"...\", command=\"ls -la\")"
+
+                if !strings.HasPrefix(strings.TrimSpace(command), "sshpass") {
+                        hasPasswordAuth := strings.Contains(lowerCmd, "passwordauthentication=yes") ||
+                                strings.Contains(lowerCmd, "passwordauthentication yes") ||
+                                strings.Contains(lowerCmd, "-o stricthostkeychecking=no") && !strings.Contains(lowerCmd, "-i ")
+                        if hasPasswordAuth || !strings.Contains(lowerCmd, "-i ") {
+                                info.IsBlocking = true
+                                info.Reason = "ssh 命令可能需要交互输入密码"
+                                info.Suggestions = []string{
+                                        "使用 sshpass -p '密码' ssh user@host ...",
+                                        "使用密钥认证: ssh -i /path/to/key user@host ...",
+                                        iSuggestion,
+                                        "若确认无需交互，可使用 force: true 强制执行",
+                                }
+                                return info
+                        }
+                }
+
+                // 检测是否可能启动了后台进程但未正确脱离终端
+                if (hasBackground || strings.Contains(lowerCmd, "&")) && !hasSetsid && !hasNohup && !hasDaemon {
+                        info.IsBlocking = true
+                        info.Reason = "SSH 中启动后台进程可能因 SIGHUP 信号而退出"
+                        info.Suggestions = []string{
+                                "Linux: 使用 setsid 创建新会话: setsid /path/to/program < /dev/null > /tmp/prog.log 2>&1 &",
+                                "GhostBSD/FreeBSD: 使用 daemon 命令: daemon -p /var/run/prog.pid /path/to/program",
+                                "也可以考虑使用 shell_delayed 工具异步执行此命令。",
+                                iSuggestion,
+                                "若确认命令不会启动守护进程，可使用 force: true 强制执行",
+                        }
+                        return info
+                }
+        }
+
+        // SCP
+        if cmdName == "scp" {
+                if !strings.HasPrefix(strings.TrimSpace(command), "sshpass") {
+                        if !strings.Contains(lowerCmd, "-i ") {
+                                info.IsBlocking = true
+                                info.Reason = "scp 命令可能需要交互输入密码"
+                                info.Suggestions = []string{
+                                        "使用 sshpass -p '密码' scp source dest ...",
+                                        "使用密钥认证: scp -i /path/to/key source dest ...",
+                                        "若确认无需交互，可使用 force: true 强制执行",
+                                }
+                                return info
+                        }
+                }
+        }
+
+        // rsync
+        if cmdName == "rsync" {
+                if strings.Contains(lowerCmd, "-e ssh") || strings.Contains(lowerCmd, "-e 'ssh") || strings.Contains(lowerCmd, "-e\"ssh") {
+                        if !strings.HasPrefix(strings.TrimSpace(command), "sshpass") && !strings.Contains(lowerCmd, "-i ") {
+                                info.IsBlocking = true
+                                info.Reason = "rsync 通过 ssh 传输可能需要交互输入密码"
+                                info.Suggestions = []string{
+                                        "使用 sshpass -p '密码' rsync -e 'ssh' ...",
+                                        "使用密钥认证",
+                                        "若确认无需交互，可使用 force: true 强制执行",
+                                }
+                                return info
+                        }
+                }
+        }
+
+        // sudo/su
+        if cmdName == "sudo" || cmdName == "su" {
+                if !strings.Contains(lowerCmd, "-s") && !strings.Contains(lowerCmd, "-S") {
+                        info.IsBlocking = true
+                        info.Reason = fmt.Sprintf("%s 命令可能需要交互输入密码", cmdName)
+                        info.Suggestions = []string{
+                                fmt.Sprintf("使用 echo 'password' | %s -S ...", cmdName),
+                                "配置 sudoers 免密码",
+                                "若确认无需交互，可使用 force: true 强制执行",
+                        }
+                        return info
+                }
+        }
+
+        // sftp/ftp
+        if cmdName == "sftp" || cmdName == "ftp" {
+                info.IsBlocking = true
+                info.Reason = fmt.Sprintf("%s 命令通常需要交互输入", cmdName)
+                info.Suggestions = []string{
+                        "使用 sshpass 配合 sftp",
+                        "使用 lftp 等支持脚本化的工具",
+                        "若确认无需交互，可使用 force: true 强制执行",
+                }
+                return info
+        }
+
+        interactivePrograms := []string{"vim", "vi", "nano", "emacs", "less", "more", "top", "htop", "screen", "tmux", "mysql", "psql", "sqlite3"}
+        for _, prog := range interactivePrograms {
+                if cmdName == prog {
+                        info.IsBlocking = true
+                        info.Reason = fmt.Sprintf("%s 是交互式程序，会阻塞 shell 执行", prog)
+                        info.Suggestions = []string{
+                                fmt.Sprintf("使用非交互模式运行 %s", prog),
+                                fmt.Sprintf("使用 %s 的批处理模式", prog),
+                                "若确认需要交互，请使用 shell_delayed 工具",
+                        }
+                        return info
+                }
+        }
+
+        return info
+}
+
+func CheckBlockingCommand(command string) BlockingCommandInfo {
+        return detectBlockingCommand(command)
+}
+
+func BuildConfirmMessage(info BlockingCommandInfo, originalCmd string) string {
+        var sb strings.Builder
+        sb.WriteString("⚠️ 此命令可能需要交互输入进而导致操作阻塞。\n\n")
+        sb.WriteString(fmt.Sprintf("**原因**：%s\n\n", info.Reason))
+        sb.WriteString("**建议**：\n")
+        for i, sug := range info.Suggestions {
+                sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, sug))
+        }
+        sb.WriteString("\n是否仍要执行原命令？")
+        return sb.String()
+}
+
+func isDangerousCommand(command string) bool {
+        lowerCmd := strings.ToLower(command)
+
+        dangerousPatterns := []string{
+                "rm -rf /", "rm -rf /*", "mkfs", "dd if=", "format /", "format c:", "format d:",
+                ":(){ :|:& };:", "chmod 777 /", "chown -R", "> /dev/sda",
+                "shutdown", "reboot", "halt", "init 0", "poweroff",
+        }
+        for _, pattern := range dangerousPatterns {
+                if strings.Contains(lowerCmd, pattern) {
+                        return true
+                }
+        }
+
+        luaBlacklist := []string{
+                "lua", "luajit", "luarocks", "moon", "moonc", "fengari", "luvit", "lit",
+        }
+        cmdParts := strings.Fields(lowerCmd)
+        if len(cmdParts) > 0 {
+                firstWord := cmdParts[0]
+                if idx := strings.LastIndex(firstWord, "/"); idx >= 0 {
+                        firstWord = firstWord[idx+1:]
+                }
+                for _, blocked := range luaBlacklist {
+                        if firstWord == blocked ||
+                                strings.HasPrefix(firstWord, blocked+"5.") ||
+                                strings.HasPrefix(firstWord, blocked+"5") ||
+                                strings.HasPrefix(firstWord, blocked+"-") {
+                                return true
+                        }
+                }
+        }
+
+        luaCallPatterns := []string{
+                "; lua", "&& lua", "|| lua", "| lua", "`lua", "$(lua",
+                "; luajit", "&& luajit", "|| luajit", "| luajit", "`luajit", "$(luajit",
+                "; luarocks", "&& luarocks", "|| luarocks", "| luarocks", "`luarocks", "$(luarocks",
+        }
+        for _, pattern := range luaCallPatterns {
+                if strings.Contains(lowerCmd, pattern) {
+                        return true
+                }
+        }
+
+        return false
+}
+
+// handleInternalLS 在Windows上用Go内部实现ls命令
+func handleInternalLS(args []string) CmdResult {
+        showHidden := false
+        showLongFormat := false
+        var pattern string
+
+        for _, arg := range args {
+                switch arg {
+                case "-a", "-A":
+                        showHidden = true
+                case "-l":
+                        showLongFormat = true
+                case "-la", "-al", "-lA", "-Al":
+                        showHidden = true
+                        showLongFormat = true
+                default:
+                        if !strings.HasPrefix(arg, "-") {
+                                pattern = arg
+                        }
+                }
+        }
+
+        if pattern == "" {
+                pattern = "*"
+        }
+
+        cwd, err := os.Getwd()
+        if err != nil {
+                return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+        }
+
+        var fileInfos []os.FileInfo
+        if pattern == "*" {
+                entries, err := os.ReadDir(cwd)
+                if err != nil {
+                        return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+                }
+                for _, entry := range entries {
+                        info, err := entry.Info()
+                        if err == nil {
+                                fileInfos = append(fileInfos, info)
+                        }
+                }
+        } else {
+                matches, err := filepath.Glob(filepath.Join(cwd, pattern))
+                if err != nil {
+                        return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+                }
+                for _, match := range matches {
+                        info, err := os.Stat(match)
+                        if err == nil {
+                                fileInfos = append(fileInfos, info)
+                        }
+                }
+        }
+
+        var sb strings.Builder
+        for _, info := range fileInfos {
+                name := info.Name()
+                if !showHidden && strings.HasPrefix(name, ".") {
+                        continue
+                }
+
+                if showLongFormat {
+                        perm := info.Mode().String()
+                        size := info.Size()
+                        modTime := info.ModTime().Format("Jan 02 15:04")
+                        sb.WriteString(fmt.Sprintf("%s %8d %s %s\n", perm, size, modTime, name))
+                } else {
+                        sb.WriteString(name)
+                        sb.WriteString("\n")
+                }
+        }
+
+        return CmdResult{Stdout: sb.String(), ExitCode: 0}
+}
+
+// handleInternalPWD 在Windows上用Go内部实现pwd命令
+func handleInternalPWD() CmdResult {
+        cwd, err := os.Getwd()
+        if err != nil {
+                return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+        }
+        return CmdResult{Stdout: cwd + "\n", ExitCode: 0}
+}
+
+// handleInternalMkdir 在Windows上用Go内部实现mkdir命令
+func handleInternalMkdir(args []string) CmdResult {
+        if len(args) == 0 {
+                return CmdResult{Stderr: "mkdir: missing operand", ExitCode: 1, Err: errors.New("missing operand")}
+        }
+        for _, arg := range args {
+                if arg == "-p" || strings.HasPrefix(arg, "-p") {
+                        continue
+                }
+                err := os.MkdirAll(arg, 0755)
+                if err != nil {
+                        return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+                }
+        }
+        return CmdResult{ExitCode: 0}
+}
+
+// handleInternalRM 在Windows上用Go内部实现rm命令
+func handleInternalRM(args []string) CmdResult {
+        if len(args) == 0 {
+                return CmdResult{Stderr: "rm: missing operand", ExitCode: 1, Err: errors.New("missing operand")}
+        }
+        recursive := false
+        var files []string
+        for _, arg := range args {
+                if arg == "-r" || arg == "-rf" || arg == "-fr" {
+                        recursive = true
+                } else if !strings.HasPrefix(arg, "-") {
+                        files = append(files, arg)
+                }
+        }
+        for _, file := range files {
+                var err error
+                if recursive {
+                        err = os.RemoveAll(file)
+                } else {
+                        err = os.Remove(file)
+                }
+                if err != nil {
+                        return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+                }
+        }
+        return CmdResult{ExitCode: 0}
+}
+
+// handleInternalCP 在Windows上用Go内部实现cp命令
+func handleInternalCP(args []string) CmdResult {
+        if len(args) < 2 {
+                return CmdResult{Stderr: "cp: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+        }
+        src := args[0]
+        dst := args[1]
+        data, err := os.ReadFile(src)
+        if err != nil {
+                return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+        }
+        err = os.WriteFile(dst, data, 0644)
+        if err != nil {
+                return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+        }
+        return CmdResult{ExitCode: 0}
+}
+
+// handleInternalMV 在Windows上用Go内部实现mv命令
+func handleInternalMV(args []string) CmdResult {
+        if len(args) < 2 {
+                return CmdResult{Stderr: "mv: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+        }
+        src := args[0]
+        dst := args[1]
+        err := os.Rename(src, dst)
+        if err != nil {
+                return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+        }
+        return CmdResult{ExitCode: 0}
+}
+
+// handleInternalCat 在Windows上用Go内部实现cat命令
+func handleInternalCat(args []string) CmdResult {
+        if len(args) == 0 {
+                return CmdResult{Stderr: "cat: missing file operand", ExitCode: 1, Err: errors.New("missing operand")}
+        }
+        var sb strings.Builder
+        for _, file := range args {
+                if strings.HasPrefix(file, "-") {
+                        continue
+                }
+                data, err := os.ReadFile(file)
+                if err != nil {
+                        return CmdResult{Stderr: err.Error(), ExitCode: 1, Err: err}
+                }
+                sb.Write(data)
+        }
+        return CmdResult{Stdout: sb.String(), ExitCode: 0}
+}
+
+// handleInternalEcho 在Windows上用Go内部实现echo命令
+func handleInternalEcho(args []string) CmdResult {
+        return CmdResult{Stdout: strings.Join(args, " ") + "\n", ExitCode: 0}
+}
+
+// handleInternalDate 在Windows上用Go内部实现date命令
+func handleInternalDate() CmdResult {
+        return CmdResult{Stdout: time.Now().Format(time.RFC1123) + "\n", ExitCode: 0}
+}
+
+// tryInternalCommand 尝试用Go内部实现的命令处理
+func tryInternalCommand(command string) (CmdResult, bool) {
+        if runtime.GOOS != "windows" {
+                return CmdResult{}, false
+        }
+
+        parts := strings.Fields(command)
+        if len(parts) == 0 {
+                return CmdResult{}, false
+        }
+
+        cmd := strings.ToLower(parts[0])
+        args := parts[1:]
+
+        switch cmd {
+        case "ls":
+                return handleInternalLS(args), true
+        case "pwd":
+                return handleInternalPWD(), true
+        case "mkdir":
+                return handleInternalMkdir(args), true
+        case "rm":
+                return handleInternalRM(args), true
+        case "cp":
+                return handleInternalCP(args), true
+        case "mv":
+                return handleInternalMV(args), true
+        case "cat":
+                return handleInternalCat(args), true
+        case "echo":
+                return handleInternalEcho(args), true
+        case "date":
+                return handleInternalDate(), true
+        case "touch":
+                return handleWindowsTouch(command), true
+        default:
+                return CmdResult{}, false
+        }
+}
+
+func runShell(ctx context.Context, command string) CmdResult {
+        return runShellWithTimeout(ctx, command, false, false)
+}
+
+// runShellWithTimeout 执行命令，增加别名展开
+func runShellWithTimeout(ctx context.Context, command string, force bool, isBlockingConfirmed bool) CmdResult {
+        if len(globalToolsAliases) > 0 {
+                expanded := ExpandAlias(command, globalToolsAliases)
+                if expanded != command {
+                        if IsDebug {
+                                fmt.Printf("[runShell] Alias expanded: %q -> %q\n", command, expanded)
+                        }
+                        command = expanded
+                }
+        }
+
+        if IsDebug {
+                fmt.Printf("[runShell] executing: %q, force=%v, isBlockingConfirmed=%v\n", command, force, isBlockingConfirmed)
+        }
+
+        blockingInfo := detectBlockingCommand(command)
+
+        if blockingInfo.IsBlocking && !force && !isBlockingConfirmed {
+                return CmdResult{
+                        ConfirmRequired: true,
+                        ConfirmMessage:  BuildConfirmMessage(blockingInfo, command),
+                        Suggestions:     blockingInfo.Suggestions,
+                }
+        }
+
+        var cancel context.CancelFunc
+        if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+                var timeout time.Duration
+                if isBlockingConfirmed || blockingInfo.IsBlocking {
+                        timeout = time.Duration(DefaultBlockingCmdTimeout) * time.Second
+                } else {
+                        timeout = time.Duration(globalTimeoutConfig.Shell) * time.Second
+                        if timeout <= 0 {
+                                timeout = time.Duration(DefaultShellTimeout) * time.Second
+                        }
+                }
+                ctx, cancel = context.WithTimeout(ctx, timeout)
+                defer cancel()
+        }
+
+        if BlockDangerousCommands {
+                if isDangerousCommand(command) {
+                        return CmdResult{Err: errors.New("dangerous command blocked")}
+                }
+        } else {
+                if IsDebug {
+                        fmt.Println("Dangerous command blocking is disabled, allowing all commands.")
+                }
+        }
+
+        // 首先尝试用Go内部实现的命令
+        if result, handled := tryInternalCommand(command); handled {
+                return result
+        }
+
+        var cmd *exec.Cmd
+        if runtime.GOOS == "windows" {
+                command = translateUnixToWindows(command)
+                // 使用PowerShell执行命令，而不是cmd.exe
+                cmd = exec.CommandContext(ctx, "powershell.exe", "-Command", command)
+        } else {
+                cmd = exec.CommandContext(ctx, "sh", "-c", command)
+                // 使用進程組確保管道命令（如 cmd | tail）能被整棵進程樹一起殺死
+                cmd.SysProcAttr = getSysProcAttr()
+        }
+
+        var stdout, stderr bytes.Buffer
+        cmd.Stdout = &stdout
+        cmd.Stderr = &stderr
+
+        err := cmd.Run()
+        if err != nil {
+                exitCode := -1
+                if exitErr, ok := err.(*exec.ExitError); ok {
+                        exitCode = exitErr.ExitCode()
+                }
+                // Context 取消時（超時/用戶中斷），確保殺死整個進程組
+                // 防止管道子進程成為殭屍進程
+                if ctx.Err() != nil && cmd.Process != nil {
+                        if runtime.GOOS != "windows" {
+                                killProcessGroup(cmd.Process.Pid)
+                        }
+                }
+                return CmdResult{
+                        Stdout:   truncateOutput(stdout.String()),
+                        Stderr:   stderr.String(),
+                        ExitCode: exitCode,
+                        Err:      err,
+                }
+        }
+
+        return CmdResult{
+                Stdout:   truncateOutput(stdout.String()),
+                Stderr:   stderr.String(),
+                ExitCode: 0,
+                Err:      nil,
+        }
+}
+
+func findExecutableInPath(filename string) string {
+        // 从环境变量PATH中搜索可执行文件
+        path := os.Getenv("PATH")
+        pathDirs := strings.Split(path, string(os.PathListSeparator))
+
+        for _, dir := range pathDirs {
+                if dir == "" {
+                        continue
+                }
+
+                execPath := filepath.Join(dir, filename)
+                if _, err := os.Stat(execPath); err == nil {
+                        return execPath
+                }
+        }
+
+        return ""
+}
+
+func escapePowerShellSingleQuote(s string) string {
+        return strings.ReplaceAll(s, "'", "''")
+}
+
+func convertCurlToInvokeWebRequest(command string) string {
+        // 简单的curl到Invoke-WebRequest转换
+        // 注意：这只是一个基本实现，可能无法处理所有curl选项
+
+        // 提取URL
+        parts := strings.Fields(command)
+        var url string
+        for i, part := range parts {
+                if !strings.HasPrefix(part, "-") && i > 0 {
+                        url = part
+                        break
+                }
+        }
+
+        if url == "" {
+                return command
+        }
+
+        // 构建PowerShell命令 — escape single quotes in the URL to prevent injection
+        safeURL := escapePowerShellSingleQuote(url)
+        psCommand := "Invoke-WebRequest -Uri '" + safeURL + "' -Method Post"
+
+        // 处理文件上传
+        if strings.Contains(command, "-F") || strings.Contains(command, "--form") {
+                // 提取文件路径
+                filePattern := "file=@"
+                if strings.Contains(command, filePattern) {
+                        filePart := strings.Split(command, filePattern)[1]
+                        filePath := strings.Fields(filePart)[0]
+                        safePath := escapePowerShellSingleQuote(filePath)
+                        psCommand += " -Form @{file = Get-Item '" + safePath + "'}"
+                }
+        }
+
+        return "powershell.exe -Command \"" + psCommand + "\""
+}
+
+func handleWindowsTouch(command string) CmdResult {
+        parts := strings.Fields(command)
+        if len(parts) < 2 {
+                return CmdResult{Err: errors.New("touch command requires a file path")}
+        }
+        filePath := strings.Join(parts[1:], " ")
+
+        if _, err := os.Stat(filePath); os.IsNotExist(err) {
+                file, err := os.Create(filePath)
+                if err != nil {
+                        return CmdResult{Err: fmt.Errorf("failed to create file: %w", err)}
+                }
+                file.Close()
+        } else {
+                now := time.Now()
+                err := os.Chtimes(filePath, now, now)
+                if err != nil {
+                        return CmdResult{Err: fmt.Errorf("failed to update timestamps: %w", err)}
+                }
+        }
+        return CmdResult{Stdout: "(no output)", ExitCode: 0}
+}
+
+func truncateOutput(output string) string {
+        if len(output) > 50000 {
+                return TruncateString(output, 50000)
+        }
+        return output
+}
+
+func escapePowerShellArg(s string) string {
+        // Wrap in single quotes and escape embedded single quotes
+        return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+func translateUnixToWindows(command string) string {
+        command = strings.TrimSpace(command)
+        parts := strings.Fields(command)
+        if len(parts) == 0 {
+                return command
+        }
+        cmd := parts[0]
+        args := parts[1:]
+
+        switch strings.ToLower(cmd) {
+        case "ls":
+                psArgs := []string{}
+                for _, arg := range args {
+                        switch strings.ToLower(arg) {
+                        case "-l":
+                                psArgs = append(psArgs, "-Detailed")
+                        case "-a":
+                                psArgs = append(psArgs, "-Force")
+                        case "-la", "-al":
+                                psArgs = append(psArgs, "-Force", "-Detailed")
+                        default:
+                                psArgs = append(psArgs, escapePowerShellArg(arg))
+                        }
+                }
+                return "Get-ChildItem " + strings.Join(psArgs, " ")
+        case "pwd":
+                return "Get-Location"
+        case "mkdir":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "New-Item -ItemType Directory -Path " + strings.Join(escaped, " ")
+        case "rm":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "Remove-Item -Path " + strings.Join(escaped, " ")
+        case "rmdir":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "Remove-Item -Path " + strings.Join(escaped, " ") + " -Recurse"
+        case "cp":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "Copy-Item -Path " + strings.Join(escaped, " ")
+        case "mv":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "Move-Item -Path " + strings.Join(escaped, " ")
+        case "cat":
+                escaped := make([]string, len(args))
+                for i, a := range args {
+                        escaped[i] = escapePowerShellArg(a)
+                }
+                return "Get-Content " + strings.Join(escaped, " ")
+        case "echo":
+                return command
+        case "date":
+                return "Get-Date"
+        case "curl":
+                // 在Windows上，确保使用真正的curl可执行文件，而不是PowerShell的Invoke-WebRequest别名
+                // 从环境变量PATH中搜索curl.exe
+                if curlPath := findExecutableInPath("curl.exe"); curlPath != "" {
+                        // 找到curl可执行文件，使用完整路径
+                        return strings.Replace(command, "curl", curlPath, 1)
+                }
+
+                // 如果找不到curl可执行文件，尝试使用PowerShell的Invoke-WebRequest
+                if strings.Contains(command, "-F") || strings.Contains(command, "--form") {
+                        // 处理表单上传
+                        return convertCurlToInvokeWebRequest(command)
+                }
+                return command
+        default:
+                return command
+        }
+}
