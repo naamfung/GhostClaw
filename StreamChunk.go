@@ -19,6 +19,7 @@ type StreamChunk struct {
         Error            string                   `json:"error,omitempty"`
         FinishReason     string                   `json:"finish_reason,omitempty"`
         ReasoningContent string                   `json:"reasoning_content,omitempty"`
+        ThinkingSignature string                   `json:"thinking_signature,omitempty"`
         SessionID        string                   `json:"session_id,omitempty"`    // 会话 ID
         TaskRunning      bool                     `json:"task_running,omitempty"`  // 任务是否在运行
         HistorySync      []Message                `json:"history_sync,omitempty"`  // 重连时同步的历史消息
@@ -297,11 +298,17 @@ func (s *anthropicSSEState) process(response map[string]interface{}, eventType s
 
         case "content_block_start":
                 if contentBlock, ok := response["content_block"].(map[string]interface{}); ok {
-                        if toString(contentBlock["type"]) == "tool_use" {
+                        blockType := toString(contentBlock["type"])
+                        if blockType == "tool_use" {
                                 s.inToolUse = true
                                 s.toolID = toString(contentBlock["id"])
                                 s.toolName = toString(contentBlock["name"])
                                 s.argsBuilder.Reset()
+                        } else if blockType == "thinking" {
+                                // 捕獲 thinking block 的 signature，後續回傳 API 時必須包含
+                                if sig := toString(contentBlock["signature"]); sig != "" {
+                                        s.chunkChan <- StreamChunk{ThinkingSignature: sig}
+                                }
                         }
                 }
 

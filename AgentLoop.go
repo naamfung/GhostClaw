@@ -747,6 +747,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
         var respContent interface{}
         var reasoningContent string
+        var thinkingSignature string
         var toolCalls []map[string]interface{}
         var stopReason string
         toolCallsMap := make(map[int]map[string]interface{})
@@ -785,6 +786,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
             if chunk.ReasoningContent != "" {
                 reasoningContent += chunk.ReasoningContent
+            }
+            if chunk.ThinkingSignature != "" {
+                thinkingSignature = chunk.ThinkingSignature
             }
             if len(chunk.ToolCalls) > 0 {
                 for _, tc := range chunk.ToolCalls {
@@ -871,15 +875,19 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         // 将助手消息加入历史
         if stopReason == "tool_use" || stopReason == "function_call" || stopReason == "tool_calls" {
             messages = append(messages, Message{
-                Role:      "assistant",
-                ToolCalls: toolCalls,
-                Timestamp: time.Now().Unix(),
+                Role:             "assistant",
+                ToolCalls:        toolCalls,
+                Content:          respContent,
+                ReasoningContent: reasoningContent,
+                ThinkingSignature: thinkingSignature,
+                Timestamp:        time.Now().Unix(),
             })
         } else {
             messages = append(messages, Message{
                 Role:             "assistant",
                 Content:          respContent,
                 ReasoningContent: reasoningContent,
+                ThinkingSignature: thinkingSignature,
                 Timestamp:        time.Now().Unix(),
             })
         }
@@ -933,6 +941,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                             Role:             "assistant",
                             Content:          cleanedContent,
                             ReasoningContent: reasoningContent,
+                            ThinkingSignature: thinkingSignature,
                         }
 
                         globalStage.SetCurrentActor(targetActor)
@@ -981,6 +990,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                         Role:             "assistant",
                         Content:          cleanedContent,
                         ReasoningContent: reasoningContent,
+                        ThinkingSignature: thinkingSignature,
                     }
                 }
             }

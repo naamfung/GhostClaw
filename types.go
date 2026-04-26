@@ -7,6 +7,7 @@ type Message struct {
     ToolCalls        interface{} `json:"tool_calls,omitempty"`
     ToolCallID       string      `json:"tool_call_id,omitempty"`
     ReasoningContent interface{} `json:"reasoning_content,omitempty"`
+    ThinkingSignature string     `json:"thinking_signature,omitempty"`
     Timestamp        int64       `json:"timestamp,omitempty"` // Unix时间戳（秒），omitempty确保零值不序列化，不影响API兼容性
 }
 
@@ -15,6 +16,7 @@ type Response struct {
     Content          interface{} `json:"content"`
     StopReason       string      `json:"stop_reason"`
     ReasoningContent interface{} `json:"reasoning_content,omitempty"`
+    ThinkingSignature string     `json:"thinking_signature,omitempty"`
     ToolCalls        interface{} `json:"tool_calls,omitempty"`
 }
 

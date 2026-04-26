@@ -44,6 +44,7 @@ type MessageEntry struct {
         ToolCalls        string `toon:"tool_calls,omitempty"`
         ToolCallID       string `toon:"tool_call_id,omitempty"`
         ReasoningContent string `toon:"reasoning_content,omitempty"`
+        ThinkingSignature string `toon:"thinking_signature,omitempty"`
 }
 
 // ToEntry 将 SavedSession 转换为 TOON 兼容的 SessionEntry（用于导出）
@@ -117,6 +118,10 @@ func messageToEntry(m Message) MessageEntry {
                 }
         }
 
+        if m.ThinkingSignature != "" {
+                me.ThinkingSignature = m.ThinkingSignature
+        }
+
         return me
 }
 
@@ -126,6 +131,7 @@ func entryToMessage(me MessageEntry) Message {
                 Role:             me.Role,
                 ToolCallID:       me.ToolCallID,
                 ReasoningContent: me.ReasoningContent,
+                ThinkingSignature: me.ThinkingSignature,
         }
 
         if me.Content != "" {

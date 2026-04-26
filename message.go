@@ -47,6 +47,7 @@ type EnrichedMessage struct {
         ToolCalls        interface{} `json:"tool_calls,omitempty"`
         ToolCallID       string      `json:"tool_call_id,omitempty"`
         ReasoningContent interface{} `json:"reasoning_content,omitempty"`
+        ThinkingSignature string     `json:"thinking_signature,omitempty"`
         Meta             MessageMeta `json:"_meta,omitempty"` // 元数据（下划线前缀表示内部字段）
 }
 
@@ -122,6 +123,7 @@ func (em EnrichedMessage) ToAPIMessage() Message {
                 ToolCalls:        em.ToolCalls,
                 ToolCallID:       em.ToolCallID,
                 ReasoningContent: em.ReasoningContent,
+                ThinkingSignature: em.ThinkingSignature,
                 Timestamp:        em.Meta.Timestamp,
         }
 
