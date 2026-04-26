@@ -1,0 +1,113 @@
+# Binaries for programs and plugins
+*.app
+*.apk
+*.exe
+*.exe~
+*.dll
+*.msi
+*.so
+*.dylib
+*.toon
+*.jsonl
+
+garclaw
+garclaw_*
+ghostclaw
+ghostclaw_*
+GhostClaw
+GhostClaw_*
+*.db
+*.xz
+*.tar.xz
+
+m2t.sh
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+out.txt
+
+# Build directories
+bin/
+build/
+dist/
+
+
+public/
+embed/
+webui/.svelte-kit/
+
+
+# Go module cache
+vendor/
+
+# IDE and editor directories and files
+.vscode/
+.trae/
+.idea/
+*.swp
+*.swo
+*~
+
+*.bak
+*.txt
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Memory folder (private data)
+memory/
+pending_messages/
+data/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity

@@ -1,0 +1,27 @@
+{
+  "profiles": {
+    "default": {
+      "id": "default",
+      "name": "default",
+      "description": "Default profile – created on first run",
+      "model_config": {
+        "model_id": "",
+        "api_type": "",
+        "base_url": "",
+        "api_key": "",
+        "temperature": 0.7,
+        "max_tokens": 4096
+      },
+      "memory_config": {
+        "enabled": true,
+        "scope": "profile"
+      },
+      "created_at": "2026-04-12T21:39:05.003034012+08:00",
+      "updated_at": "2026-04-12T21:39:05.003034012+08:00",
+      "tags": [
+        "default"
+      ]
+    }
+  },
+  "active_profile_id": "default"
+}
