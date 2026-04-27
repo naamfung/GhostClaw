@@ -12,7 +12,7 @@ import (
     "unicode/utf8"
 )
 
-const MaxHistoryMessages = 30
+const MaxHistoryMessages = 128
 
 // maxWorkModeResumeRounds 工作模式退出守衛最大續行次數
 // 當模型停止但 todo 有未完成項時，程序注入提示強制續行，最多觸發此次數
@@ -570,10 +570,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
         adaptiveMaxHistory := MaxHistoryMessages
         if modelCtxWindow > 0 {
-            adaptiveMaxHistory = CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, effectiveMaxTokens)
-            if adaptiveMaxHistory > MaxHistoryMessages {
-                adaptiveMaxHistory = MaxHistoryMessages
-            }
+            maxOutput := getMaxOutputTokens(effectiveModelID)
+            adaptiveMaxHistory = CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, maxOutput)
         }
 
         if len(messages) > adaptiveMaxHistory {
@@ -683,7 +681,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
             result := NewPipeline(truncatedML).
                 Stage("compress", func(ml *MessageList) *MessageList {
-                    compressed := compressor.Compress(ml.msgs)
+                    compressed := compressor.Compress(ml.msgs, adaptiveMaxHistory)
                     resultML := NewMessageListWithSource(compressed, "pipeline:compress")
                     resultML.origin = ml.origin // 保持 origin 鏈，確保 EnsureUser 可恢復
                     return resultML

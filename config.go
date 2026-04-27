@@ -70,6 +70,7 @@ type ModelBase struct {
         Model                  string  `json:"Model"`
         Temperature            float64 `json:"Temperature,omitempty"`
         MaxTokens              int     `json:"MaxTokens,omitempty"`
+        ContextLength          int     `json:"ContextLength,omitempty"` // 上下文窗口大小（輸入+輸出總上限），獨立於 MaxTokens
         RateLimit              int     `json:"RateLimit,omitempty"` // 请求速率限制（次/分钟），0 表示不限制
         Stream                 bool    `json:"Stream,omitempty"`
         Thinking               bool    `json:"Thinking,omitempty"`

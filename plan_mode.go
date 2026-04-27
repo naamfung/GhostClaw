@@ -77,7 +77,7 @@ type phaseInfo struct {
 var phaseMetadata = map[PlanPhase]phaseInfo{
         PlanPhaseExplore: {
                 Name:        "Phase 1: 初始理解（探索）",
-                Description: "使用只讀工具探索代碼庫，建立整體認識。善用 spawn 並行探索不同模塊。",
+                Description: "使用只讀工具探索專案文件，建立整體認識。善用 spawn 並行探索不同模塊。",
                 ExtraTools: []string{
                         "spawn", "spawn_check", "spawn_list",
                         "todos",  // 管理 Phase 1 子任務
@@ -478,7 +478,7 @@ func GetPlanModeSystemPrompt() string {
 func explorePhasePrompt() string {
         return `## Phase 1: 初始理解（探索）
 
-目標：充分理解任務涉及的代碼庫、文件結構和依賴關係。
+目標：充分理解任務涉及的文件結構和依賴關係。
 
 操作指引：
 1. 使用 text_search / text_grep 搜索關鍵詞，定位相關文件
@@ -508,7 +508,7 @@ func designPhasePrompt() string {
 
 方案要點：
 - 修改步驟的先後順序（考慮依賴）
-- 每步修改涉及的具體文件和代碼位置
+- 每步修改涉及的具體文件和位置
 - 邊界情況和錯誤處理
 
 完成設計後，調用 next_phase 進入審查階段。`
@@ -550,7 +550,7 @@ func planPhasePrompt() string {
   你已了解的信息、涉及哪些文件和模塊
 
   ## Approach（方案）
-  按步驟列出要執行的操作，具體到文件路徑和代碼位置
+  按步驟列出要執行的操作，具體到文件路徑和位置
 
   ## Verification（驗證方式）
   如何驗證修改正確性

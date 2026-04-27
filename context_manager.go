@@ -60,8 +60,50 @@ func isCJK(r rune) bool {
 // 改进的模型上下文长度查询（安全默认值 4096）
 // ============================================================================
 
+// userContextLengthOverrides 用戶通過 config.toon 中 ContextLength 或 MaxTokens 指定的上下文長度
+// key: lowercase model ID, value: context window size in tokens
+// 由 config_manager.go 的 syncGlobalsLocked() 在加載/熱重載時填充
+var userContextLengthOverrides map[string]int
+
+// SetUserContextLengthOverrides 設置用戶配置的上下文長度覆蓋（由 ConfigManager 調用）
+func SetUserContextLengthOverrides(overrides map[string]int) {
+	userContextLengthOverrides = overrides
+}
+
+// detectContextLengthFromSuffix 從 model ID 的 suffix 推斷上下文窗口大小
+// 例如 "[1m]" → 1048576, "[128k]" → 131072, "[200k]" → 204800
+func detectContextLengthFromSuffix(modelID string) int {
+	// 匹配 [數字+單位] 模式
+	if len(modelID) == 0 {
+		return 0
+	}
+	// 常見 suffix patterns，按 specificity 排序
+	suffixPatterns := []struct {
+		suffix string
+		limit  int
+	}{
+		{"[1m]", 1048576},
+		{"[2m]", 2097152},
+		{"[512k]", 524288},
+		{"[256k]", 262144},
+		{"[200k]", 204800},
+		{"[128k]", 131072},
+		{"[64k]", 65536},
+		{"[32k]", 32768},
+		{"[16k]", 16384},
+		{"[8k]", 8192},
+	}
+	for _, p := range suffixPatterns {
+		if strings.Contains(modelID, p.suffix) {
+			return p.limit
+		}
+	}
+	return 0
+}
+
 // modelContextDatabase 扩展的模型上下文长度数据库
 // 覆盖主流大模型厂商的常见模型
+// 注意：此数据库僅作為 fallback，用戶應優先通過 config.toon 的 ContextLength 或 MaxTokens 指定上下文長度
 var modelContextDatabase = map[string]int{
         // ---- OpenAI ----
         "gpt-4":                  128000,
@@ -196,20 +238,28 @@ var modelContextDatabase = map[string]int{
         "yi-vl-34b": 4096,
 }
 
-// GetModelContextLengthSafe 获取模型上下文长度，默认回退到 4096（安全值）
-// 先精确匹配，再子串匹配，最后返回安全默认值
+// GetModelContextLengthSafe 获取模型上下文长度
+// 优先级：用户配置(ContextLength 或 MaxTokens) > hardcoded database 精确匹配 > 子串匹配 > suffix 推斷 > 安全默認值
 func GetModelContextLengthSafe(modelID string) int {
         if modelID == "" {
                 return 4096
         }
 
-        // 优先精确匹配（小写）
         lowerID := strings.ToLower(modelID)
+
+        // 1) 優先：用戶通過 config.toon ContextLength 或 MaxTokens 顯式指定的上下文長度
+        if userContextLengthOverrides != nil {
+                if limit, ok := userContextLengthOverrides[lowerID]; ok && limit > 0 {
+                        return limit
+                }
+        }
+
+        // 2) Hardcoded database：精確匹配（向後兼容）
         if limit, ok := modelContextDatabase[lowerID]; ok {
                 return limit
         }
 
-        // 子串匹配：取最长的匹配（避免 "qwen" 匹配到 "qwen-max" 等）
+        // 3) Hardcoded database：子串匹配（取最长匹配）
         var bestMatch string
         var bestLimit int
         for model, limit := range modelContextDatabase {
@@ -224,13 +274,28 @@ func GetModelContextLengthSafe(modelID string) int {
                 return bestLimit
         }
 
-        // 安全默认值：4096（远低于原来的 64000，避免溢出）
+        // 4) Model ID suffix 智能推斷（如 [1m]、[128k]）
+        if limit := detectContextLengthFromSuffix(lowerID); limit > 0 {
+                return limit
+        }
+
+        // 5) 安全默认值：4096（避免未知模型溢出上下文）
         return 4096
 }
 
 // ============================================================================
 // 自适应历史消息限制
 // ============================================================================
+
+// HistoryTokenCoefficient 每條歷史消息預留的 token 預算
+// 用於從 context window 計算動態 MaxHistory：rawMax = contextWindow / HistoryTokenCoefficient
+const HistoryTokenCoefficient = 2048
+
+// MaxHistoryUpperBound 動態 MaxHistory 的絕對上限，防止超大 context window 導致 OOM
+const MaxHistoryUpperBound = 128
+
+// MaxHistoryLowerBound 動態 MaxHistory 的絕對下限，至少保留少量歷史消息
+const MaxHistoryLowerBound = 3
 
 // CalculateAdaptiveMaxHistory 根据实际上下文窗口大小动态计算最大历史消息数
 // 替代原来硬编码的 MaxHistoryMessages = 30
@@ -241,20 +306,34 @@ func GetModelContextLengthSafe(modelID string) int {
 //   - toolTokens: 工具定义占用的 token 数
 //   - maxOutputTokens: 预留给输出的最大 token 数
 func CalculateAdaptiveMaxHistory(contextWindow int, systemPromptTokens int, toolTokens int, maxOutputTokens int) int {
-        // 预留 60% 的空间给历史消息，其余 40% 分配给系统提示、工具、输出和安全缓冲
-        availableForHistory := float64(contextWindow)*0.6 - float64(systemPromptTokens) - float64(toolTokens) - float64(maxOutputTokens)
+        // 從 context window 計算動態上限
+        // rawMax = contextWindow / HistoryTokenCoefficient，限制在 [LowerBound, UpperBound]
+        dynamicUpper := contextWindow / HistoryTokenCoefficient
+        if dynamicUpper < MaxHistoryLowerBound {
+                dynamicUpper = MaxHistoryLowerBound
+        }
+        if dynamicUpper > MaxHistoryUpperBound {
+                dynamicUpper = MaxHistoryUpperBound
+        }
+
+        // 先從總上下文窗口扣除輸出預留，剩餘的 60% 分配給歷史消息
+        effectiveContext := contextWindow - maxOutputTokens
+        if effectiveContext < 0 {
+                effectiveContext = contextWindow
+        }
+        availableForHistory := float64(effectiveContext)*0.6 - float64(systemPromptTokens) - float64(toolTokens)
         if availableForHistory < 0 {
                         availableForHistory = 500 // 绝对最小值，保证至少有少量上下文
         }
         // 假设平均每条消息约 200 token
         avgMessageTokens := 200.0
         maxHistory := int(availableForHistory / avgMessageTokens)
-        // 限制在 3 到 30 之间
-        if maxHistory < 3 {
-                maxHistory = 3
+        // 限制在 LowerBound 到 dynamicUpper 之間
+        if maxHistory < MaxHistoryLowerBound {
+                maxHistory = MaxHistoryLowerBound
         }
-        if maxHistory > 30 {
-                maxHistory = 30
+        if maxHistory > dynamicUpper {
+                maxHistory = dynamicUpper
         }
         return maxHistory
 }

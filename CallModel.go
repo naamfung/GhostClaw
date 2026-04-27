@@ -398,17 +398,22 @@ func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
                                 // 构建 content 数组，包含 text、thinking 和 tool_use
                                 content := []map[string]interface{}{}
                                 // 先添加思考内容（含 signature，Anthropic API 要求回傳）
-                                if msg.ReasoningContent != nil {
-                                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-                                                thinkingBlock := map[string]interface{}{
-                                                        "type":     "thinking",
-                                                        "thinking": reasoning,
+                                // 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
+                                if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
+                                        reasoning := ""
+                                        if msg.ReasoningContent != nil {
+                                                if r, ok := msg.ReasoningContent.(string); ok {
+                                                        reasoning = r
                                                 }
-                                                if msg.ThinkingSignature != "" {
-                                                        thinkingBlock["signature"] = msg.ThinkingSignature
-                                                }
-                                                content = append(content, thinkingBlock)
                                         }
+                                        thinkingBlock := map[string]interface{}{
+                                                "type":     "thinking",
+                                                "thinking": reasoning,
+                                        }
+                                        if msg.ThinkingSignature != "" {
+                                                thinkingBlock["signature"] = msg.ThinkingSignature
+                                        }
+                                        content = append(content, thinkingBlock)
                                 }
                                 // 再添加文本内容
                                 if msg.Content != nil {
@@ -458,17 +463,22 @@ func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
                                 // 构建 content 数组，包含 text 和 thinking（含 signature）
                                 content := []map[string]interface{}{}
                                 // 先添加思考内容（含 signature，Anthropic API 要求回傳）
-                                if msg.ReasoningContent != nil {
-                                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-                                                thinkingBlock := map[string]interface{}{
-                                                        "type":     "thinking",
-                                                        "thinking": reasoning,
+                                // 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
+                                if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
+                                        reasoning := ""
+                                        if msg.ReasoningContent != nil {
+                                                if r, ok := msg.ReasoningContent.(string); ok {
+                                                        reasoning = r
                                                 }
-                                                if msg.ThinkingSignature != "" {
-                                                        thinkingBlock["signature"] = msg.ThinkingSignature
-                                                }
-                                                content = append(content, thinkingBlock)
                                         }
+                                        thinkingBlock := map[string]interface{}{
+                                                "type":     "thinking",
+                                                "thinking": reasoning,
+                                        }
+                                        if msg.ThinkingSignature != "" {
+                                                thinkingBlock["signature"] = msg.ThinkingSignature
+                                        }
+                                        content = append(content, thinkingBlock)
                                 }
                                 // 再添加文本内容
                                 if msg.Content != nil {

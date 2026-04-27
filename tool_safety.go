@@ -69,8 +69,8 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
 }
 
 // MarkFilePartialRead 標記文件已被部分讀取（由 read_file_line, text_grep 調用）
-// 部分讀取僅能滿足行級別寫入操作（write_file_line, text_replace），
-// 無法滿足全量寫入操作（write_all_lines, write_file_range）
+// 部分讀取不滿足任何寫入操作的先讀要求，僅作內部追蹤用途；
+// 所有寫入操作統一要求完整讀取（read_all_lines）
 func (t *readWriteTracker) MarkFilePartialRead(filePath string) {
         t.mu.Lock()
         defer t.mu.Unlock()
@@ -146,9 +146,10 @@ func normalizeFilePath(path string) string {
 // 新建文件（目標路徑不存在）無需先讀，直接允許寫入
 //
 // 安全策略：
-//   - 全量寫入工具（write_all_lines, write_file_range）：要求完整讀取（read_all_lines）
-//   - 行級寫入工具（write_file_line, text_replace, append_to_file, text_transform）：
-//     完整讀取或部分讀取均可
+//   - 所有寫入工具（write_file_line, write_all_lines, append_to_file,
+//     write_file_range, text_replace, text_transform）統一要求完整讀取（read_all_lines）
+//   - read_file_line 或 text_grep 僅讀取部分內容，不被視為已讀過文件
+//   - 防止模型只讀一行就用幻覺寫入/修改文件
 func CheckWritePermission(filePath string, toolName string) error {
         // 歸一化路徑，確保 os.Stat 和 GetFileReadLevel 使用相同的路徑表示
         filePath = normalizeFilePath(filePath)
@@ -159,17 +160,9 @@ func CheckWritePermission(filePath string, toolName string) error {
 
         readLvl := globalReadWriteTracker.GetFileReadLevel(filePath)
 
-        // 全量寫入工具要求完整讀取
-        if isFullWriteTool(toolName) {
-                if readLvl != readLevelFull {
-                        return fmt.Errorf("安全檢查失敗：工具 '%s' 需要完整讀取文件。你必須先使用 read_all_lines 完整讀取 %s 才能進行全量寫入操作（read_file_line 或 text_grep 僅讀取部分內容，不足以支撐全量修改）。這是為了確保你理解完整代碼後再修改。", toolName, filePath)
-                }
-                return nil
-        }
-
-        // 行級寫入工具：部分讀取或完整讀取均可
-        if readLvl == readLevelNone {
-                return fmt.Errorf("安全檢查失敗：你必須先使用 read_file_line 或 read_all_lines 讀取 %s 才能進行寫入/編輯操作。這是為了確保你理解現有代碼後再修改。", filePath)
+        // 所有寫入工具統一要求完整讀取
+        if readLvl != readLevelFull {
+                return fmt.Errorf("安全檢查失敗：你必須先使用 read_all_lines 完整讀取 %s 才能進行寫入/編輯操作（read_file_line 或 text_grep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
         }
         return nil
 }
@@ -422,7 +415,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // 針對模型常見誤操作給出明確指引，防止死循環
                 switch toolName {
                 case "enter_plan_mode":
-                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 enter_plan_mode。\n\n當前可用操作：\n- 使用只讀工具（read_file_line, read_all_lines, text_search, text_grep）探索代碼庫\n- 使用 spawn 創建並行子代理\n- 完成當前階段後調用 next_phase 推進\n- 如需退出 Plan Mode，使用 exit_plan_mode", currentPhase)
+                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 enter_plan_mode。\n\n當前可用操作：\n- 使用只讀工具（read_file_line, read_all_lines, text_search, text_grep）探索專案文件\n- 使用 spawn 創建並行子代理\n- 完成當前階段後調用 next_phase 推進\n- 如需退出 Plan Mode，使用 exit_plan_mode", currentPhase)
                 case "smart_shell", "shell":
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/smart_shell。此階段僅允許只讀工具。\n\n請改用：\n- read_file_line / read_all_lines 讀取文件\n- text_search / text_grep 搜索內容\n- spawn 創建只讀子代理\n\n完成當前階段後調用 next_phase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
                 case "write_file_line", "write_all_lines", "append_to_file", "write_file_range", "text_replace":
@@ -475,7 +468,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
-                content := "已進入 Plan Mode Phase 1（初始理解）。使用只讀工具探索代碼庫，善用 spawn 並行探索。完成后調用 next_phase。"
+                content := "已進入 Plan Mode Phase 1（初始理解）。使用只讀工具探索專案文件，善用 spawn 並行探索。完成后調用 next_phase。"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
@@ -572,16 +565,6 @@ func isWriteTool(toolName string) bool {
                 "memory_forget":   true,
         }
         return writeTools[toolName]
-}
-
-// isFullWriteTool 檢查工具是否為全量寫入類工具
-// 全量寫入工具會覆蓋或大幅度修改文件，因此要求先完整讀取整個文件
-func isFullWriteTool(toolName string) bool {
-        fullWriteTools := map[string]bool{
-                "write_all_lines": true, // 覆蓋整個文件
-                "write_file_range": true, // 覆蓋指定行範圍，可能影響大量內容
-        }
-        return fullWriteTools[toolName]
 }
 
 // extractFilePathFromArgs 从工具参数中提取文件路径

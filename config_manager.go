@@ -526,6 +526,7 @@ func (cm *ConfigManager) UpdateAPIConfig(apiConfig APIConfig) error {
         model.Model = apiConfig.Model
         model.Temperature = apiConfig.Temperature
         model.MaxTokens = apiConfig.MaxTokens
+        model.ContextLength = apiConfig.ContextLength
         model.Stream = apiConfig.Stream
         model.Thinking = apiConfig.Thinking
         model.BlockDangerousCommands = apiConfig.BlockDangerousCommands
@@ -623,6 +624,25 @@ func (cm *ConfigManager) syncGlobals() {
 // syncGlobalsLocked 将配置同步到全局变量（内部方法，要求已持写锁）
 func (cm *ConfigManager) syncGlobalsLocked() {
         globalConfig = cm.config
+
+        // 構建用戶配置的上下文長度覆蓋表
+        // key: lowercase model ID (ModelBase.Model 字段), value: ContextLength 或 MaxTokens
+        // 這讓 GetModelContextLengthSafe 優先使用用戶顯式設定的值，
+        // 而非依賴 hardcoded modelContextDatabase
+        overrides := make(map[string]int, len(cm.config.Models))
+        for _, m := range cm.config.Models {
+                if m.Model != "" {
+                        // 優先使用 ContextLength，fallback 到 MaxTokens（向後兼容）
+                        ctxLen := m.ContextLength
+                        if ctxLen <= 0 {
+                                ctxLen = m.MaxTokens
+                        }
+                        if ctxLen > 0 {
+                                overrides[strings.ToLower(m.Model)] = ctxLen
+                        }
+                }
+        }
+        SetUserContextLengthOverrides(overrides)
 
         // 从主模型获取 APIConfig 并同步全局变量
         apiCfg := cm.getAPIConfigLocked()

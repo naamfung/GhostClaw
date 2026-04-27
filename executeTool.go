@@ -159,7 +159,7 @@ func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
 
-        // 标记文件已部分读取（先读后写安全检查 - 行级别读取仅满足行级写入工具）
+        // 标记文件已部分读取（先读后写安全检查 - 部分读取不满足写入前置要求，仅作追踪）
         globalReadWriteTracker.MarkFilePartialRead(filename)
 
         // 检查是否需要详细信息

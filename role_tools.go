@@ -133,10 +133,15 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("Token 估算: ~%d tokens\n", totalTokens))
         }
 
-        // 4. 硬截断阈值
-        sb.WriteString(fmt.Sprintf("硬截断阈值: %d 条消息\n", MaxHistoryMessages))
-        remaining := MaxHistoryMessages - len(history)
-        if len(history) >= MaxHistoryMessages {
+        // 4. 动态截断阈值
+        _, _, _, effectiveModelID, _, _, _, _ := getEffectiveAPIConfig()
+        modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
+        maxOutput := getMaxOutputTokens(effectiveModelID)
+        adaptiveMaxHistory := CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, maxOutput)
+        sb.WriteString(fmt.Sprintf("模型 Context 窗口: %d tokens\n", modelCtxWindow))
+        sb.WriteString(fmt.Sprintf("动态截断阈值: %d 条消息\n", adaptiveMaxHistory))
+        remaining := adaptiveMaxHistory - len(history)
+        if len(history) >= adaptiveMaxHistory {
                 sb.WriteString("  ⚠️  已超出阈值，下次 AgentLoop 将触发截断\n")
         } else if remaining <= 10 {
                 sb.WriteString(fmt.Sprintf("  ⚠️  距离阈值仅剩 %d 条消息\n", remaining))
@@ -340,7 +345,7 @@ func GetHelpText() string {
         sb.WriteString("│\n")
         sb.WriteString("│  示例：\n")
         sb.WriteString("│    /skill translation       激活翻译技能\n")
-        sb.WriteString("│    /skill search 代码       搜索与代码相关的技能\n")
+        sb.WriteString("│    /skill search 写作       搜索与写作相关的技能\n")
         sb.WriteString("│    /skill create my_skill   创建名为 my_skill 的新技能\n")
         sb.WriteString("└───────────────────────────────────────────────────────────────\n\n")
 

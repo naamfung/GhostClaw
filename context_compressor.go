@@ -112,7 +112,8 @@ func extractStringContent(msg Message) string {
 //   Stage 2: Protect head messages (system + first N)
 //   Stage 3: Build token-budget tail (don't split tool_call/result pairs)
 //   Stage 4: Generate structured summary of middle section (heuristic extraction)
-func (cc *ContextCompressor) Compress(messages []Message) []Message {
+// maxHistory 為當前模型的動態最大歷史消息數，由 AgentLoop 傳入
+func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Message {
         // Pre-check: cooldown
         if cc.isInCooldown() {
                 log.Printf("[ContextCompressor] Skipping compression: in cooldown (expires in %v)",
@@ -123,7 +124,7 @@ func (cc *ContextCompressor) Compress(messages []Message) []Message {
         // 防止返回共享的底層切片引用
         messages = append([]Message(nil), messages...)
 
-        if len(messages) <= MaxHistoryMessages {
+        if len(messages) <= maxHistory {
                 return messages
         }
 
@@ -131,7 +132,7 @@ func (cc *ContextCompressor) Compress(messages []Message) []Message {
         messages = cc.trimOldToolResults(messages)
 
         // After Stage 1, check again — maybe we're under the limit now
-        if len(messages) <= MaxHistoryMessages {
+        if len(messages) <= maxHistory {
                 log.Printf("[ContextCompressor] Stage 1 sufficient: trimmed from original count to %d messages", len(messages))
                 cc.recordCompressionSuccess()
                 return messages
@@ -216,9 +217,10 @@ func (cc *ContextCompressor) Compress(messages []Message) []Message {
 
 // CompressWithContextWindow compresses messages only if estimated tokens exceed contextWindow * thresholdPercent.
 // This provides a more accurate trigger than message count alone.
-func (cc *ContextCompressor) CompressWithContextWindow(messages []Message, contextWindow int) []Message {
+// maxHistory 為當前模型的動態最大歷史消息數
+func (cc *ContextCompressor) CompressWithContextWindow(messages []Message, contextWindow int, maxHistory int) []Message {
         if contextWindow <= 0 {
-                return cc.Compress(messages)
+                return cc.Compress(messages, maxHistory)
         }
 
         totalTokens := cc.estimateMessagesTokenCount(messages)
@@ -231,7 +233,7 @@ func (cc *ContextCompressor) CompressWithContextWindow(messages []Message, conte
         log.Printf("[ContextCompressor] CompressWithContextWindow: %d tokens > %.0f threshold (window=%d)",
                 totalTokens, threshold, contextWindow)
 
-        return cc.Compress(messages)
+        return cc.Compress(messages, maxHistory)
 }
 
 // buildHead extracts the protected head messages.

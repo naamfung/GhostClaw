@@ -192,7 +192,7 @@ func (fc *FeedbackCollector) AskModelTaskCompletion(ctx context.Context, lastUse
         }
 
         messages := []Message{
-                {Role: "system", Content: "你是一个任务完成度判定器。根据用户请求和助手回复，判断用户的请求是否已被完整完成。\n\n规则：\n- 助手已给出最终结论或代码/修复/方案，且没有遗留待办事项 → YES\n- 助手仍在调查、分析、执行中，或明确表示需要进一步操作 → NO\n- 助手给出了结果但提到需要测试/验证/后续步骤 → NO\n\n只回答 YES 或 NO，不要输出任何其他内容。"},
+                {Role: "system", Content: "你是一个任务完成度判定器。根据用户请求和助手回复，判断用户的请求是否已被完整完成。\n\n规则：\n- 助手已给出最终结论或结果/方案，且没有遗留待办事项 → YES\n- 助手仍在调查、分析、执行中，或明确表示需要进一步操作 → NO\n- 助手给出了结果但提到需要测试/验证/后续步骤 → NO\n\n只回答 YES 或 NO，不要输出任何其他内容。"},
                 {Role: "user", Content: fmt.Sprintf("用户请求：\n%s\n\n助手回复：\n%s", lastUserMsg, lastAssistantMsg)},
         }
 
