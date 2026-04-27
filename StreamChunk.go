@@ -205,6 +205,10 @@ func parseSSEChunk(response map[string]interface{}) StreamChunk {
                                 if reasoningContent, ok := delta["reasoning_content"].(string); ok {
                                         chunk.ReasoningContent = reasoningContent
                                 }
+                                // 提取 thinking_signature（DeepSeek/GLM/Qwen 思考模式返回，必須回傳 API）
+                                if thinkingSig, ok := delta["thinking_signature"].(string); ok && thinkingSig != "" {
+                                        chunk.ThinkingSignature = thinkingSig
+                                }
                                 if toolCalls, ok := delta["tool_calls"].([]interface{}); ok {
                                         var tcs []map[string]interface{}
                                         for _, tc := range toolCalls {
@@ -337,6 +341,12 @@ func (s *anthropicSSEState) process(response map[string]interface{}, eventType s
 
         case "message_delta":
                 if delta, ok := response["delta"].(map[string]interface{}); ok {
+                        // 安全檢查：message_delta 也可能包含 thinking signature（Anthropic extended thinking）
+                        if thinking, ok := delta["thinking"].(map[string]interface{}); ok {
+                                if sig := toString(thinking["signature"]); sig != "" {
+                                        s.chunkChan <- StreamChunk{ThinkingSignature: sig}
+                                }
+                        }
                         stopReason := toString(delta["stop_reason"])
                         if stopReason != "" {
                                 s.flushToolCall()

@@ -355,8 +355,18 @@ func (ec *ErrorClassifier) ShouldRetry(err error) bool {
 // GetRetryDelay 获取建议的重试延迟时间
 // 基于错误类型的基础延迟，加上抖动（jittered exponential backoff）
 // 对于速率限制错误，优先使用 Retry-After 头的值
+// 注意：此方法會調用 Classify 進行錯誤計數；若已有已分類的錯誤，請使用 GetRetryDelayForClassified 避免重複計數
 func (ec *ErrorClassifier) GetRetryDelay(err error) time.Duration {
         classified := ec.Classify(err)
+        if classified == nil {
+                return 0
+        }
+
+        return ec.GetRetryDelayForClassified(classified)
+}
+
+// GetRetryDelayForClassified 為已分類的錯誤計算重試延遲（避免雙重計數）
+func (ec *ErrorClassifier) GetRetryDelayForClassified(classified *ClassifiedError) time.Duration {
         if classified == nil {
                 return 0
         }

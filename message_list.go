@@ -102,7 +102,11 @@ func (ml *MessageList) At(i int) Message {
         return ml.msgs[i]
 }
 
-// Clone 深拷貝 MessageList（保存原始消息快照用於恢復）
+// Clone 複製 MessageList，用於保存原始消息快照供恢復
+// 注意：這是 Message struct 的淺層複製（shallow copy）。
+// Content、ToolCalls、ReasoningContent 為 interface{} 字段，
+// 原始和複製共享底層數據引用。修改 interface 內部數據（如 map 條目）
+// 會同時影響兩者；賦值新值則不會。對不可變的 string Content 是安全的。
 func (ml *MessageList) Clone() *MessageList {
         if ml == nil {
                 return &MessageList{}

@@ -73,6 +73,7 @@ type ModelBase struct {
         RateLimit              int     `json:"RateLimit,omitempty"` // 请求速率限制（次/分钟），0 表示不限制
         Stream                 bool    `json:"Stream,omitempty"`
         Thinking               bool    `json:"Thinking,omitempty"`
+        ThinkingFormat         string  `json:"ThinkingFormat,omitempty"` // ""=auto(URL檢測), "object", "bool", "disabled"
         BlockDangerousCommands bool    `json:"BlockDangerousCommands,omitempty"`
         IsDefault              bool    `json:"IsDefault,omitempty"`
 }

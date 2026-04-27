@@ -518,6 +518,7 @@ func CallModelForSubagent(ctx context.Context, task *SubagentTask, history []Mes
     var reasoning strings.Builder
     var toolCalls []map[string]interface{}
     var finishReason string
+    var thinkingSignature string
 
     for chunk := range chunkChan {
         if chunk.Error != "" {
@@ -528,6 +529,9 @@ func CallModelForSubagent(ctx context.Context, task *SubagentTask, history []Mes
         }
         if chunk.ReasoningContent != "" {
             reasoning.WriteString(chunk.ReasoningContent)
+        }
+        if chunk.ThinkingSignature != "" {
+            thinkingSignature = chunk.ThinkingSignature
         }
         if chunk.ToolCalls != nil {
             toolCalls = chunk.ToolCalls
@@ -553,6 +557,9 @@ func CallModelForSubagent(ctx context.Context, task *SubagentTask, history []Mes
 
     if reasoning.Len() > 0 {
         response.ReasoningContent = reasoning.String()
+    }
+    if thinkingSignature != "" {
+        response.ThinkingSignature = thinkingSignature
     }
 
     return response, nil

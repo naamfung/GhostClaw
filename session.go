@@ -604,9 +604,9 @@ func (s *GlobalSession) autoSaveHistory() {
         historyCopy := make([]Message, len(s.History))
         copy(historyCopy, s.History)
         sessionID := s.ID
-        s.mu.RUnlock()
 
         if len(historyCopy) == 0 {
+                s.mu.RUnlock()
                 return
         }
 
@@ -626,6 +626,7 @@ func (s *GlobalSession) autoSaveHistory() {
 
         if s.persistID == "" {
                 saved, err := globalSessionPersist.SaveSession(sessionID, historyCopy, description)
+                s.mu.RUnlock()
                 if err != nil {
                         log.Printf("[GlobalSession] Auto save failed: %v", err)
                         return
@@ -634,6 +635,7 @@ func (s *GlobalSession) autoSaveHistory() {
                 log.Printf("[GlobalSession] Auto saved (new) with ID %s", sessionID)
         } else {
                 err := globalSessionPersist.UpdateSession(s.persistID, historyCopy)
+                s.mu.RUnlock()
                 if err != nil {
                         saved, err2 := globalSessionPersist.SaveSession(sessionID, historyCopy, description)
                         if err2 != nil {

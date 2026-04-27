@@ -8,6 +8,7 @@ import (
         "fmt"
         "io"
         "log"
+        "net"
         "net/http"
         "os"
         "strings"
@@ -23,9 +24,9 @@ type rateLimiter struct {
 }
 
 type rateBucket struct {
-        tokens     int       // 剩余令牌数
-        maxTokens  int       // 每分钟最大令牌数（即每分钟最大请求数）
-        lastRefill time.Time // 上次补充时间
+        tokens     float64   // 剩余令牌數（浮點避免低速率截斷）
+        maxTokens  float64   // 每分鐘最大令牌數（即每分鐘最大請求數）
+        lastRefill time.Time // 上次補充時間
 }
 
 var globalRateLimiter = &rateLimiter{
@@ -44,22 +45,22 @@ func (rl *rateLimiter) waitIfNeeded(ctx context.Context, endpoint string, rateLi
         bucket, exists := rl.buckets[endpoint]
         if !exists {
                 bucket = &rateBucket{
-                        tokens:     rateLimit,
-                        maxTokens:  rateLimit,
+                        tokens:     float64(rateLimit),
+                        maxTokens:  float64(rateLimit),
                         lastRefill: time.Now(),
                 }
                 rl.buckets[endpoint] = bucket
         }
 
-        // 补充令牌：每分钟补充 maxTokens 个
+        // 补充令牌：每分钟补充 maxTokens 个（浮點避免低速率截斷）
         now := time.Now()
         elapsed := now.Sub(bucket.lastRefill)
         if elapsed >= time.Minute {
                 bucket.tokens = bucket.maxTokens
                 bucket.lastRefill = now
         } else {
-                // 按比例补充
-                refillTokens := int(float64(bucket.maxTokens) * elapsed.Minutes())
+                // 按比例補充（使用 float64 保留精度）
+                refillTokens := bucket.maxTokens * elapsed.Minutes()
                 if refillTokens > 0 {
                         bucket.tokens += refillTokens
                         if bucket.tokens > bucket.maxTokens {
@@ -69,7 +70,7 @@ func (rl *rateLimiter) waitIfNeeded(ctx context.Context, endpoint string, rateLi
                 }
         }
 
-        if bucket.tokens > 0 {
+        if bucket.tokens >= 1.0 {
                 bucket.tokens--
                 rl.mu.Unlock()
                 return nil
@@ -101,6 +102,15 @@ var httpClient = &http.Client{
                 // "http2: response body closed" 錯誤。
                 // 設置空的 TLSNextProto map 可以阻止 Go 自動協商 HTTP/2。
                 TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+
+                // 連接層級超時：防止 DNS/TLS 握手在無響應時永久掛起
+                // Context 控制的是整體請求超時，此處提供更細粒度的網絡層保護
+                DialContext: (&net.Dialer{
+                        Timeout:   30 * time.Second,
+                        KeepAlive: 30 * time.Second,
+                }).DialContext,
+                TLSHandshakeTimeout:   10 * time.Second,
+                ResponseHeaderTimeout: 60 * time.Second,
         },
 }
 
@@ -464,10 +474,14 @@ func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
                                                 "content": content,
                                         })
                                 } else {
-                                        // 没有内容，使用简单格式
+                                        // 没有内容，fallback 使用空內容陣列（避免 nil 導致 API 400）
+                                        fallbackContent := msg.Content
+                                        if fallbackContent == nil {
+                                                fallbackContent = []map[string]interface{}{}
+                                        }
                                         anthropicMessages = append(anthropicMessages, map[string]interface{}{
                                                 "role":    "assistant",
-                                                "content": msg.Content,
+                                                "content": fallbackContent,
                                         })
                                 }
                         }
@@ -518,6 +532,17 @@ func convertToOllamaFormat(messages []Message) []map[string]interface{} {
                 }
                 ollamaMsg := map[string]interface{}{
                         "role": msg.Role,
+                }
+                // 保留 thinking blocks（reasoning_content + thinking_signature），必須回傳 API
+                if msg.Role == "assistant" {
+                        if msg.ReasoningContent != nil {
+                                if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+                                        ollamaMsg["reasoning_content"] = reasoning
+                                }
+                        }
+                        if msg.ThinkingSignature != "" {
+                                ollamaMsg["thinking_signature"] = msg.ThinkingSignature
+                        }
                 }
                 if msg.Role == "assistant" && msg.ToolCalls != nil {
                         ollamaMsg["tool_calls"] = msg.ToolCalls
@@ -614,6 +639,19 @@ func convertToOpenAIFormat(messages []Message) []map[string]interface{} {
                         // 如果 content 是 nil，不设置该字段
                 } else {
                         openaiMsg["content"] = msg.Content
+                }
+
+                // 保留 thinking blocks 到 OpenAI 格式
+                // DeepSeek/GLM/Qwen 支援 reasoning_content 和 thinking_signature
+                if msg.Role == "assistant" {
+                        if msg.ReasoningContent != nil {
+                                if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+                                        openaiMsg["reasoning_content"] = reasoning
+                                }
+                        }
+                        if msg.ThinkingSignature != "" {
+                                openaiMsg["thinking_signature"] = msg.ThinkingSignature
+                        }
                 }
 
                 openaiMessages[i] = openaiMsg
@@ -789,14 +827,14 @@ func validateAndCleanMessages(messages []Message) []Message {
                 }}, cleaned...)
         }
 
-        // 5. 移除空的 user/assistant 消息（content 为 nil 或空字符串且无 tool_calls 且无 reasoning）
+        // 5. 移除空的 user/assistant 消息（content 为 nil 或空字符串且无 tool_calls 且无 reasoning 且无 thinking_signature）
         finalCleaned := make([]Message, 0, len(cleaned))
         for _, msg := range cleaned {
                 if msg.Role == "user" || msg.Role == "assistant" {
                         contentStr, _ := msg.Content.(string)
-                        if contentStr == "" && msg.ToolCalls == nil && msg.ReasoningContent == nil {
+                        if contentStr == "" && msg.ToolCalls == nil && msg.ReasoningContent == nil && msg.ThinkingSignature == "" {
                                 if IsDebug {
-                                        log.Printf("Warning: removing empty %s message (no content, no tool_calls, no reasoning)", msg.Role)
+                                        log.Printf("Warning: removing empty %s message (no content, no tool_calls, no reasoning, no thinking signature)", msg.Role)
                                 }
                                 continue
                         }
@@ -881,6 +919,19 @@ func findLegalStart(messages []Message) []Message {
                                 systemEnd = i + 1
                         } else {
                                 break
+                        }
+                }
+
+                // 如果截斷點會丟失 thinking block，回退 start 到最近的含 thinking block 的 assistant
+                if start > systemEnd {
+                        for i := start - 1; i >= systemEnd; i-- {
+                                if messages[i].Role == "assistant" && messages[i].ThinkingSignature != "" {
+                                        if IsDebug {
+                                                log.Printf("[findLegalStart] 保留含 thinking block 的 assistant 訊息 (index=%d)，回退 start 從 %d 到 %d", i, start, i)
+                                        }
+                                        start = i
+                                        break
+                                }
                         }
                 }
 
@@ -1226,6 +1277,19 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 //
 // 注意：Anthropic 的 thinking 由 prepareRequestData 的 anthropic 分支单独处理
 func isThinkingSupported(baseURL string) (supported bool, format string) {
+        // 優先使用配置中的 ThinkingFormat 覆蓋（支援代理/自定義 endpoint）
+        if globalAPIConfig.ThinkingFormat != "" {
+                switch strings.ToLower(globalAPIConfig.ThinkingFormat) {
+                case "disabled":
+                        return false, ""
+                case "object":
+                        return true, "object"
+                case "bool":
+                        return true, "bool"
+                }
+        }
+
+        // URL 自動檢測
         lower := strings.ToLower(baseURL)
         // DeepSeek 使用对象格式
         if strings.Contains(lower, "deepseek.com") || strings.Contains(lower, "deepseek") {
@@ -1346,7 +1410,8 @@ func handleOpenAIResponse(resp *http.Response) (Response, error) {
                                         Name      string      `json:"name"`
                                         Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
                                 } `json:"function_call"`
-                                ReasoningContent interface{} `json:"reasoning_content,omitempty"`
+                                ReasoningContent  interface{} `json:"reasoning_content,omitempty"`
+                                ThinkingSignature string      `json:"thinking_signature,omitempty"`
                         } `json:"message"`
                         FinishReason string `json:"finish_reason"`
                 } `json:"choices"`
@@ -1436,6 +1501,10 @@ func handleOpenAIResponse(resp *http.Response) (Response, error) {
                                         result.ReasoningContent = choice.Message.ReasoningContent
                                 }
                         }
+                }
+                // 提取 thinking_signature（DeepSeek 思考模式返回，必須回傳 API）
+                if choice.Message.ThinkingSignature != "" {
+                        result.ThinkingSignature = choice.Message.ThinkingSignature
                 }
         }
 
@@ -1815,10 +1884,12 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
         // 若 Provider Failover 有可用 provider，則使用 failover provider 的 BaseURL。
         effectiveBaseURL := baseURL
         effectiveKey := effectiveAPIKey
+        activeProviderName := "default"
         if globalProviderFailover != nil && globalProviderFailover.ProviderCount() > 0 {
                 if active, err := globalProviderFailover.GetActiveProvider(); err == nil && active != nil {
                         effectiveBaseURL = active.BaseURL
                         effectiveKey = active.APIKey
+                        activeProviderName = active.Name
                 }
         }
 
@@ -1834,9 +1905,9 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                         if classified != nil {
                                 log.Printf("[ErrorClassifier] Request failed: %s (type: %s)",
                                         err.Error(), ErrorTypeString(classified.Type))
-                                // 報告失敗到 Provider Failover
+                                // 報告失敗到 Provider Failover（使用實際 provider 名稱而非硬編碼 default）
                                 if globalProviderFailover != nil {
-                                        globalProviderFailover.ReportFailure("default", err)
+                                        globalProviderFailover.ReportFailure(activeProviderName, err)
                                 }
                                 // 報告失敗到憑證池
                                 if globalCredentialPool != nil && activeCredentialID != "" {
@@ -1846,7 +1917,7 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                                 if classified.Type == ErrorRateLimit && globalCredentialPool != nil && activeCredentialID != "" {
                                         retryAfter := classified.RetryAfter
                                         if retryAfter <= 0 {
-                                                retryAfter = globalErrorClassifier.GetRetryDelay(err)
+                                                retryAfter = globalErrorClassifier.GetRetryDelayForClassified(classified)
                                         }
                                         globalCredentialPool.ReportRateLimit(activeCredentialID, retryAfter)
                                         log.Printf("[CredentialPool] Rate limit on %s (cooldown %v), switching credential...", MaskAPIKey(activeCredentialID), retryAfter)
@@ -1873,7 +1944,7 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                                                         if newClassified != nil && newClassified.Type == ErrorRateLimit {
                                                                 newRetryAfter := newClassified.RetryAfter
                                                                 if newRetryAfter <= 0 {
-                                                                        newRetryAfter = globalErrorClassifier.GetRetryDelay(err)
+                                                                        newRetryAfter = globalErrorClassifier.GetRetryDelayForClassified(newClassified)
                                                                 }
                                                                 globalCredentialPool.ReportRateLimit(activeCredentialID, newRetryAfter)
                                                                 log.Printf("[CredentialPool] Alternate credential %s also rate limited (cooldown %v)",
@@ -1887,7 +1958,7 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                                 }
                                 // 如果仍然有錯誤且可重試，使用分類器的延遲
                                 if err != nil && classified.Retryable {
-                                        delay := globalErrorClassifier.GetRetryDelay(err)
+                                        delay := globalErrorClassifier.GetRetryDelayForClassified(classified)
                                         log.Printf("[ErrorClassifier] Retryable error, retrying after %v...", delay)
                                         select {
                                         case <-ctx.Done():
@@ -1912,7 +1983,7 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
         } else {
                 // ── P1/P3/P4: 報告成功 ───────────────────────────────
                 if globalProviderFailover != nil {
-                        globalProviderFailover.ReportSuccess("default")
+                        globalProviderFailover.ReportSuccess(activeProviderName)
                 }
                 if globalCredentialPool != nil && activeCredentialID != "" {
                         globalCredentialPool.ReportSuccess(activeCredentialID)
@@ -1930,7 +2001,10 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                         // 流式：直接使用 getStreamChunks 并将数据转发
                         innerChan, err := getStreamChunks(resp.Body, apiType)
                         if err != nil {
-                                chunkChan <- StreamChunk{Error: err.Error()}
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
                                 return
                         }
                         chunkCount := 0
@@ -1938,7 +2012,6 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                                 chunkCount++
                                 select {
                                 case <-ctx.Done():
-                                        chunkChan <- StreamChunk{Error: ctx.Err().Error()}
                                         return
                                 case chunkChan <- chunk:
                                 }
@@ -1948,13 +2021,19 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                         }
                         if chunkCount == 0 {
                                 log.Printf("No stream chunks received from API")
-                                chunkChan <- StreamChunk{Error: "no valid stream data received"}
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: "no valid stream data received"}:
+                                }
                         }
                 } else {
                         // 非流式：读取完整响应，解析后构造一个包含所有内容的块，并标记 Done
                         bodyBytes, err := io.ReadAll(resp.Body)
                         if err != nil {
-                                chunkChan <- StreamChunk{Error: err.Error()}
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
                                 return
                         }
                         if IsDebug {
@@ -1966,22 +2045,45 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                         resp.Body = io.NopCloser(r)
                         response, err := handleNonStreamResponse(resp, apiType)
                         if err != nil {
-                                chunkChan <- StreamChunk{Error: err.Error()}
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
                                 return
                         }
+                        // 非流式 responses 是有限且順序的，使用 select 防 goroutine leak
                         if str, ok := response.Content.(string); ok && str != "" {
-                                chunkChan <- StreamChunk{Content: str}
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{Content: str}:
+                                }
                         }
                         if reasoning, ok := response.ReasoningContent.(string); ok && reasoning != "" {
-                                chunkChan <- StreamChunk{ReasoningContent: reasoning}
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ReasoningContent: reasoning}:
+                                }
                         }
                         if response.ThinkingSignature != "" {
-                                chunkChan <- StreamChunk{ThinkingSignature: response.ThinkingSignature}
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ThinkingSignature: response.ThinkingSignature}:
+                                }
                         }
                         if toolCalls, ok := response.Content.([]map[string]interface{}); ok {
-                                chunkChan <- StreamChunk{ToolCalls: toolCalls}
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ToolCalls: toolCalls}:
+                                }
                         }
-                        chunkChan <- StreamChunk{Done: true, FinishReason: response.StopReason}
+                        select {
+                        case <-ctx.Done():
+                        case chunkChan <- StreamChunk{Done: true, FinishReason: response.StopReason}:
+                        }
                 }
         }()
 
@@ -2249,6 +2351,7 @@ func CallModelSync(ctx context.Context, messages []Message, apiType, baseURL, ap
         var reasoning strings.Builder
         var toolCalls []map[string]interface{}
         var finishReason string
+        var thinkingSignature string
 
         for chunk := range chunkChan {
                 if chunk.Error != "" {
@@ -2259,6 +2362,9 @@ func CallModelSync(ctx context.Context, messages []Message, apiType, baseURL, ap
                 }
                 if chunk.ReasoningContent != "" {
                         reasoning.WriteString(chunk.ReasoningContent)
+                }
+                if chunk.ThinkingSignature != "" {
+                        thinkingSignature = chunk.ThinkingSignature
                 }
                 if chunk.ToolCalls != nil {
                         toolCalls = chunk.ToolCalls
@@ -2278,6 +2384,9 @@ func CallModelSync(ctx context.Context, messages []Message, apiType, baseURL, ap
 
         if reasoning.Len() > 0 {
                 response.ReasoningContent = reasoning.String()
+        }
+        if thinkingSignature != "" {
+                response.ThinkingSignature = thinkingSignature
         }
 
         response.StopReason = finishReason

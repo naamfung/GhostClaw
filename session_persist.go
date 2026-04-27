@@ -1,6 +1,7 @@
 package main
 
 import (
+        "crypto/sha256"
         "encoding/json"
         "fmt"
         "log"
@@ -128,9 +129,8 @@ func messageToEntry(m Message) MessageEntry {
 // entryToMessage 将 MessageEntry 转换回 Message
 func entryToMessage(me MessageEntry) Message {
         m := Message{
-                Role:             me.Role,
-                ToolCallID:       me.ToolCallID,
-                ReasoningContent: me.ReasoningContent,
+                Role:              me.Role,
+                ToolCallID:        me.ToolCallID,
                 ThinkingSignature: me.ThinkingSignature,
         }
 
@@ -140,6 +140,20 @@ func entryToMessage(me MessageEntry) Message {
                 var content interface{}
                 if err := json.Unmarshal([]byte(me.ContentJSON), &content); err == nil {
                         m.Content = content
+                }
+        }
+
+        // ReasoningContent 反序列化：先嘗試 JSON unmarshal（非字符串類型曾被 JSON 序列化存儲）
+        if me.ReasoningContent != "" {
+                if strings.HasPrefix(me.ReasoningContent, "{") || strings.HasPrefix(me.ReasoningContent, "[") {
+                        var rc interface{}
+                        if err := json.Unmarshal([]byte(me.ReasoningContent), &rc); err == nil {
+                                m.ReasoningContent = rc
+                        } else {
+                                m.ReasoningContent = me.ReasoningContent
+                        }
+                } else {
+                        m.ReasoningContent = me.ReasoningContent
                 }
         }
 
@@ -277,11 +291,15 @@ func (m *SessionPersistManager) UpdateSession(sessionID string, history []Messag
         return nil
 }
 
-// LoadSession 從數據庫加載會話
-// 直接查詢 updated_at 最近的會話（即最新會話）
+// LoadSession 從數據庫加載指定會話
+// 傳入空 sessionID 時回退到載入最新會話（向後兼容）
 func (m *SessionPersistManager) LoadSession(sessionID string) (*SavedSession, error) {
         var rows []SessionHistories
-        globalDB.Order("updated_at DESC").Limit(1).Find(&rows)
+        query := globalDB.Order("updated_at DESC").Limit(1)
+        if sessionID != "" {
+                query = query.Where("id = ?", sessionID)
+        }
+        query.Find(&rows)
         if len(rows) > 0 {
                 return dbRowToSavedSession(&rows[0])
         }
@@ -453,14 +471,17 @@ const backupThrottleInterval = 2 * time.Minute // 備份節流：至少間隔 2 
 const maxBackupFiles = 5                         // 最多保留 5 個備份文件
 
 // computeBackupFingerprint 計算當前消息歷史的指紋。
-// 格式：「消息數量:最後一條消息的時間戳」
+// 格式：「消息數量:最後一條消息的時間戳:末尾內容 SHA256 前 8 字節」
 // 如果歷史為空，返回空字符串。
 func computeBackupFingerprint(history []Message) string {
         if len(history) == 0 {
                 return ""
         }
         last := history[len(history)-1]
-        return fmt.Sprintf("%d:%d", len(history), last.Timestamp)
+        // 對最後一條消息做 JSON 序列化後哈希，使 thinking block / 內容變更可被檢測
+        lastJSON, _ := json.Marshal(last)
+        hash := sha256.Sum256(lastJSON)
+        return fmt.Sprintf("%d:%d:%x", len(history), last.Timestamp, hash[:4])
 }
 
 // BackupSessionToFile 將當前會話備份到 .toon 文件。
