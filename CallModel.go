@@ -76,19 +76,31 @@ func (rl *rateLimiter) waitIfNeeded(ctx context.Context, endpoint string, rateLi
                 return nil
         }
 
-        // 没有可用令牌，计算需要等待的时间
+        // 沒有可用令牌：先預留一個 slot（將 tokens 減到負數），防止並發 goroutine 同時放行
+        // 其他 goroutine 看到負值就知道需要等更耐，唔會一齊衝閘
+        bucket.tokens--
         waitDuration := time.Minute - elapsed
         rl.mu.Unlock()
 
         if IsDebug {
-                log.Printf("[RateLimit] %s: 达到速率限制 (%d/min)，等待 %v", endpoint, rateLimit, waitDuration.Round(time.Second))
+                log.Printf("[RateLimit] %s: 達到速率限制 (%d/min)，預留 slot，等待 %v", endpoint, rateLimit, waitDuration.Round(time.Second))
         }
 
         select {
         case <-time.After(waitDuration):
-                // 等待后重试获取令牌
-                return rl.waitIfNeeded(ctx, endpoint, rateLimit)
+                // slot 已預留，無須重新檢查，直接返回
+                return nil
         case <-ctx.Done():
+                // 取消時歸還預留的 token（盡力而為，不持鎖避免死鎖）
+                rl.mu.Lock()
+                bucket, exists := rl.buckets[endpoint]
+                if exists {
+                        bucket.tokens++
+                        if bucket.tokens > bucket.maxTokens {
+                                bucket.tokens = bucket.maxTokens
+                        }
+                }
+                rl.mu.Unlock()
                 return ctx.Err()
         }
 }
