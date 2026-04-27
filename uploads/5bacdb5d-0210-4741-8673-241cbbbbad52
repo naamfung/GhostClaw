@@ -1,0 +1,109 @@
+zorsion@zorsion-ghostbsd ~/OpenSnow [1]> ./builder
+=== OpenSnow 构建脚本 ===
+
+  ✓ 已清理 internal/ui/webui/.svelte-kit (.svelte-kit/ 编译缓存)
+检测到系统: ghostbsd
+
+检查依赖...
+
+  ✓ Go: go version go1.26.1 freebsd/amd64
+  ✓ WebUI: internal/ui/webui/
+  ✓ Node.js: v24.13.1
+  ✓ pnpm: 10.33.2
+
+[1/2] 构建 WebUI 前端...
+  使用包管理器: pnpm
+  → 清理 node_modules 目录...
+  ✓ node_modules 已清理
+  → 安装前端依赖...
+Lockfile is up to date, resolution step is skipped
+Packages: +394
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 394, reused 394, downloaded 0, added 394, done
+
+dependencies:
++ @lucide/svelte 1.8.0
++ @modelcontextprotocol/sdk 1.29.0
++ @types/hast 3.0.4
++ @types/mdast 4.0.4
++ @types/unist 3.0.3
++ bits-ui 1.8.0
++ clsx 2.1.1
++ dexie 4.4.2
++ highlight.js 11.11.1
++ js-yaml 4.1.1
++ katex 0.16.45
++ marked 15.0.12
++ marked-highlight 2.2.4
++ mode-watcher 1.1.0
++ pdfjs-dist 4.10.38
++ rehype-highlight 7.0.2
++ rehype-katex 7.0.1
++ rehype-stringify 10.0.1
++ remark 15.0.1
++ remark-breaks 4.0.0
++ remark-gfm 4.0.1
++ remark-html 16.0.1
++ remark-math 6.0.0
++ remark-rehype 11.1.2
++ shiki 3.23.0
++ svelte-sonner 1.1.0
++ tailwind-merge 3.5.0
++ tailwind-variants 1.0.0
++ tw-animate-css 1.4.0
++ unified 11.0.5
++ unist-util-visit 5.1.0
++ unist-util-visit-parents 6.0.2
+
+devDependencies:
++ @sveltejs/adapter-static 3.0.10
++ @sveltejs/kit 2.57.1
++ @sveltejs/vite-plugin-svelte 5.1.1
++ @tailwindcss/vite 4.2.4
++ fflate 0.8.2
++ jsdom 26.1.0
++ mdsvex 0.12.7
++ sass 1.99.0
++ svelte 5.55.4
++ svelte-check 4.4.6
++ tailwindcss 4.2.4
++ typescript 5.9.3
++ vite 6.4.2
++ vite-plugin-devtools-json 1.0.0
++ vitest 3.2.4
+
+╭ Warning ───────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                            │
+│   Ignored build scripts: @parcel/watcher@2.5.6.                                            │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.   │
+│                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────╯
+Done in 1.2s using pnpm v10.33.2
+  ✓ 依赖安装完成
+  → 同步 SvelteKit 配置...
+npm warn Unknown global config "python". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+  ✓ SvelteKit 配置同步完成
+  → 构建前端静态文件...
+
+> opensnow-webui@0.0.1 build /home/zorsion/OpenSnow/internal/ui/webui
+> vite build
+
+vite v6.4.2 building SSR bundle for production...
+✓ 12 modules transformed.
+✗ Build failed in 612ms
+error during build:
+[vite-plugin-svelte] [plugin vite-plugin-svelte] src/routes/sessions/[id]/+page.svelte (1366:71): src/routes/sessions/[id]/+page.svelte:1366:71 Can only bind to an Identifier or MemberExpression or a `{get, set}` pair
+https://svelte.dev/e/bind_invalid_expression
+file: src/routes/sessions/[id]/+page.svelte:1366:71 (/home/zorsion/OpenSnow/internal/ui/webui/src/routes/sessions/[id]/+page.svelte)
+
+ 1364 |                                  <div class="space-y-2">
+ 1365 |                                          <label class="flex items-center gap-2">
+ 1366 |                                                  <input type="checkbox" bind:checked={genParams.adaptive_budget > 0} onchange={() => { genParams.adaptive_budget = genParams.adaptive_budget > 0 ? 0 : 1; }} class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                                                                                                                            ^
+ 1367 |                                                  <span>啓用自適應優化預算</span>
+ 1368 |                                          </label>
+
+
+ ELIFECYCLE  Command failed with exit code 1.
+WebUI 构建失败: 前端构建失败 (pnpm build): exit status 1
+zorsion@zorsion-ghostbsd ~/OpenSnow [1]> 
