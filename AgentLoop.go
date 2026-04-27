@@ -627,6 +627,18 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 }
             }
 
+            // 搜尋被截斷部分中最後一個含 thinking block 的 assistant 訊息
+            // thinking blocks (含 signature) 必須回傳 API，否則 DeepSeek/Anthropic 返回 400
+            var lastThinkingMsg Message
+            hasLastThinking := false
+            for i := boundaryStart - 1; i >= 0; i-- {
+                if messages[i].Role == "assistant" && messages[i].ThinkingSignature != "" {
+                    lastThinkingMsg = messages[i]
+                    hasLastThinking = true
+                    break
+                }
+            }
+
             // 構建截斷後的消息列表
             var truncatedMsgs []Message
             if hasSystem {
@@ -635,6 +647,34 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 truncatedMsgs = append(truncatedMsgs, messages[boundaryStart:]...)
             } else {
                 truncatedMsgs = messages[boundaryStart:]
+            }
+
+            // 如果被截斷部分有 thinking block 而保留部分沒有，插入該訊息
+            if hasLastThinking {
+                keepHasThinking := false
+                for _, msg := range truncatedMsgs {
+                    if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                        keepHasThinking = true
+                        break
+                    }
+                }
+                if !keepHasThinking {
+                    // 插入到 system 訊息之後
+                    insertPos := 0
+                    for i, msg := range truncatedMsgs {
+                        if msg.Role == "system" {
+                            insertPos = i + 1
+                        } else {
+                            break
+                        }
+                    }
+                    newTruncated := make([]Message, 0, len(truncatedMsgs)+1)
+                    newTruncated = append(newTruncated, truncatedMsgs[:insertPos]...)
+                    newTruncated = append(newTruncated, lastThinkingMsg)
+                    newTruncated = append(newTruncated, truncatedMsgs[insertPos:]...)
+                    truncatedMsgs = newTruncated
+                    log.Printf("[AgentLoop] 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤，index=%d）", boundaryStart)
+                }
             }
 
             // 使用 Pipeline 執行壓縮+修復+去重，自動驗證不變量

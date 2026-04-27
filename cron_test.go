@@ -10,6 +10,8 @@ import (
         "sync/atomic"
         "testing"
         "time"
+
+        "github.com/toon-format/toon-go"
 )
 
 // 测试用的全局邮件配置
@@ -397,7 +399,7 @@ func TestToolHandlers(t *testing.T) {
         if content == "" {
                 t.Error("handleCronAdd returned empty content")
         }
-        if !strings.Contains(content, "added successfully") {
+        if !strings.Contains(content, "已添加") {
                 t.Errorf("Unexpected success message: %s", content)
         }
 
@@ -427,8 +429,8 @@ func TestToolHandlers(t *testing.T) {
                 t.Error("handleCronStatus returned usedTodo = true")
         }
         var status map[string]interface{}
-        if err := json.Unmarshal([]byte(content), &status); err != nil {
-                t.Errorf("Failed to parse status JSON: %v, content=%s", err, content)
+        if err := toon.Unmarshal([]byte(content), &status); err != nil {
+                t.Errorf("Failed to parse status TOON: %v, content=%s", err, content)
         }
         if status["name"] != "tool_test_job" {
                 t.Errorf("Status name mismatch: expected tool_test_job, got %v", status["name"])
@@ -440,7 +442,7 @@ func TestToolHandlers(t *testing.T) {
         if used {
                 t.Error("handleCronRemove returned usedTodo = true")
         }
-        if !strings.Contains(content, "removed") {
+        if !strings.Contains(content, "已刪除") {
                 t.Errorf("Unexpected removal message: %s", content)
         }
 

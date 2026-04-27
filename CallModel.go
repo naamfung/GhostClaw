@@ -723,7 +723,14 @@ func validateAndCleanMessages(messages []Message) []Message {
                                         log.Printf("Warning: consecutive messages with same role: %s at index %d", msg.Role, i)
                                 }
                                 // 如果是连续两个 assistant 且都没有 tool_calls，可以合并 content
+                                // 但如果有 thinking blocks（ReasoningContent/ThinkingSignature）則不合并
                                 if msg.Role == "assistant" && lastMsg.ToolCalls == nil && msg.ToolCalls == nil {
+                                        // 保護 thinking blocks：有任一則不合并
+                                        if lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
+                                                lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "" {
+                                                cleaned = append(cleaned, cleanedMsg)
+                                                continue
+                                        }
                                         lastContent, _ := lastMsg.Content.(string)
                                         thisContent, _ := msg.Content.(string)
                                         if lastContent != "" && thisContent != "" {
@@ -1036,8 +1043,9 @@ func mergeConsecutiveSameRole(messages []Message) []Message {
                                         result = append(result, msg)
                                         continue
                                 }
-                                // 不合并有 ReasoningContent 的消息（thinking blocks 必須保留在原始消息中）
-                                if msg.Role == "assistant" && (lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil) {
+                                // 不合并有 thinking blocks 的消息（必須回傳 API，否則 400 錯誤）
+                                if msg.Role == "assistant" && (lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
+                                        lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "") {
                                         result = append(result, msg)
                                         continue
                                 }
@@ -1710,12 +1718,53 @@ func compressMessages(messages []Message, level int) []Message {
                         systemMsg = &newMsgs[0]
                         newMsgs = newMsgs[1:]
                 }
+
+                // 在被截斷部分中搜尋最新的含 thinking block 的 assistant 訊息
+                // thinking blocks (含 signature) 必須回傳給 API，否則會得到 400 錯誤
+                var lastThinkingMsg *Message
                 if len(newMsgs) > keepRecent {
+                        cutEnd := len(newMsgs) - keepRecent
+                        for i := cutEnd - 1; i >= 0; i-- {
+                                if newMsgs[i].Role == "assistant" && newMsgs[i].ThinkingSignature != "" {
+                                        m := newMsgs[i]
+                                        lastThinkingMsg = &m
+                                        break
+                                }
+                        }
                         newMsgs = newMsgs[len(newMsgs)-keepRecent:]
                 }
+
                 if systemMsg != nil {
                         newMsgs = append([]Message{*systemMsg}, newMsgs...)
                 }
+
+                // 如果被截斷部分有 thinking block 而保留部分沒有，必須插入該訊息
+                if lastThinkingMsg != nil {
+                        hasThinking := false
+                        for _, msg := range newMsgs {
+                                if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                                        hasThinking = true
+                                        break
+                                }
+                        }
+                        if !hasThinking {
+                                insertPos := 0
+                                for i, msg := range newMsgs {
+                                        if msg.Role == "system" {
+                                                insertPos = i + 1
+                                        } else {
+                                                break
+                                        }
+                                }
+                                result := make([]Message, 0, len(newMsgs)+1)
+                                result = append(result, newMsgs[:insertPos]...)
+                                result = append(result, *lastThinkingMsg)
+                                result = append(result, newMsgs[insertPos:]...)
+                                newMsgs = result
+                                log.Printf("[compressMessages] level 2: 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
+                        }
+                }
+
                 // 截断后可能产生孤立 tool 消息或非法序列，进行清理
                 newMsgs = removeOrphanedToolMessages(newMsgs)
                 newMsgs = removeOrphanedToolCalls(newMsgs)
@@ -2144,12 +2193,14 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 }
 
 // handleContextLengthExceeded 处理上下文长度超过限制的情况，自动创建新会话并使用现有压缩策略初始化新会话
+// 注意：thinking 模式是用戶的硬性設置，壓縮時已確保保留 thinking blocks，不可擅自關閉
 func handleContextLengthExceeded(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
         temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
         log.Printf("[CallModel] Context length exceeded, creating new session with compressed context")
 
-        // 压缩消息，保留头尾中间摘要
-        // 使用最高级别的压缩，确保消息大小在限制范围内
+        // 壓縮消息，保留頭尾中間摘要
+        // 使用最高級別的壓縮，確保消息大小在限制範圍內
+        // compressMessages 內部已確保保留 thinking blocks（若原訊息中存在）
         compressedMsgs := compressMessages(messages, 2)
 
         // 准备新会话的请求数据
@@ -2165,6 +2216,21 @@ func handleContextLengthExceeded(ctx context.Context, messages []Message, apiTyp
         }
 
         return chunkChan, nil
+}
+
+// messagesContainThinkingBlock 檢查消息列表中是否有任何 assistant 消息包含 thinking block
+func messagesContainThinkingBlock(messages []Message) bool {
+        for _, msg := range messages {
+                if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                        return true
+                }
+                if msg.Role == "assistant" && msg.ReasoningContent != nil {
+                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+                                return true
+                        }
+                }
+        }
+        return false
 }
 
 // CallModelSync 同步调用 LLM API，返回完整响应（用于子代理）

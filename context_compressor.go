@@ -180,6 +180,21 @@ func (cc *ContextCompressor) Compress(messages []Message) []Message {
         compressedML = compressedML.Append(summaryMsg)
         compressedML = compressedML.Append(tail...)
 
+        // 檢查 middle 區域是否有 thinking block，而 tail 沒有
+        // thinking blocks 必須回傳 API（DeepSeek/Anthropic），不可丟失
+        if !cc.messagesContainThinkingBlock(compressedML.msgs) {
+                if middleThinking := cc.findLastThinkingInMiddle(middle); middleThinking != nil {
+                        // 將含 thinking block 的訊息插入到 summary 之後、tail 之前
+                        insertPos := len(head) + 1 // after head + summary
+                        newMsgs := make([]Message, 0, len(compressedML.msgs)+1)
+                        newMsgs = append(newMsgs, compressedML.msgs[:insertPos]...)
+                        newMsgs = append(newMsgs, *middleThinking)
+                        newMsgs = append(newMsgs, compressedML.msgs[insertPos:]...)
+                        compressedML.SetMsgs(newMsgs)
+                        log.Printf("[ContextCompressor] 保留 middle 中最後一個含 thinking block 的 assistant 訊息（避免 API 400）")
+                }
+        }
+
         // 安全驗證：壓縮結果必須包含至少一條用戶消息
         // 利用 MessageList 的 EnsureUser 從原始消息恢復
         if !compressedML.HasUser() {
@@ -1038,4 +1053,37 @@ func parseToolNameFromSummary(summary string) string {
                 return parts[0]
         }
         return summary
+}
+
+// messagesContainThinkingBlock 檢查消息列表中是否有 assistant 訊息包含 thinking block
+// thinking blocks (含 signature) 必須回傳 API，否則 DeepSeek/Anthropic 會返回 400
+func (cc *ContextCompressor) messagesContainThinkingBlock(messages []Message) bool {
+        for _, msg := range messages {
+                if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                        return true
+                }
+                if msg.Role == "assistant" && msg.ReasoningContent != nil {
+                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+                                return true
+                        }
+                }
+        }
+        return false
+}
+
+// findLastThinkingInMiddle 在 middle 區域中搜尋最後一個含 thinking block 的 assistant 訊息
+func (cc *ContextCompressor) findLastThinkingInMiddle(middle []Message) *Message {
+        for i := len(middle) - 1; i >= 0; i-- {
+                if middle[i].Role == "assistant" && middle[i].ThinkingSignature != "" {
+                        m := middle[i]
+                        return &m
+                }
+                if middle[i].Role == "assistant" && middle[i].ReasoningContent != nil {
+                        if reasoning, ok := middle[i].ReasoningContent.(string); ok && reasoning != "" {
+                                m := middle[i]
+                                return &m
+                        }
+                }
+        }
+        return nil
 }

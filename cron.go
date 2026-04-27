@@ -240,7 +240,7 @@ func (cm *CronManager) GetJobStatus(name string) (map[string]interface{}, error)
         "name":     name,
         "next":     entry.Next,
         "prev":     entry.Prev,
-        "valid":    entry.Valid,
+        "valid":    entry.Valid(),
         "schedule": job.Schedule, // 返回原始的 cron 表达式字符串
     }
     return status, nil
