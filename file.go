@@ -67,6 +67,51 @@ func ReadFileLine(filename string, lineNum int) (string, error) {
         return "", errors.New("line number out of range")
 }
 
+// ReadFileRange 读取文件的指定行范围（行号从1开始）
+// startLine 和 endLine 都包含在内。若 endLine 为 0 或小于 startLine，则只读取 startLine 一行。
+func ReadFileRange(filename string, startLine, endLine int) ([]string, error) {
+        if startLine < 1 {
+                return nil, errors.New("start_line must be >= 1")
+        }
+        if endLine == 0 || endLine < startLine {
+                endLine = startLine
+        }
+
+        file, err := os.Open(filename)
+        if err != nil {
+                return nil, err
+        }
+        defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        const initialBufSize = 1024 * 1024   // 1MB
+        const maxBufSize = 100 * 1024 * 1024 // 100MB
+        scanner.Buffer(make([]byte, initialBufSize), maxBufSize)
+
+        var lines []string
+        currentLine := 0
+        for scanner.Scan() {
+                currentLine++
+                if currentLine < startLine {
+                        continue
+                }
+                if currentLine > endLine {
+                        break
+                }
+                lines = append(lines, cleanControlChars(scanner.Text()))
+        }
+
+        if err := scanner.Err(); err != nil {
+                return nil, err
+        }
+
+        if len(lines) == 0 {
+                return nil, errors.New("line range out of bounds")
+        }
+
+        return lines, nil
+}
+
 // WriteFileLine 写入文件的指定行（替换原内容），若行号超出则自动扩展
 func WriteFileLine(filename string, lineNum int, content string) error {
         if lineNum < 1 {

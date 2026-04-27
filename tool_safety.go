@@ -162,7 +162,7 @@ func CheckWritePermission(filePath string, toolName string) error {
 
         // 所有寫入工具統一要求完整讀取
         if readLvl != readLevelFull {
-                return fmt.Errorf("安全檢查失敗：你必須先使用 read_all_lines 完整讀取 %s 才能進行寫入/編輯操作（read_file_line 或 text_grep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
+                return fmt.Errorf("安全檢查失敗：你必須先使用 read_all_lines 完整讀取 %s 才能進行寫入/編輯操作（read_file_line / read_file_range 或 text_grep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
         }
         return nil
 }
@@ -180,7 +180,7 @@ var allKnownToolNames = []string{
         "shell_delayed_list", "shell_delayed_wait", "shell_delayed_remove",
         "spawn", "spawn_check", "spawn_list", "spawn_cancel",
         // 文件操作
-        "read_file_line", "write_file_line", "read_all_lines", "write_all_lines",
+        "read_file_line", "read_file_range", "write_file_line", "read_all_lines", "write_all_lines",
         "append_to_file", "write_file_range",
         // 文本处理
         "text_search", "text_grep", "text_replace", "text_transform",
@@ -415,9 +415,9 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // 針對模型常見誤操作給出明確指引，防止死循環
                 switch toolName {
                 case "enter_plan_mode":
-                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 enter_plan_mode。\n\n當前可用操作：\n- 使用只讀工具（read_file_line, read_all_lines, text_search, text_grep）探索專案文件\n- 使用 spawn 創建並行子代理\n- 完成當前階段後調用 next_phase 推進\n- 如需退出 Plan Mode，使用 exit_plan_mode", currentPhase)
+                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 enter_plan_mode。\n\n當前可用操作：\n- 使用只讀工具（read_file_line, read_file_range, read_all_lines, text_search, text_grep）探索專案文件\n- 使用 spawn 創建並行子代理\n- 完成當前階段後調用 next_phase 推進\n- 如需退出 Plan Mode，使用 exit_plan_mode", currentPhase)
                 case "smart_shell", "shell":
-                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/smart_shell。此階段僅允許只讀工具。\n\n請改用：\n- read_file_line / read_all_lines 讀取文件\n- text_search / text_grep 搜索內容\n- spawn 創建只讀子代理\n\n完成當前階段後調用 next_phase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/smart_shell。此階段僅允許只讀工具。\n\n請改用：\n- read_file_line / read_file_range / read_all_lines 讀取文件\n- text_search / text_grep 搜索內容\n- spawn 創建只讀子代理\n\n完成當前階段後調用 next_phase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
                 case "write_file_line", "write_all_lines", "append_to_file", "write_file_range", "text_replace":
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行寫入操作。\n\n當前階段請使用只讀工具。完成後調用 next_phase。", currentPhase, toolName)
                 default:
@@ -451,7 +451,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // 但如果在 Plan Mode 中被調用，給出明確指引防止重複調用死循環
                 if globalPlanMode.IsActive() {
                         currentPhase := globalPlanMode.PhaseName()
-                        content := fmt.Sprintf("你已經在 Plan Mode 中（%s），無需再次調用 enter_plan_mode。\n\n請根據當前階段使用可用工具：\n- Phase 1: 使用 read_file_line, read_all_lines, text_search, text_grep, spawn\n- Phase 2/4: 使用 plan_write, plan_read\n- 任何階段: 調用 next_phase 推進\n- 需要退出: 使用 exit_plan_mode", currentPhase)
+                        content := fmt.Sprintf("你已經在 Plan Mode 中（%s），無需再次調用 enter_plan_mode。\n\n請根據當前階段使用可用工具：\n- Phase 1: 使用 read_file_line, read_file_range, read_all_lines, text_search, text_grep, spawn\n- Phase 2/4: 使用 plan_write, plan_read\n- 任何階段: 調用 next_phase 推進\n- 需要退出: 使用 exit_plan_mode", currentPhase)
                         emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
                         return EnrichedMessage{
                                 Content: content,

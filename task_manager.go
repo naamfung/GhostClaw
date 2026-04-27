@@ -1000,7 +1000,7 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
         }
 
         // 对于文件操作，使用文件名作为指纹的一部分
-        if toolName == "read_file_line" || toolName == "read_all_lines" {
+        if toolName == "read_file_line" || toolName == "read_file_range" || toolName == "read_all_lines" {
                 if filename, ok := args["filename"].(string); ok {
                         return toolName + ":" + filename
                 }

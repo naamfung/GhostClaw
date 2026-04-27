@@ -118,6 +118,7 @@ var phaseMetadata = map[PlanPhase]phaseInfo{
 // PhaseReadTools 在 Plan Mode 所有 Phase 中始終可用的只讀基礎工具
 var PhaseReadTools = []string{
         "read_file_line",
+        "read_file_range",
         "read_all_lines",
         "text_search",
         "text_grep",
@@ -482,7 +483,7 @@ func explorePhasePrompt() string {
 
 操作指引：
 1. 使用 text_search / text_grep 搜索關鍵詞，定位相關文件
-2. 使用 read_file_line / read_all_lines 閱讀相關文件
+2. 使用 read_file_line / read_file_range / read_all_lines 閱讀相關文件
 3. 對於複雜任務，使用 spawn 創建最多 3 個並行子代理探索不同方面
 4. 使用 todos 工具管理探索子任務
 

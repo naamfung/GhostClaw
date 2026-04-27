@@ -362,7 +362,7 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 // getBlockedToolsForPlanPhase 返回 Plan Mode 指定 Phase 中應從靜態工具列表物理移除的工具集合
 // 核心設計：模型看不到被禁止的工具就不會嘗試調用，從根源消除誤調用
 //
-// 保留的工具：read_file_line, read_all_lines, text_search, text_grep,
+// 保留的工具：read_file_line, read_file_range, read_all_lines, text_search, text_grep,
 //
 //      memory_recall, memory_list, plugin_list, skill_list, cron_list, ssh_list,
 //      profile_check, menu, exit_plan_mode, 以及各 Phase 的動態工具

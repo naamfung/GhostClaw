@@ -302,6 +302,82 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
+func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
+        filename, ok1 := ec.ArgsMap["filename"].(string)
+        startLineFloat, ok2 := ec.ArgsMap["start_line"].(float64)
+        if !ok1 || !ok2 || filename == "" || startLineFloat < 1 {
+                return "Error: Invalid arguments for read_file_range", TaskStatusFailed
+        }
+
+        startLine := int(startLineFloat)
+        endLine := startLine
+        if endLineFloat, ok := ec.ArgsMap["end_line"].(float64); ok && endLineFloat >= float64(startLine) {
+                endLine = int(endLineFloat)
+        }
+
+        lines, err := ReadFileRange(filename, startLine, endLine)
+        if err != nil {
+                return "Error: " + err.Error(), TaskStatusFailed
+        }
+
+        // 标记文件已部分读取（先读后写安全检查 - 部分读取不满足写入前置要求，仅作追踪）
+        globalReadWriteTracker.MarkFilePartialRead(filename)
+
+        // 检查是否需要详细信息
+        verbose := false
+        if v, ok := ec.ArgsMap["verbose"].(bool); ok {
+                verbose = v
+        }
+
+        var content string
+        if verbose {
+                // 获取文件信息
+                info, infoErr := os.Stat(filename)
+                if info == nil || infoErr != nil {
+                        info = nil
+                }
+
+                // 构建带有行号的结果
+                linedContent := make([]map[string]interface{}, len(lines))
+                for i, line := range lines {
+                        linedContent[i] = map[string]interface{}{
+                                "line":    startLine + i,
+                                "content": line,
+                        }
+                }
+
+                result := map[string]interface{}{
+                        "lines":       linedContent,
+                        "total_lines": len(lines),
+                        "start_line":  startLine,
+                        "end_line":    endLine,
+                        "filename":    filename,
+                        "encoding":    "utf-8",
+                }
+                if info != nil {
+                        result["file_size"] = info.Size()
+                        result["modified"] = info.ModTime().Format(time.RFC3339)
+                }
+
+                resultTOON, err := toon.Marshal(result)
+                if err != nil {
+                        content = "Error: " + err.Error()
+                } else {
+                        content = string(resultTOON)
+                }
+        } else {
+                // 默认只返回内容列表
+                resultTOON, err := toon.Marshal(lines)
+                if err != nil {
+                        content = "Error: " + err.Error()
+                } else {
+                        content = string(resultTOON)
+                }
+        }
+        fmt.Println(TruncateString(content, 200))
+        return content, TaskStatusSuccess
+}
+
 func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
         linesInterface, ok2 := ec.ArgsMap["lines"].([]interface{})
@@ -2173,6 +2249,7 @@ func init() {
                 "write_all_lines": execWriteAllLines,
                 "append_to_file":  execAppendToFile,
                 "write_file_range": execWriteFileRange,
+                "read_file_range":  execReadFileRange,
 
                 // Browser basic tools
                 "browser_search":    execBrowserSearch,

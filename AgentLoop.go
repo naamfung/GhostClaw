@@ -1350,7 +1350,7 @@ func detectXMLToolInvocation(content string) bool {
 
     // 已知 GhostClaw 工具名稱（用於 <invoke name="..."> 驗證）
     knownToolNames := []string{
-        "smart_shell", "shell", "shell_delayed", "read_all_lines", "read_file_line",
+        "smart_shell", "shell", "shell_delayed", "read_all_lines", "read_file_line", "read_file_range",
         "write_file", "write_file_line", "write_all_lines", "search_files",
         "enter_plan_mode", "spawn", "spawn_check", "spawn_list", "spawn_batch",
         "menu", "todo", "todos", "grep", "list_directory", "web_search",

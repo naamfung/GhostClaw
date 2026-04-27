@@ -274,6 +274,33 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
+        reg("read_file_range",
+                "Read a specific range of lines from a file. Use this when you need to read a portion of a file without reading the entire file.",
+                "core", "core",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "filename": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "The path to the file to read.",
+                                },
+                                "start_line": map[string]interface{}{
+                                        "type":        "integer",
+                                        "description": "The starting line number (1-based, inclusive).",
+                                },
+                                "end_line": map[string]interface{}{
+                                        "type":        "integer",
+                                        "description": "The ending line number (1-based, inclusive). If not specified, only the start_line is read.",
+                                },
+                                "verbose": map[string]interface{}{
+                                        "type":        "boolean",
+                                        "description": "Whether to return verbose information (line numbers, encoding, file size, etc.). Default: false (only returns lines content).",
+                                },
+                        },
+                        "required":             []string{"filename", "start_line"},
+                        "additionalProperties": false,
+                })
+
         // ========== 基础浏览器工具 ==========
         reg("browser_search", `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
 
