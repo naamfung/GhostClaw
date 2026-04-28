@@ -630,7 +630,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             var lastThinkingMsg Message
             hasLastThinking := false
             for i := boundaryStart - 1; i >= 0; i-- {
-                if messages[i].Role == "assistant" && messages[i].ThinkingSignature != "" {
+                if messages[i].Role == "assistant" && (messages[i].ThinkingSignature != "" || messages[i].ReasoningContent != nil) {
                     lastThinkingMsg = messages[i]
                     hasLastThinking = true
                     break
@@ -651,7 +651,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             if hasLastThinking {
                 keepHasThinking := false
                 for _, msg := range truncatedMsgs {
-                    if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                    if msg.Role == "assistant" && (msg.ThinkingSignature != "" || msg.ReasoningContent != nil) {
                         keepHasThinking = true
                         break
                     }

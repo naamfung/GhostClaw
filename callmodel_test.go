@@ -436,13 +436,20 @@ func TestConvertToOpenAIFormat(t *testing.T) {
 		}
 	})
 
-	t.Run("reasoning_content 空字符串不传递", func(t *testing.T) {
+	t.Run("reasoning_content 空字符串必须传递 (DeepSeek)", func(t *testing.T) {
+		// DeepSeek thinking mode 要求所有 assistant 消息必须包含 reasoning_content 字段
+		// 即使为空字符串，否则返回 400：
+		// "The reasoning_content in the thinking mode must be passed back to the API"
 		msgs := []Message{
 			{Role: "assistant", Content: "answer", ReasoningContent: ""},
 		}
 		result := convertToOpenAIFormat(msgs)
-		if _, ok := result[0]["reasoning_content"]; ok {
-			t.Error("empty reasoning_content should not be set")
+		rc, ok := result[0]["reasoning_content"]
+		if !ok {
+			t.Error("DeepSeek requires reasoning_content field even when empty")
+		}
+		if rc != "" {
+			t.Errorf("expected empty string, got %v", rc)
 		}
 	})
 
@@ -621,13 +628,18 @@ func TestConvertToOllamaFormat(t *testing.T) {
 		}
 	})
 
-	t.Run("thinking 空 reasoning 不传递", func(t *testing.T) {
+	t.Run("thinking 空 reasoning 必须传递 (DeepSeek)", func(t *testing.T) {
+		// DeepSeek thinking mode 要求所有 assistant 消息必须包含 reasoning_content 字段
 		msgs := []Message{
 			{Role: "assistant", Content: "answer", ReasoningContent: "", ThinkingSignature: ""},
 		}
 		result := convertToOllamaFormat(msgs)
-		if _, ok := result[0]["reasoning_content"]; ok {
-			t.Error("empty reasoning_content should not be set")
+		rc, ok := result[0]["reasoning_content"]
+		if !ok {
+			t.Error("DeepSeek requires reasoning_content field even when empty")
+		}
+		if rc != "" {
+			t.Errorf("expected empty string, got %v", rc)
 		}
 	})
 
@@ -2234,6 +2246,113 @@ func TestFullPipelineCombinations(t *testing.T) {
 		}
 		if !foundReasoning {
 			t.Error("DeepSeek reasoning_content lost in full pipeline (validate→compress level 2→OpenAI) — would cause API 400: 'reasoning_content must be passed back'")
+		}
+	})
+
+	t.Run("DeepSeek 混合 reasoning: 部分为空部分非空的完整序列", func(t *testing.T) {
+		// DeepSeek thinking mode: 部分 assistant 有 reasoning，部分冇
+		// 但所有 assistant 消息都必须包含 reasoning_content 字段
+		msgs := []Message{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "q1"},
+			{Role: "assistant", Content: "a1", ReasoningContent: ""},           // 无 thinking
+			{Role: "user", Content: "q2"},
+			{Role: "assistant", Content: "a2", ReasoningContent: "thinking"},  // 有 thinking
+			{Role: "user", Content: "q3"},
+			{Role: "assistant", Content: "a3", ReasoningContent: ""},           // 无 thinking again
+		}
+		result := convertToOpenAIFormat(msgs)
+		// 所有 assistant 消息都必须包含 reasoning_content
+		for i, msg := range result {
+			if msg["role"] == "assistant" {
+				if _, ok := msg["reasoning_content"]; !ok {
+					t.Errorf("assistant message %d is missing reasoning_content field — DeepSeek requires it on ALL assistant messages", i)
+				}
+			}
+		}
+	})
+}
+
+// ============================================================================
+// 20. Session persistence reasoning_content round-trip
+// ============================================================================
+
+func TestReasoningContentPersistenceRoundTrip(t *testing.T) {
+	t.Run("空 reasoning 持久化往返", func(t *testing.T) {
+		// 模擬 AgentLoop: assistant with empty ReasoningContent
+		msg := Message{
+			Role:             "assistant",
+			Content:          "answer",
+			ReasoningContent: "",
+		}
+		entry := messageToEntry(msg)
+		restored := entryToMessage(entry)
+		// 空字串 ReasoningContent 必须在 round-trip 后保留
+		// 否则 validateAndCleanMessages 可能会删除该消息
+		if restored.ReasoningContent == nil {
+			t.Error("empty ReasoningContent became nil after persistence round-trip — message may be incorrectly deleted by pipeline")
+		}
+		rc, ok := restored.ReasoningContent.(string)
+		if !ok || rc != "" {
+			t.Errorf("expected empty string after round-trip, got %v", restored.ReasoningContent)
+		}
+	})
+
+	t.Run("非空 reasoning 持久化往返", func(t *testing.T) {
+		msg := Message{
+			Role:             "assistant",
+			Content:          "answer with thinking",
+			ReasoningContent: "DeepSeek thinks deeply about this...",
+		}
+		entry := messageToEntry(msg)
+		restored := entryToMessage(entry)
+		rc, ok := restored.ReasoningContent.(string)
+		if !ok || rc != "DeepSeek thinks deeply about this..." {
+			t.Errorf("reasoning_content lost during persistence round-trip, got=%v", restored.ReasoningContent)
+		}
+	})
+
+	t.Run("nil reasoning 持久化往返保持不变", func(t *testing.T) {
+		msg := Message{
+			Role:             "assistant",
+			Content:          "plain answer",
+			ReasoningContent: nil,
+		}
+		entry := messageToEntry(msg)
+		restored := entryToMessage(entry)
+		// nil should stay nil or become empty string (both are acceptable)
+		if restored.ReasoningContent != nil {
+			if rc, ok := restored.ReasoningContent.(string); !ok || rc != "" {
+				t.Errorf("nil ReasoningContent changed after round-trip: %v", restored.ReasoningContent)
+			}
+		}
+	})
+
+	t.Run("完整序列: 混合 reasoning 持久化往返", func(t *testing.T) {
+		msgs := []Message{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "q1"},
+			{Role: "assistant", Content: "a1", ReasoningContent: ""},       // 无 thinking
+			{Role: "user", Content: "q2"},
+			{Role: "assistant", Content: "a2", ReasoningContent: "think"}, // 有 thinking
+			{Role: "user", Content: "q3"},
+			{Role: "assistant", Content: "a3", ReasoningContent: ""},       // 无 thinking again
+		}
+		// round-trip each message
+		var restored []Message
+		for _, m := range msgs {
+			entry := messageToEntry(m)
+			restored = append(restored, entryToMessage(entry))
+		}
+		// 验证所有 assistant 的 ReasoningContent 状态
+		if restored[2].ReasoningContent == nil {
+			t.Error("a1: empty ReasoningContent should not be nil after round-trip")
+		}
+		if r2, ok := restored[4].ReasoningContent.(string); !ok || r2 != "think" {
+			t.Error("a2: non-empty ReasoningContent lost after round-trip")
+		}
+		if restored[6].ReasoningContent == nil {
+			t.Error("a3: empty ReasoningContent should not be nil after round-trip")
 		}
 	})
 }

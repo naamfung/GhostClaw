@@ -144,7 +144,6 @@ func entryToMessage(me MessageEntry) Message {
         }
 
         // ReasoningContent 反序列化：先嘗試 JSON unmarshal（非字符串類型曾被 JSON 序列化存儲）
-        if me.ReasoningContent != "" {
                 if strings.HasPrefix(me.ReasoningContent, "{") || strings.HasPrefix(me.ReasoningContent, "[") {
                         var rc interface{}
                         if err := json.Unmarshal([]byte(me.ReasoningContent), &rc); err == nil {
@@ -155,7 +154,6 @@ func entryToMessage(me MessageEntry) Message {
                 } else {
                         m.ReasoningContent = me.ReasoningContent
                 }
-        }
 
         if me.ToolCalls != "" {
                 var toolCalls interface{}

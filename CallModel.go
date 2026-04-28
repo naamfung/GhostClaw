@@ -558,9 +558,8 @@ func convertToOllamaFormat(messages []Message) []map[string]interface{} {
                 // 保留 thinking blocks（reasoning_content + thinking_signature），必須回傳 API
                 if msg.Role == "assistant" {
                         if msg.ReasoningContent != nil {
-                                if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-                                        ollamaMsg["reasoning_content"] = reasoning
-                                }
+				reasoning, _ := msg.ReasoningContent.(string)
+				ollamaMsg["reasoning_content"] = reasoning
                         }
                         if msg.ThinkingSignature != "" {
                                 ollamaMsg["thinking_signature"] = msg.ThinkingSignature
@@ -667,9 +666,8 @@ func convertToOpenAIFormat(messages []Message) []map[string]interface{} {
                 // DeepSeek/GLM/Qwen 支援 reasoning_content 和 thinking_signature
                 if msg.Role == "assistant" {
                         if msg.ReasoningContent != nil {
-                                if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-                                        openaiMsg["reasoning_content"] = reasoning
-                                }
+				reasoning, _ := msg.ReasoningContent.(string)
+				openaiMsg["reasoning_content"] = reasoning
                         }
                         if msg.ThinkingSignature != "" {
                                 openaiMsg["thinking_signature"] = msg.ThinkingSignature
@@ -2349,8 +2347,8 @@ func messagesContainThinkingBlock(messages []Message) bool {
                         return true
                 }
                 if msg.Role == "assistant" && msg.ReasoningContent != nil {
-                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-                                return true
+				if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+					return true
                         }
                 }
         }
