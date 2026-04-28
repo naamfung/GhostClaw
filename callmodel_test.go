@@ -1566,6 +1566,30 @@ func TestFindLegalStart(t *testing.T) {
 			t.Fatalf("expected 3 (all kept), got %d", len(result))
 		}
 	})
+
+	t.Run("推理内容回退 (DeepSeek reasoning_content 无 signature)", func(t *testing.T) {
+		// DeepSeek thinking mode：仅 ReasoningContent，无 ThinkingSignature
+		// 孤儿 tool 截断时必须回退保留 reasoning_content，否则 API 返回 400
+		msgs := []Message{
+			{Role: "user", Content: "q1"},
+			{Role: "assistant", Content: "a1", ReasoningContent: "deepseek think only"},
+			{Role: "assistant", Content: "a2"},
+			{Role: "tool", Content: "orphan", ToolCallID: "no_declare"},
+			{Role: "user", Content: "real"},
+		}
+		result := findLegalStart(msgs)
+		// 应该回退到含 reasoning_content 的 assistant
+		found := false
+		for _, m := range result {
+			if rc, ok := m.ReasoningContent.(string); ok && rc == "deepseek think only" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("DeepSeek reasoning_content lost during findLegalStart rollback — would cause API 400")
+		}
+	})
 }
 
 // ============================================================================
@@ -1724,6 +1748,30 @@ func TestCompressMessages(t *testing.T) {
 		}
 	})
 
+	t.Run("Level 2: 仅有 reasoning_content 的 DeepSeek thinking mode 保护", func(t *testing.T) {
+		// DeepSeek thinking mode 返回 reasoning_content 但没有 thinking_signature
+		// 这种情况必须在截断时保留，否则 API 返回 400:
+		// "The reasoning_content in the thinking mode must be passed back to the API"
+		var msgs []Message
+		for i := 0; i < 15; i++ {
+			msgs = append(msgs, Message{Role: "user", Content: "q" + itoa(i)})
+			msgs = append(msgs, Message{Role: "assistant", Content: "a" + itoa(i)})
+		}
+		// 仅有 ReasoningContent，无 ThinkingSignature（DeepSeek 场景）
+		msgs[9].ReasoningContent = "deepseek reasoning without signature"
+		result := compressMessages(msgs, 2)
+		found := false
+		for _, m := range result {
+			if rc, ok := m.ReasoningContent.(string); ok && rc == "deepseek reasoning without signature" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("DeepSeek reasoning_content (without signature) must be preserved after level 2 compression to avoid API 400 error")
+		}
+	})
+
 	t.Run("Level 2: 截断后的清理", func(t *testing.T) {
 		// 截断后产生孤立 tool → 应被清理
 		var msgs []Message
@@ -1808,6 +1856,48 @@ func TestThinkingBlockPreservation(t *testing.T) {
 		result := compressMessages(msgs, 2)
 		if result[1].ThinkingSignature != "sig2" {
 			t.Error("sig lost at level 2")
+		}
+	})
+
+	t.Run("仅有 reasoning_content 通过压缩 level 2 (DeepSeek)", func(t *testing.T) {
+		// DeepSeek thinking mode: 只有 reasoning_content 没有 thinking_signature
+		// 必须保留 reasoning_content，否则下次请求 API 会返回 400
+		msgs := []Message{
+			{Role: "user", Content: "q"},
+			{Role: "assistant", Content: "a", ReasoningContent: "deepseek think without sig"},
+		}
+		result := compressMessages(msgs, 2)
+		rc, ok := result[1].ReasoningContent.(string)
+		if !ok || rc != "deepseek think without sig" {
+			t.Errorf("DeepSeek reasoning_content lost at level 2, got=%v", result[1].ReasoningContent)
+		}
+	})
+
+	t.Run("仅有 reasoning_content 通过 OpenAI 转换 (DeepSeek)", func(t *testing.T) {
+		// 确保 DeepSeek reasoning_content 正确传递到 OpenAI 格式
+		msgs := []Message{
+			{Role: "user", Content: "q"},
+			{Role: "assistant", Content: "a", ReasoningContent: "deepseek_reasoning_only"},
+		}
+		result := convertToOpenAIFormat(msgs)
+		if result[1]["reasoning_content"] != "deepseek_reasoning_only" {
+			t.Errorf("DeepSeek reasoning_content lost in OpenAI format, got=%v", result[1]["reasoning_content"])
+		}
+	})
+
+	t.Run("仅有 reasoning_content 通过验证管线 (DeepSeek)", func(t *testing.T) {
+		// 确保 validateAndCleanMessages 不会删除仅有 reasoning_content 的 assistant 消息
+		msgs := []Message{
+			{Role: "user", Content: "q"},
+			{Role: "assistant", Content: "", ReasoningContent: "deepseek think only, no text content"},
+		}
+		result := validateAndCleanMessages(msgs)
+		if len(result) < 2 {
+			t.Fatal("assistant with reasoning_content only should not be deleted by validation")
+		}
+		rc, ok := result[1].ReasoningContent.(string)
+		if !ok || rc != "deepseek think only, no text content" {
+			t.Errorf("DeepSeek reasoning_content lost during validation, got=%v", result[1].ReasoningContent)
 		}
 	})
 
@@ -2113,6 +2203,37 @@ func TestFullPipelineCombinations(t *testing.T) {
 			if orig[i].ThinkingSignature != origCopy[i].ThinkingSignature {
 				t.Errorf("sig changed at %d", i)
 			}
+		}
+	})
+
+	t.Run("DeepSeek reasoning_content 完整管線保護 (解決 400 錯誤)", func(t *testing.T) {
+		// 模擬 DeepSeek thinking mode 場景：reasoning_content 在歷史深處，
+		// 經歷長對話導致 level 2 壓縮觸發 — 必須保留 reasoning_content 否則 API 返回 400
+		var msgs []Message
+		msgs = append(msgs, Message{Role: "system", Content: "sys"})
+		for i := 0; i < 15; i++ {
+			msgs = append(msgs, Message{Role: "user", Content: "q" + itoa(i)})
+			msgs = append(msgs, Message{Role: "assistant", Content: "a" + itoa(i)})
+		}
+		// 早期消息包含 DeepSeek thinking block（assistant a4，index 10）：
+		// 仅有 reasoning_content，无 signature
+		msgs[10].ReasoningContent = "deepseek_thinking_only"
+
+		validated := validateAndCleanMessages(msgs)
+		compressed := compressMessages(validated, 2)
+		result := convertToOpenAIFormat(compressed)
+
+		foundReasoning := false
+		for _, msg := range result {
+			if rc, ok := msg["reasoning_content"]; ok {
+				if rcStr, ok := rc.(string); ok && rcStr == "deepseek_thinking_only" {
+					foundReasoning = true
+					break
+				}
+			}
+		}
+		if !foundReasoning {
+			t.Error("DeepSeek reasoning_content lost in full pipeline (validate→compress level 2→OpenAI) — would cause API 400: 'reasoning_content must be passed back'")
 		}
 	})
 }

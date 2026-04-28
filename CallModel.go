@@ -410,7 +410,7 @@ func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
                                                 "type":     "thinking",
                                                 "thinking": reasoning,
                                         }
-                                        if msg.ThinkingSignature != "" {
+                                        if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
                                                 thinkingBlock["signature"] = msg.ThinkingSignature
                                         }
                                         content = append(content, thinkingBlock)
@@ -947,7 +947,7 @@ func findLegalStart(messages []Message) []Message {
                 // 如果截斷點會丟失 thinking block，回退 start 到最近的含 thinking block 的 assistant
                 if start > systemEnd {
                         for i := start - 1; i >= systemEnd; i-- {
-                                if messages[i].Role == "assistant" && messages[i].ThinkingSignature != "" {
+                                if messages[i].Role == "assistant" && (messages[i].ThinkingSignature != "" || messages[i].ReasoningContent != nil) {
                                         if IsDebug {
                                                 log.Printf("[findLegalStart] 保留含 thinking block 的 assistant 訊息 (index=%d)，回退 start 從 %d 到 %d", i, start, i)
                                         }
@@ -1816,7 +1816,7 @@ func compressMessages(messages []Message, level int) []Message {
                 if len(newMsgs) > keepRecent {
                         cutEnd := len(newMsgs) - keepRecent
                         for i := cutEnd - 1; i >= 0; i-- {
-                                if newMsgs[i].Role == "assistant" && newMsgs[i].ThinkingSignature != "" {
+                                if newMsgs[i].Role == "assistant" && (newMsgs[i].ThinkingSignature != "" || newMsgs[i].ReasoningContent != nil) {
                                         m := newMsgs[i]
                                         lastThinkingMsg = &m
                                         break
@@ -1833,7 +1833,7 @@ func compressMessages(messages []Message, level int) []Message {
                 if lastThinkingMsg != nil {
                         hasThinking := false
                         for _, msg := range newMsgs {
-                                if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                                if msg.Role == "assistant" && (msg.ThinkingSignature != "" || msg.ReasoningContent != nil) {
                                         hasThinking = true
                                         break
                                 }
