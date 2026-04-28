@@ -150,7 +150,7 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                         "mode":            "confirm_required",
                         "confirm_message": result.ConfirmMessage,
                         "suggestions":     result.Suggestions,
-                        "message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 smart_shell(command, async=true) 异步执行。",
+                        "message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 smart_shell(command, mode=\"async\") 异步执行。",
                 }
                 resultTOON, _ := toon.Marshal(response)
                 return string(resultTOON), false
@@ -163,10 +163,10 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                                 "此命令不在已知命令列表中，系统尝试同步执行但超时。\n\n"+
                                 "建议：\n"+
                                 "1. 如果这是一个长时间运行的命令，请使用异步模式：\n"+
-                                "   smart_shell(command, async=true)\n\n"+
+                                "   smart_shell(command, mode=\"async\")\n\n"+
                                 "2. 如果此命令应该快速完成但卡住了，请检查命令是否正确。", timeout)
                 } else {
-                        message = fmt.Sprintf("⏱️ 命令执行超时（%d秒）。建议使用异步模式：smart_shell(command, async=true)", timeout)
+                        message = fmt.Sprintf("⏱️ 命令执行超时（%d秒）。建议使用异步模式：smart_shell(command, mode=\"async\")", timeout)
                 }
                 response := map[string]interface{}{
                         "mode":            "timeout",

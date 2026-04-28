@@ -1071,7 +1071,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                         // 這確保 FeedbackCollector 的 WakeNotification 檢測和隱式反饋採集
                         // 能正確跳過系統消息，找到真正的觸發用戶消息
                         resumePrompt := fmt.Sprintf(
-                            "[SYSTEM_RESUME] 你的任務尚未完成。以下待辦事項仍需處理：\n%s\n\n請繼續執行未完成的任務。如果某個任務已提交為異步操作（如 cron_add），請使用 todos 工具將其狀態更新為 waiting。",
+                            "[SYSTEM_RESUME] 你的任務尚未完成。以下待辦事項仍需處理：\n%s\n\n請繼續執行未完成的任務。如果某個任務已通過 smart_shell（異步模式）或 cron_add 提交為後台操作，請使用 todos 工具將其狀態更新為 waiting，然後等待系統通知結果，切勿重複調用同步模式。",
                             unfinished,
                         )
                         messages = append(messages, Message{

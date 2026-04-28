@@ -65,7 +65,7 @@ func init() {
 • timeout_secs: 异步任务最大执行时间（秒），超时自动终止并唤醒（默认无限制）
 • wake_after_minutes: 异步唤醒时间（默认5分钟）
 
-🚫 DO NOT POLL: 异步任务启动后不要轮询，系统会自动通知结果。`,
+🚫 DO NOT POLL: 异步任务启动后不要轮询，系统会自动通知结果。如果当前有活跃的 todo 项目，请使用 todos 工具将相关 todo 标记为 waiting，然后继续处理其他工作或等待系统唤醒，切勿以同步模式重新执行同一命令。`,
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
