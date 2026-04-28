@@ -47,6 +47,18 @@ func execNextPhase(ec *ToolExecContext) (string, TaskStatus) {
         return "錯誤：Plan Mode 未激活。", TaskStatusFailed
 }
 
+func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
+        if globalPlanMode.IsActive() {
+                phaseName, msg, err := PrevPhase()
+                if err != nil {
+                        return "錯誤：" + err.Error(), TaskStatusFailed
+                }
+                _ = phaseName
+                return msg, TaskStatusSuccess
+        }
+        return "錯誤：Plan Mode 未激活。", TaskStatusFailed
+}
+
 func execSmartShellTool(ec *ToolExecContext) (string, TaskStatus) {
         content, _ := handleSmartShell(ec.Ctx, ec.ArgsMap, ec.Ch)
         return content, TaskStatusSuccess
@@ -1568,10 +1580,6 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
                         listID = "phase1"
                 case PlanPhaseDesign:
                         listID = "phase2"
-                case PlanPhaseReview:
-                        listID = "phase3"
-                case PlanPhasePlan:
-                        listID = "phase4"
                 }
         }
 
@@ -2230,6 +2238,7 @@ func init() {
                 // Menu & planning
                 "menu":        execMenuTool,
                 "next_phase":  execNextPhase,
+                "prev_phase":  execPrevPhase,
 
                 // Shell tools
                 "smart_shell": execSmartShellTool,

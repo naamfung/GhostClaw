@@ -16,18 +16,17 @@ import (
 // ============================================================================
 //
 // 核心設計：
-//   - 5 個 Phase 由程序狀態機控制，LLM 無法跳過或回退
+//   - 3 個 Phase 由程序狀態機控制，LLM 無法跳過
+//   - Phase 2 支援 prev_phase 回溯（最多 2 次）
 //   - 每 Phase 暴露不同工具集（工具分階段控制）
 //   - 每 Phase 有獨立的 todos 列表追蹤子任務
-//   - Phase 轉換需調用 next_phase 工具，程序檢查完成條件
-//   - 退出後計劃步驟注入會話歷史，結構化存儲
+//   - Phase 轉換需調用 next_phase 工具
+//   - Phase 3 自動退出，計劃步驟注入會話歷史
 //
 // Phase 工具映射：
-//   Phase 1 (探索): read_file_line, read_all_lines, text_search, text_grep, memory_recall, memory_list, spawn, spawn_check, spawn_list, todos
-//   Phase 2 (設計): 同 Phase 1 + plan_write, plan_read
-//   Phase 3 (審查): 同 Phase 1 + plan_read（不能寫）
-//   Phase 4 (計劃): 同 Phase 1 + plan_write, plan_read, todos
-//   Phase 5 (退出): 僅 next_phase（自動完成退出）
+//   Phase 1 (探索): 只讀 + spawn + todos + next_phase
+//   Phase 2 (設計): Phase 1 全部 + plan_write + plan_read + prev_phase
+//   Phase 3 (執行): 僅 next_phase（自動退出）
 // ============================================================================
 
 // PlanPhase Plan Mode 階段
@@ -35,28 +34,29 @@ type PlanPhase int
 
 const (
         PlanPhaseInactive PlanPhase = 0 // 未激活
-        PlanPhaseExplore  PlanPhase = 1 // Phase 1: 初始理解（只讀探索）
-        PlanPhaseDesign   PlanPhase = 2 // Phase 2: 方案設計（可寫計劃草稿）
-        PlanPhaseReview   PlanPhase = 3 // Phase 3: 審查驗證（只讀確認）
-        PlanPhasePlan     PlanPhase = 4 // Phase 4: 編寫最終計劃
-        PlanPhaseExit     PlanPhase = 5 // Phase 5: 退出（程序自動處理）
+        PlanPhaseExplore  PlanPhase = 1 // Phase 1: 探索（只讀探索）
+        PlanPhaseDesign   PlanPhase = 2 // Phase 2: 設計（合併舊 Review + Plan）
+        PlanPhaseExecute  PlanPhase = 3 // Phase 3: 執行（自動退出，注入計劃）
 )
 
 // Plan Mode 超時配置
 const (
-        planPhaseTimeout       = 5 * time.Minute // 單階段最大持續時間
+        planPhaseTimeout       = 5 * time.Minute  // 單階段最大持續時間
         planTotalTimeout       = 20 * time.Minute // Plan Mode 總最大持續時間
 )
 
+const maxDowngrades = 2 // 最大回溯次數（Phase 2 → Phase 1）
+
 // PlanMode Plan 模式管理器
 type PlanMode struct {
-        Phase       PlanPhase
-        PlanFilePath string
-        StartTime   time.Time
-        PhaseStart  time.Time // 當前階段開始時間
-        TaskDesc    string    // 用戶的原始任務描述
-        mu          sync.RWMutex
-        TimedOut    bool      // 是否因超時而被強制退出
+        Phase         PlanPhase
+        PlanFilePath  string
+        StartTime     time.Time
+        PhaseStart    time.Time // 當前階段開始時間
+        TaskDesc      string    // 用戶的原始任務描述
+        mu            sync.RWMutex
+        TimedOut      bool      // 是否因超時而被強制退出
+        DowngradeCount int      // 回溯次數計數器（每次 prev_phase +1）
 }
 
 var globalPlanMode = &PlanMode{
@@ -76,40 +76,24 @@ type phaseInfo struct {
 
 var phaseMetadata = map[PlanPhase]phaseInfo{
         PlanPhaseExplore: {
-                Name:        "Phase 1: 初始理解（探索）",
-                Description: "使用只讀工具探索專案文件，建立整體認識。善用 spawn 並行探索不同模塊。",
+                Name:        "Phase 1: 探索",
+                Description: "使用只讀工具探索專案文件，建立整體認識。善用 spawn 並行探索不同模塊。如發現需要更多探索，Phase 2 可使用 prev_phase 回溯。",
                 ExtraTools: []string{
                         "spawn", "spawn_check", "spawn_list",
-                        "todos",  // 管理 Phase 1 子任務
+                        "todos", // 管理 Phase 1 子任務
                 },
         },
         PlanPhaseDesign: {
-                Name:        "Phase 2: 方案設計",
-                Description: "基於探索結果設計實現方案。可使用 plan_write 草擬計劃。",
+                Name:        "Phase 2: 設計",
+                Description: "設計實現方案、草擬計劃、審查可行性、編寫最終計劃。可使用 plan_write/plan_read，必要時用 prev_phase 回溯探索。",
                 ExtraTools: []string{
                         "plan_write", "plan_read",
                         "spawn", "spawn_check", "spawn_list",
                         "todos",
                 },
         },
-        PlanPhaseReview: {
-                Name:        "Phase 3: 審查驗證",
-                Description: "重新閱讀關鍵文件，確認方案可行性。此階段不能修改計劃文件。",
-                ExtraTools: []string{
-                        "plan_read", // 只能讀，不能寫
-                        "todos",
-                },
-        },
-        PlanPhasePlan: {
-                Name:        "Phase 4: 編寫最終計劃",
-                Description: "使用 plan_write 編寫正式的實施計劃。計劃將在退出後作為執行指引。",
-                ExtraTools: []string{
-                        "plan_write", "plan_read",
-                        "todos",
-                },
-        },
-        PlanPhaseExit: {
-                Name:        "Phase 5: 退出",
+        PlanPhaseExecute: {
+                Name:        "Phase 3: 執行",
                 Description: "系統自動處理退出。恢復完整工具訪問，計劃注入會話歷史。",
                 ExtraTools:  []string{},
         },
@@ -175,17 +159,16 @@ func EnterPlanMode(taskDesc string) string {
         globalPlanMode.StartTime = time.Now()
         globalPlanMode.PhaseStart = time.Now()
         globalPlanMode.TaskDesc = taskDesc
+        globalPlanMode.DowngradeCount = 0
 
         dataDir := getDataDir()
         globalPlanMode.PlanFilePath = filepath.Join(dataDir, "plan.md")
 
         // 初始化整體 Plan todos（作為 list_id="plan"）
         _, _ = TODO.Update([]TodoItem{
-                {ID: "1", Text: "Phase 1: 初始理解（探索）", Status: "in_progress"},
-                {ID: "2", Text: "Phase 2: 方案設計", Status: "pending"},
-                {ID: "3", Text: "Phase 3: 審查驗證", Status: "pending"},
-                {ID: "4", Text: "Phase 4: 編寫最終計劃", Status: "pending"},
-                {ID: "5", Text: "Phase 5: 退出", Status: "pending"},
+                {ID: "1", Text: "Phase 1: 探索", Status: "in_progress"},
+                {ID: "2", Text: "Phase 2: 設計", Status: "pending"},
+                {ID: "3", Text: "Phase 3: 執行", Status: "pending"},
         }, "plan")
 
         log.Printf("[PlanMode] 進入 Plan Mode, Phase=1(探索), 任務: %.80s", taskDesc)
@@ -222,8 +205,10 @@ func postExitPlanMode(content string) {
                 session.AddToHistory("system", planSystemMsg)
                 log.Printf("[PlanMode] 計劃已注入會話歷史（%d 字符）", len(content))
         }
-        // 清理 Plan todos
+        // 清理所有 Plan Mode 相關 todos，防止洩漏
         _ = TODO.Clear("plan")
+        _ = TODO.Clear("phase1")
+        _ = TODO.Clear("phase2")
 }
 
 // ExitPlanMode 退出 Plan Mode，返回計劃文件內容
@@ -248,8 +233,8 @@ func AdvancePhase() (string, string, error) {
 
         currentPhase := globalPlanMode.Phase
 
-        // Phase 5 是終態，由程序自動處理退出
-        if currentPhase >= PlanPhaseExit {
+        // Phase 3 是終態，由程序自動處理退出
+        if currentPhase >= PlanPhaseExecute {
                 globalPlanMode.mu.Unlock()
                 return "", "", fmt.Errorf("已是最終階段，無法繼續推進")
         }
@@ -266,8 +251,8 @@ func AdvancePhase() (string, string, error) {
 
         log.Printf("[PlanMode] Phase 轉換: %s → %s", oldInfo.Name, newInfo.Name)
 
-        // Phase 5 自動退出（使用內部鎖安全方法，避免 unlock/re-lock 競態）
-        if nextPhase == PlanPhaseExit {
+        // Phase 3 自動退出（使用內部鎖安全方法，避免 unlock/re-lock 競態）
+        if nextPhase == PlanPhaseExecute {
                 content := exitPlanModeLocked()
                 globalPlanMode.mu.Unlock()
                 // 退出後處理（不需持有鎖）
@@ -289,11 +274,45 @@ func AdvancePhase() (string, string, error) {
         return newInfo.Name, msg, nil
 }
 
+// PrevPhase 回溯到上一 Phase（僅 Phase 2 → Phase 1）
+// 返回 (newPhaseName, transitionMessage, error)
+func PrevPhase() (string, string, error) {
+        globalPlanMode.mu.Lock()
+        defer globalPlanMode.mu.Unlock()
+
+        // 僅在 Phase 2 可用
+        if globalPlanMode.Phase != PlanPhaseDesign {
+                return "", "", fmt.Errorf("prev_phase 僅在 Phase 2（設計）可用，當前階段不能回溯")
+        }
+
+        // 檢查回溯次數上限
+        if globalPlanMode.DowngradeCount >= maxDowngrades {
+                return "", "", fmt.Errorf("已達最大回溯次數（%d 次）。請基於現有探索結果繼續設計。", maxDowngrades)
+        }
+
+        // 回溯到 Phase 1
+        globalPlanMode.Phase = PlanPhaseExplore
+        globalPlanMode.PhaseStart = time.Now()
+        globalPlanMode.DowngradeCount++
+
+        remaining := maxDowngrades - globalPlanMode.DowngradeCount
+
+        // 更新整體 Plan todos
+        updatePlanTodos(int(PlanPhaseExplore))
+
+        log.Printf("[PlanMode] Phase 回溯: Phase 2 → Phase 1（剩餘回溯次數：%d）", remaining)
+
+        msg := fmt.Sprintf("已回溯到 %s\n\n需要進一步探索專案文件以補充設計所需信息。使用只讀工具繼續探索。\n\n剩餘回溯次數：%d/%d",
+                phaseMetadata[PlanPhaseExplore].Name, remaining, maxDowngrades)
+
+        return phaseMetadata[PlanPhaseExplore].Name, msg, nil
+}
+
 // updatePlanTodos 更新整體 Plan 進度 todos
 // 需要在已持有 globalPlanMode.mu 時調用
 func updatePlanTodos(completedPhase int) {
-        items := make([]TodoItem, 5)
-        for i := 1; i <= 5; i++ {
+        items := make([]TodoItem, 3)
+        for i := 1; i <= 3; i++ {
                 status := "pending"
                 if i < completedPhase {
                         status = "completed"
@@ -308,11 +327,9 @@ func updatePlanTodos(completedPhase int) {
 
 func getPhaseTodoText(phase int) string {
         names := map[int]string{
-                1: "Phase 1: 初始理解（探索）",
-                2: "Phase 2: 方案設計",
-                3: "Phase 3: 審查驗證",
-                4: "Phase 4: 編寫最終計劃",
-                5: "Phase 5: 退出",
+                1: "Phase 1: 探索",
+                2: "Phase 2: 設計",
+                3: "Phase 3: 執行",
         }
         if name, ok := names[phase]; ok {
                 return name
@@ -335,6 +352,16 @@ func (pm *PlanMode) IsToolAllowedInPlanMode(toolName string) bool {
 
         // next_phase 始終可用（用於推進階段）
         if toolName == "next_phase" {
+                return true
+        }
+
+        // exit_plan_mode 始終可用（用於手動退出 Plan Mode）
+        if toolName == "exit_plan_mode" {
+                return true
+        }
+
+        // prev_phase 僅在 Phase 2 可用
+        if toolName == "prev_phase" && pm.Phase == PlanPhaseDesign {
                 return true
         }
 
@@ -382,21 +409,17 @@ func GetToolsForCurrentPhase() []map[string]interface{} {
         // 根據 Phase 注入對應的動態工具
         switch phase {
         case PlanPhaseExplore:
-                // Phase 1: 只讀 + spawn + todos（靜態工具已由 tier 過濾提供 read/search）
+                // Phase 1: 只讀 + spawn + todos
                 tools = append(tools, spawnToolDefs()...)
                 tools = append(tools, todosToolDef("phase1", "管理 Phase 1 探索子任務"))
         case PlanPhaseDesign:
+                // Phase 2: next_phase + prev_phase + plan_write/read + spawn + todos
+                tools = append(tools, prevPhaseToolDef())
                 tools = append(tools, planWriteToolDef(), planReadToolDef())
                 tools = append(tools, spawnToolDefs()...)
                 tools = append(tools, todosToolDef("phase2", "管理 Phase 2 設計子任務"))
-        case PlanPhaseReview:
-                tools = append(tools, planReadToolDef())
-                tools = append(tools, todosToolDef("phase3", "管理 Phase 3 審查子任務"))
-        case PlanPhasePlan:
-                tools = append(tools, planWriteToolDef(), planReadToolDef())
-                tools = append(tools, todosToolDef("phase4", "管理 Phase 4 計劃子任務"))
-        case PlanPhaseExit:
-                // Phase 5: 僅 next_phase（自動退出），不額外注入
+        case PlanPhaseExecute:
+                // Phase 3: 僅 next_phase（自動退出），不額外注入
         }
 
         // 附加任務上下文到 next_phase 的描述中
@@ -420,6 +443,7 @@ func GetPlanModeSystemPrompt() string {
         phase := globalPlanMode.Phase
         taskDesc := globalPlanMode.TaskDesc
         phaseStart := globalPlanMode.PhaseStart
+        downgradeCount := globalPlanMode.DowngradeCount
         globalPlanMode.mu.RUnlock()
 
         if phase == PlanPhaseInactive {
@@ -444,7 +468,7 @@ func GetPlanModeSystemPrompt() string {
 
         // 整體進度
         sb.WriteString("整體進度：\n")
-        for p := PlanPhaseExplore; p <= PlanPhaseExit; p++ {
+        for p := PlanPhaseExplore; p <= PlanPhaseExecute; p++ {
                 metadata := phaseMetadata[p]
                 if p < phase {
                         sb.WriteString(fmt.Sprintf("  [x] %s\n", metadata.Name))
@@ -456,18 +480,19 @@ func GetPlanModeSystemPrompt() string {
         }
         sb.WriteString("\n")
 
+        // 回溯狀態（僅在 Phase 2 顯示）
+        if phase == PlanPhaseDesign {
+                sb.WriteString(fmt.Sprintf("回溯狀態：已用 %d/%d 次\n\n", downgradeCount, maxDowngrades))
+        }
+
         // 當前階段指引
         switch phase {
         case PlanPhaseExplore:
                 sb.WriteString(explorePhasePrompt())
         case PlanPhaseDesign:
                 sb.WriteString(designPhasePrompt())
-        case PlanPhaseReview:
-                sb.WriteString(reviewPhasePrompt())
-        case PlanPhasePlan:
-                sb.WriteString(planPhasePrompt())
-        case PlanPhaseExit:
-                sb.WriteString(exitPhasePrompt())
+        case PlanPhaseExecute:
+                sb.WriteString(executePhasePrompt())
         }
 
         // 通用提醒
@@ -477,7 +502,7 @@ func GetPlanModeSystemPrompt() string {
 }
 
 func explorePhasePrompt() string {
-        return `## Phase 1: 初始理解（探索）
+        return `## Phase 1: 探索
 
 目標：充分理解任務涉及的文件結構和依賴關係。
 
@@ -497,54 +522,17 @@ func explorePhasePrompt() string {
 }
 
 func designPhasePrompt() string {
-        return `## Phase 2: 方案設計
+        return `## Phase 2: 設計
 
-目標：基於 Phase 1 的探索結果，設計具體的實現方案。
+目標：基於 Phase 1 的探索結果，設計實現方案並編寫最終計劃。
 
 操作指引：
-1. 綜合 Phase 1 的發現，設計實現方案
-2. 使用 plan_write 草擬計劃（可多次修改）
+1. 綜合探索發現，設計實現方案
+2. 使用 plan_write 草擬計劃 — 可多次修改迭代
 3. 使用 plan_read 查看已寫的計劃
-4. 使用 todos 工具管理設計子任務
-
-方案要點：
-- 修改步驟的先後順序（考慮依賴）
-- 每步修改涉及的具體文件和位置
-- 邊界情況和錯誤處理
-
-完成設計後，調用 next_phase 進入審查階段。`
-}
-
-func reviewPhasePrompt() string {
-        return `## Phase 3: 審查驗證
-
-目標：驗證方案的可行性，確認沒有遺漏。
-
-操作指引：
-1. 使用 plan_read 查看已草擬的計劃
-2. 重新閱讀關鍵文件，確認方案中的假設
-3. 使用 todos 工具管理審查子任務
-
-審查要點：
-- 計劃中提到的文件路徑是否正確？
-- 修改步驟是否有遺漏？
-- 是否有潛在的衝突或副作用？
-- 邊界情況是否已考慮？
-
-此階段計劃文件為只讀，如需修正請在 Phase 4 進行。
-
-完成審查後，調用 next_phase 進入最終計劃階段。`
-}
-
-func planPhasePrompt() string {
-        return `## Phase 4: 編寫最終計劃
-
-目標：編寫正式的實施計劃文件，包含所有必要的上下文和步驟。
-
-操作指引：
-1. 使用 plan_write 編寫最終計劃（覆蓋草稿）
-2. 使用 plan_read 確認內容正確
-3. 使用 todos 工具管理計劃子任務
+4. 重新審查關鍵文件，驗證方案可行性
+5. 確認無誤後，編寫最終計劃（覆蓋草稿）
+6. 使用 todos 工具管理設計子任務
 
 計劃格式（必須包含）：
   ## Context（上下文）
@@ -556,11 +544,13 @@ func planPhasePrompt() string {
   ## Verification（驗證方式）
   如何驗證修改正確性
 
-完成後，調用 next_phase 退出 Plan Mode 並開始執行。`
+如有遺漏信息，可使用 prev_phase 回溯到 Phase 1 繼續探索。
+
+完成設計後，調用 next_phase 退出 Plan Mode 並開始執行。`
 }
 
-func exitPhasePrompt() string {
-        return `## Phase 5: 退出
+func executePhasePrompt() string {
+        return `## Phase 3: 執行
 
 系統正在處理退出...
 調用 next_phase 完成退出。退出後：
@@ -634,11 +624,8 @@ func handlePlanWrite(args map[string]interface{}) string {
         if phase == PlanPhaseInactive {
                 return "錯誤：Plan Mode 未激活。"
         }
-        if phase == PlanPhaseReview {
-                return "錯誤：Phase 3（審查驗證）中不能修改計劃文件。請在 Phase 4 修改。"
-        }
-        if phase != PlanPhaseDesign && phase != PlanPhasePlan {
-                return "錯誤：當前階段不能寫入計劃文件。"
+        if phase != PlanPhaseDesign {
+                return "錯誤：plan_write 僅在 Phase 2（設計）可用。當前階段不能寫入計劃文件。"
         }
 
         if planPath == "" {
@@ -674,7 +661,7 @@ func handlePlanRead(args map[string]interface{}) string {
         data, err := os.ReadFile(planPath)
         if err != nil {
                 if os.IsNotExist(err) {
-                        return "計劃文件尚未創建。在 Phase 2 或 Phase 4 使用 plan_write 編寫計劃。"
+                        return "計劃文件尚未創建。在 Phase 2 使用 plan_write 編寫計劃。"
                 }
                 return fmt.Sprintf("錯誤：無法讀取計劃文件: %v", err)
         }
@@ -702,12 +689,28 @@ func nextPhaseToolDef() map[string]interface{} {
         }
 }
 
+func prevPhaseToolDef() map[string]interface{} {
+        return map[string]interface{}{
+                "type": "function",
+                "function": map[string]interface{}{
+                        "name":        "prev_phase",
+                        "description": "回溯到上一階段（僅 Phase 2→Phase 1）。當設計過程中發現需要更多探索時使用。最多回溯 2 次。",
+                        "parameters": map[string]interface{}{
+                                "type":                "object",
+                                "properties":           map[string]interface{}{},
+                                "required":             []string{},
+                                "additionalProperties": false,
+                        },
+                },
+        }
+}
+
 func planWriteToolDef() map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
                         "name":        "plan_write",
-                        "description": "將計劃內容寫入計劃文件。Phase 2（草擬）和 Phase 4（最終計劃）可用。",
+                        "description": "將計劃內容寫入計劃文件。僅在 Phase 2（設計）可用。",
                         "parameters": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
@@ -894,7 +897,7 @@ func GetPlanStatus() string {
 
         // 進度條
         sb.WriteString("進度：\n")
-        for p := PlanPhaseExplore; p <= PlanPhaseExit; p++ {
+        for p := PlanPhaseExplore; p <= PlanPhaseExecute; p++ {
                 metadata := phaseMetadata[p]
                 if p < globalPlanMode.Phase {
                         sb.WriteString(fmt.Sprintf("  [x] %s\n", metadata.Name))
@@ -909,6 +912,11 @@ func GetPlanStatus() string {
                 sb.WriteString(fmt.Sprintf("\n任務：%s", globalPlanMode.TaskDesc))
         }
 
+        // 回溯狀態
+        if globalPlanMode.Phase == PlanPhaseDesign {
+                sb.WriteString(fmt.Sprintf("\n回溯：%d/%d", globalPlanMode.DowngradeCount, maxDowngrades))
+        }
+
         // Plan todos
         if planTodos := TODO.Render("plan"); planTodos != "" {
                 sb.WriteString(fmt.Sprintf("\n\n%s", planTodos))
@@ -919,7 +927,7 @@ func GetPlanStatus() string {
 
 // init 初始化日誌
 func init() {
-        log.Printf("[PlanMode] 結構化任務分解系統已初始化（5 Phase 狀態機）")
+        log.Printf("[PlanMode] 結構化任務分解系統已初始化（3 Phase 狀態機 + 可回溯）")
 }
 
 // SortedPhaseReadTools 返回排序後的只讀工具列表（用於調試）

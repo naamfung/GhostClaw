@@ -575,17 +575,9 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
         case "enter_plan_mode":
-                // enter_plan_mode 仍然作為靜態 Core 工具存在
-                // 但如果在 Plan Mode 中被調用，給出明確指引防止重複調用死循環
-                if globalPlanMode.IsActive() {
-                        currentPhase := globalPlanMode.PhaseName()
-                        content := fmt.Sprintf("你已經在 Plan Mode 中（%s），無需再次調用 enter_plan_mode。\n\n請根據當前階段使用可用工具：\n- Phase 1: 使用 read_file_line, read_file_range, read_all_lines, text_search, text_grep, spawn\n- Phase 2/4: 使用 plan_write, plan_read\n- 任何階段: 調用 next_phase 推進\n- 需要退出: 使用 exit_plan_mode", currentPhase)
-                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
-                        return EnrichedMessage{
-                                Content: content,
-                                Meta:    MessageMeta{Status: TaskStatusFailed},
-                        }
-                }
+                // enter_plan_mode 仍然作為靜態 Core 工具存在。
+                // 當 Plan Mode 已激活時，權限閘（line 540）已攔截並返回友好提示，
+                // 此處僅在 Plan Mode 未激活時才會到達。
                 taskDesc, _ := argsMap["task"].(string)
                 errMsg := EnterPlanMode(taskDesc)
                 if errMsg != "" {
@@ -596,14 +588,15 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
-                content := "已進入 Plan Mode Phase 1（初始理解）。使用只讀工具探索專案文件，善用 spawn 並行探索。完成后調用 next_phase。"
+                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。使用只讀工具探索專案文件，善用 spawn 並行探索。完成后調用 next_phase。"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
         case "exit_plan_mode":
-                // 舊接口兼容：等同於 /plan off（強制退出，跳過剩餘階段）
+                // exit_plan_mode 由 IsToolAllowedInPlanMode 顯式放行（plan_mode.go），
+                // 因此 Plan Mode 激活時仍可到達此 handler。
                 if !globalPlanMode.IsActive() {
                         content := "Plan Mode 當前未激活。"
                         emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)

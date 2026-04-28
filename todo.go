@@ -188,8 +188,6 @@ var planRelatedListIDs = map[string]bool{
         "plan":   true,
         "phase1": true,
         "phase2": true,
-        "phase3": true,
-        "phase4": true,
 }
 
 // HasUnfinishedItems 檢查是否有未完成的非計劃項目（pending 或 in_progress）
@@ -250,6 +248,24 @@ func (tm *TodoManager) GetUnfinishedSummary() string {
                 return ""
         }
         return strings.Join(unfinished, "\n")
+}
+
+// IsEmpty 檢查非 Plan Mode 列表是否有任何項目
+// 排除 Plan Mode 的列表（plan, phase1-2），只檢查用戶自己創建的 todo 列表
+// 用於 todos 使用提醒守衛：如果用戶從未使用過 todos，則為 true
+func (tm *TodoManager) IsEmpty() bool {
+        tm.mu.RLock()
+        defer tm.mu.RUnlock()
+
+        for id, list := range tm.lists {
+                if planRelatedListIDs[id] {
+                        continue
+                }
+                if len(list.Items) > 0 {
+                        return false
+                }
+        }
+        return true
 }
 
 // ClearAll 清空所有列表

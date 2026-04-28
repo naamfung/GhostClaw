@@ -32,7 +32,7 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         browserNoSandbox: true,
         browserDisableTools: false,
         // workflow settings
-        planModeEnabled: false
+        planModeEnabled: true
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -78,7 +78,7 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         timeoutBrowser: '浏览器每次操作的超时时间（秒）。每次页面访问/搜索/下载的等待上限。',
         // Workflow settings
         planModeEnabled:
-                '啟用規劃模式（Plan Mode）。啟用後模型可使用 5 階段結構化任務分解工作流（探索→設計→審查→計劃→退出）。關閉時僅使用待辦事項（todos）控制工作進度。'
+                '啟用規劃模式（Plan Mode）。啟用後模型可使用 3 階段結構化任務分解工作流（探索→設計→執行），Phase 2 支援回溯。關閉時僅使用待辦事項（todos）控制工作進度。'
 };
 
 export const SETTINGS_COLOR_MODES_CONFIG = [

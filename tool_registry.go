@@ -1213,7 +1213,7 @@ Example commands:
 
         reg("todos",
                 "管理待办事项列表（CRUD）。传入 todos 数组可批量创建/更新/删除任务。每个任务需包含 id、content、status。",
-                "schedule", "extended",
+                "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2072,7 +2072,7 @@ Example commands:
 
         // ========== Plan Mode 工具 ==========
         reg("enter_plan_mode",
-                "進入 Plan Mode（結構化任務分解模式）。系統將啟動 5 階段工作流：探索→設計→審查→計劃→退出。每階段有獨立的工具集和 todos 列表。Phase 間需調用 next_phase 推進。",
+                "進入 Plan Mode（結構化任務分解模式）。系統將啟動 3 階段工作流：探索→設計→執行。每階段有獨立的工具集和 todos 列表。Phase 間需調用 next_phase 推進，Phase 2 可使用 prev_phase 回溯。",
                 "plan", "core",
                 map[string]interface{}{
                         "type": "object",

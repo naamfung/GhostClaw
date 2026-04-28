@@ -364,8 +364,8 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 //
 // 保留的工具：read_file_line, read_file_range, read_all_lines, text_search, text_grep,
 //
-//      memory_recall, memory_list, plugin_list, skill_list, cron_list, ssh_list,
-//      profile_check, menu, exit_plan_mode, 以及各 Phase 的動態工具
+//      memory_recall, memory_list, 以及各 Phase 的動態工具
+//      exit_plan_mode 由 IsToolAllowedInPlanMode 顯式放行
 func getBlockedToolsForPlanPhase(phase PlanPhase) map[string]bool {
         blocked := make(map[string]bool)
 
