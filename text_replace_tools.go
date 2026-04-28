@@ -207,8 +207,13 @@ func executeTextReplace(opts TextReplaceOptions) TextReplaceResult {
                 inputText = opts.Text
         }
 
-        // 分割为行
+        // 分割為行，保留尾隨換行符資訊
+        hasTrailingNewline := strings.HasSuffix(inputText, "\n") && inputText != ""
         lines := strings.Split(inputText, "\n")
+        // 移除 strings.Split 在尾隨換行符後產生的空元素
+        if hasTrailingNewline && len(lines) > 0 && lines[len(lines)-1] == "" {
+                lines = lines[:len(lines)-1]
+        }
         result.TotalLines = len(lines)
 
         // 编译正则表达式（如果需要）
@@ -366,8 +371,11 @@ func executeTextReplace(opts TextReplaceOptions) TextReplaceResult {
                 outputLines = append(outputLines, newLine)
         }
 
-        // 构建输出
+        // 构建输出（保留原始尾隨換行符）
         result.Output = strings.Join(outputLines, "\n")
+        if hasTrailingNewline {
+                result.Output += "\n"
+        }
 
         // 写入文件（如果需要）
         if !opts.DryRun {
@@ -469,9 +477,14 @@ func replaceInLine(line string, opts TextReplaceOptions, patternRegex *regexp.Re
 }
 
 // replaceAllCaseInsensitive 大小写不敏感的全局替换
+// maxReplace: 最大替換次數，-1 表示無限制（上限 10000 次防止無限循環）
 func replaceAllCaseInsensitive(line, pattern, replacement string, maxReplace int) (string, int) {
         result := line
         count := 0
+
+        // 安全守衛：如果 replacement 自身包含 pattern（大小寫不敏感），
+        // 每次替換後仍能匹配，導致無限循環。設定硬上限 10000 次。
+        const hardLimit = 10000
 
         lowerLine := strings.ToLower(line)
         lowerPattern := strings.ToLower(pattern)
@@ -484,6 +497,9 @@ func replaceAllCaseInsensitive(line, pattern, replacement string, maxReplace int
                 }
 
                 if maxReplace > 0 && count >= maxReplace {
+                        break
+                }
+                if count >= hardLimit {
                         break
                 }
 
@@ -643,7 +659,7 @@ func handleTextTransform(ctx context.Context, argsMap map[string]interface{}, ch
                         start = startLine - 1
                 }
                 end := len(lines)
-                if endLine > 0 && endLine < len(lines) {
+                if endLine > 0 && endLine <= len(lines) {
                         end = endLine
                 }
                 if start < len(lines) {

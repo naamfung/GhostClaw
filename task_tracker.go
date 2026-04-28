@@ -24,7 +24,6 @@ type TaskIntent int
 const (
         IntentChat  TaskIntent = 0 // 閒聊/問答（Free Mode，無退出守衛）
         IntentTask  TaskIntent = 1 // 結構化任務（Work Mode，todo 驅動退出守衛）
-        IntentOther TaskIntent = 2 // 其他（命令、模糊意圖）
 )
 
 // TaskState 任務狀態追蹤
@@ -80,16 +79,14 @@ func NewTaskTracker() *TaskTracker {
 }
 
 // StartNewTask 開始新任務
-func (tt *TaskTracker) StartNewTask(query string) {
+// intent 由調用方通過 LLM 分類（ClassifyUserIntent）確定
+func (tt *TaskTracker) StartNewTask(query string, intent TaskIntent) {
         tt.mu.Lock()
         defer tt.mu.Unlock()
 
-        complexity := tt.estimateComplexity(query)
-        intent := tt.classifyIntent(query, complexity)
-
         tt.currentTask = &TaskState{
                 InitialQuery:     query,
-                Complexity:       complexity,
+                Complexity:       ComplexityModerate, // TASK 一律以工作模式處理
                 Intent:           intent,
                 StartTime:        time.Now(),
                 ToolCallsByType:  make(map[string]int),
@@ -98,108 +95,14 @@ func (tt *TaskTracker) StartNewTask(query string) {
         }
 }
 
-// estimateComplexity 評估任務複雜度
-func (tt *TaskTracker) estimateComplexity(query string) TaskComplexity {
-        queryLower := strings.ToLower(query)
-
-        // 簡單任務特徵
-        simplePatterns := []string{
-                "what is", "what's", "tell me", "explain", "define",
-                "是什麼", "什麼是", "解釋", "說明", "介紹一下",
-                "help", "how to", "怎麼", "如何",
-        }
-        for _, p := range simplePatterns {
-                if strings.Contains(queryLower, p) {
-                        return ComplexitySimple
-                }
-        }
-
-        // 複雜任務特徵
-        complexPatterns := []string{
-                "create", "build", "implement", "develop", "write a",
-                "refactor", "migrate", "integrate", "set up", "configure",
-                "創建", "實現", "開發", "編寫", "構建",
-                "重構", "遷移", "集成", "配置",
-                "and then", "after that", "step by step", "multiple",
-                "然後", "接著", "步驟", "多個",
-        }
-        for _, p := range complexPatterns {
-                if strings.Contains(queryLower, p) {
-                        return ComplexityComplex
-                }
-        }
-
-        // 檢查是否有多個任務
-        taskSeparators := []string{" and ", " also ", " then ", " after ", "、", "，還有", "並且"}
-        for _, sep := range taskSeparators {
-                if strings.Count(queryLower, sep) >= 2 {
-                        return ComplexityComplex
-                }
-        }
-
-        return ComplexityModerate
-}
-
-// classifyIntent 分類用戶意圖（task vs chat vs other）
-// task 意圖會觸發工作模式：系統提示模型使用 todos，退出守衛基於 todo 狀態
-func (tt *TaskTracker) classifyIntent(query string, complexity TaskComplexity) TaskIntent {
-        queryLower := strings.ToLower(query)
-
-        // === Task 模式特徵（高優先級） ===
-        taskPatterns := []string{
-                // 英文任務動詞
-                "create", "build", "implement", "develop", "write a",
-                "refactor", "migrate", "integrate", "set up", "configure",
-                "fix", "debug", "modify", "update", "deploy", "install",
-                "rename", "delete", "remove", "generate", "convert",
-                // 中文任務動詞
-                "創建", "實現", "開發", "編寫", "構建",
-                "重構", "遷移", "集成", "配置", "修復",
-                "修改", "更新", "部署", "安裝",
-                "重命名", "刪除", "生成", "轉換",
-                "幫我", "請", "做一個", "寫一個", "建一個",
-                // 多步驟標誌
-                "and then", "after that", "step by step", "multiple",
-                "然後", "接著", "步驟", "多個", "分步",
-        }
-        for _, p := range taskPatterns {
-                if strings.Contains(queryLower, p) {
-                        return IntentTask
-                }
-        }
-
-        // === Chat 模式特徵 ===
-        chatPatterns := []string{
-                "what is", "what's", "tell me", "explain", "define",
-                "是什麼", "什麼是", "解釋", "說明", "介紹一下",
-                "你好", "嗨", "hello", "hi", "hey",
-                "謝謝", "感謝", "thanks", "thank you",
-                "你是誰", "how are", "how do",
-        }
-        for _, p := range chatPatterns {
-                if strings.Contains(queryLower, p) {
-                        return IntentChat
-                }
-        }
-
-        // === 默認：根據複雜度判斷 ===
-        if complexity >= ComplexityModerate {
-                return IntentTask
-        }
-        return IntentOther
-}
-
 // IsWorkMode 是否處於工作模式
-// 工作模式 = 意圖為 task 且複雜度 >= moderate
+// 工作模式 = 意圖為 TASK（由 LLM 二元分類判定）
 // 觸發系統提示注入 + AgentLoop 退出守衛
 func (tt *TaskTracker) IsWorkMode() bool {
         tt.mu.RLock()
         defer tt.mu.RUnlock()
 
-        if tt.currentTask == nil {
-                return false
-        }
-        return tt.currentTask.Intent == IntentTask && tt.currentTask.Complexity >= ComplexityModerate
+        return tt.currentTask != nil && tt.currentTask.Intent == IntentTask
 }
 
 // RecordToolCall 記錄工具調用
@@ -254,55 +157,50 @@ func (tt *TaskTracker) RecordToolCall(toolName string, status TaskStatus, inputS
         tt.detectStuckState()
 }
 
-// detectStuckState 檢測卡住狀態
+// detectStuckState 檢測卡住狀態（累積式：記錄所有觸發條件，而非僅第一條）
 func (tt *TaskTracker) detectStuckState() {
         task := tt.currentTask
         if task == nil {
                 return
         }
 
+        var reasons []string
+
         // 條件1：連續失敗次數過多
         if task.ConsecutiveFails >= 3 {
-                task.IsStuck = true
-                task.StuckReason = fmt.Sprintf("Consecutive failures (%d times) on tool: %s",
-                        task.ConsecutiveFails, task.LastFailedTool)
-                task.NeedsIntervention = true
-                return
+                reasons = append(reasons, fmt.Sprintf("Consecutive failures (%d times) on tool: %s",
+                        task.ConsecutiveFails, task.LastFailedTool))
         }
 
         // 條件2：同一工具重複失敗過多
         for tool, count := range task.RepeatedFailures {
                 if count >= 3 {
-                        task.IsStuck = true
-                        task.StuckReason = fmt.Sprintf("Tool '%s' failed %d times", tool, count)
-                        task.NeedsIntervention = true
-                        return
+                        reasons = append(reasons, fmt.Sprintf("Tool '%s' failed %d times", tool, count))
+                        break // 只報告第一個達標的工具，避免過長
                 }
         }
 
-        // 條件3：長時間無成功但有大量調用
-        if !task.LastSuccessTime.IsZero() {
-                timeSinceSuccess := time.Since(task.LastSuccessTime)
-                totalCalls := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
-                if timeSinceSuccess > 2*time.Minute && totalCalls > 10 && task.FailedSteps > task.CompletedSteps {
-                        task.IsStuck = true
-                        task.StuckReason = "High failure rate over extended period"
-                        task.NeedsIntervention = true
-                        return
-                }
+        // 條件3：長時間無成功（包括從未成功）但有大量調用
+        totalCalls := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
+        timeSinceSuccess := time.Since(task.LastSuccessTime)
+        if timeSinceSuccess > 2*time.Minute && totalCalls > 10 && task.FailedSteps > task.CompletedSteps {
+                reasons = append(reasons, "High failure rate over extended period")
         }
 
         // 條件4：總步驟數過多（可能是無限循環）
         totalSteps := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
         if totalSteps > 30 {
-                task.IsStuck = true
-                task.StuckReason = "Too many steps, possible infinite loop"
-                task.NeedsIntervention = true
-                return
+                reasons = append(reasons, "Too many steps, possible infinite loop")
         }
 
-        task.IsStuck = false
-        task.NeedsIntervention = false
+        if len(reasons) > 0 {
+                task.IsStuck = true
+                task.StuckReason = strings.Join(reasons, "; ")
+                task.NeedsIntervention = true
+        } else {
+                task.IsStuck = false
+                task.NeedsIntervention = false
+        }
 }
 
 // MarkCompleted 標記任務完成
@@ -339,22 +237,10 @@ func (tt *TaskTracker) ShouldPromptTodo() (bool, string) {
                 )
         }
 
-        // 複雜任務：根據已完成步驟數決定
+        // 工作模式下每 8 步提示更新 todo
         totalSteps := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
-
-        if task.Complexity == ComplexityComplex {
-                // 複雜任務每5步檢查一次
-                if totalSteps > 0 && totalSteps%5 == 0 && task.CompletedSteps > 0 {
-                        return true, fmt.Sprintf(
-                                "[PROGRESS_CHECK]Completed %d steps, %d failed. Please update your todo list and assess if the approach is working.[/PROGRESS_CHECK]",
-                                task.CompletedSteps, task.FailedSteps,
-                        )
-                }
-        } else {
-                // 中等任務每8步檢查一次
-                if totalSteps > 0 && totalSteps%8 == 0 && task.CompletedSteps > 0 {
-                        return true, "[PROGRESS_CHECK]Please update your todo list if needed.[/PROGRESS_CHECK]"
-                }
+        if totalSteps > 0 && totalSteps%8 == 0 && task.CompletedSteps > 0 {
+                return true, "[PROGRESS_CHECK]Please update your todo list if needed.[/PROGRESS_CHECK]"
         }
 
         return false, ""
