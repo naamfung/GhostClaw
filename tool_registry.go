@@ -302,7 +302,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         // ========== 基础浏览器工具 ==========
-        reg("browser_search", `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
+        reg("web_search", `Search the web using Baidu for a keyword. Returns a list of search results with titles, links, and snippets.
 
 ⚠️ PRIORITY NOTICE: If OpenCLI is available on the system, prefer using OpenCLI commands via the 'shell' tool instead of this built-in browser tool.
 OpenCLI provides better session persistence and more reliable web automation.

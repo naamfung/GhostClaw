@@ -218,7 +218,7 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
         for _, tool := range toolList {
                 name := getToolName(tool)
                 // 检查是否需要禁用（短路求值：先检查 disabledTools map，O(1)）
-                shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_") && name != "browser_search")
+                shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_"))
                 if !shouldDisable {
                         filtered = append(filtered, tool)
                 }

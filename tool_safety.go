@@ -313,7 +313,7 @@ var allKnownToolNames = []string{
         // 文本处理
         "text_search", "text_grep", "text_replace", "text_transform",
         // 浏览器
-        "browser_visit", "browser_search", "browser_download", "browser_click",
+        "browser_visit", "web_search", "browser_download", "browser_click",
         "browser_type", "browser_scroll", "browser_screenshot", "browser_execute_js",
         "browser_fill_form", "browser_hover", "browser_double_click", "browser_navigate",
         "browser_wait_element", "browser_wait_smart",

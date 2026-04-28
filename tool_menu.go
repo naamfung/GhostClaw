@@ -217,7 +217,7 @@ func GetMenuToolDefinition() map[string]interface{} {
 - menu() → 查看有哪些分类
 - menu(action="show", target="web") → 查看 web 分类下有哪些工具
 - menu(action="load", target="web") → 加载整个 web 分类
-- menu(action="load", target="browser_search") → 仅加载单个工具`,
+- menu(action="load", target="web_search") → 仅加载单个工具`,
                         "parameters": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
@@ -228,7 +228,7 @@ func GetMenuToolDefinition() map[string]interface{} {
                                         },
                                         "target": map[string]interface{}{
                                                 "type":        "string",
-                                                "description": "分类名或工具名（show/load/unload 时使用）。例如 'web', 'file', 'browser_search'。",
+                                                "description": "分类名或工具名（show/load/unload 时使用）。例如 'web', 'file', 'web_search'。",
                                         },
                                 },
                                 "required":             []string{},
@@ -254,7 +254,7 @@ func GetMenuToolDefinitionAnthropic() map[string]interface{} {
 - menu() → 查看有哪些分类
 - menu(action="show", target="web") → 查看 web 分类下有哪些工具
 - menu(action="load", target="web") → 加载整个 web 分类
-- menu(action="load", target="browser_search") → 仅加载单个工具`,
+- menu(action="load", target="web_search") → 仅加载单个工具`,
                 "input_schema": map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -265,7 +265,7 @@ func GetMenuToolDefinitionAnthropic() map[string]interface{} {
                                 },
                                 "target": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "分类名或工具名（show/load/unload 时使用）。例如 'web', 'file', 'browser_search'。",
+                                        "description": "分类名或工具名（show/load/unload 时使用）。例如 'web', 'file', 'web_search'。",
                                 },
                         },
                         "required":             []string{},
