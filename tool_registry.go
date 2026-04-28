@@ -1619,14 +1619,14 @@ Example commands:
 
         // ========== 文本搜索工具 ==========
         reg("text_search",
-                "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。未指定 root_dir 时自动从当前工作目录开始级联向上搜索（CWD → 父目录 → ... → /）。",
+                "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。未指定 root_dir 时自动从当前工作目录开始级联向上搜索（CWD → 父目录 → ... → /）。搜索中文时请务必使用正则交替匹配简繁变体，如：'中文|華文'、'华语|華語'、'汉语|漢語'、'汉字|漢字'、'软件|軟體|軟件'、'网络|網路'等，以提升命中率。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
                                 "keyword": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "搜索关键词或正则表达式模式",
+                                        "description": "搜索关键词或正则表达式模式。搜索中文时请使用正则交替匹配简繁变体，如 '中文|華文'、'软件|軟體' 等",
                                 },
                                 "root_dir": map[string]interface{}{
                                         "type":        "string",
@@ -1673,7 +1673,7 @@ Example commands:
                                 },
                                 "pattern": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "搜索模式（字符串或正则表达式）",
+                                        "description": "搜索模式（字符串或正则表达式）。搜索中文时建议使用正则交替匹配简繁变体，如 '中文|華文'",
                                 },
                                 "replacement": map[string]interface{}{
                                         "type":        "string",
@@ -1742,7 +1742,7 @@ Example commands:
 
         // ========== 文本搜索工具（行内搜索）==========
         reg("text_grep",
-                "在指定文件中搜索匹配的行（类似 grep）。与 text_search 不同：text_grep 需要指定文件路径，text_search 搜索整个目录。",
+                "在指定文件中搜索匹配的行（类似 grep）。与 text_search 不同：text_grep 需要指定文件路径，text_search 搜索整个目录。搜索中文时建议同时匹配简繁变体。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
