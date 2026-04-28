@@ -75,7 +75,7 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
         t.evictIfNeeded()
 
         // 模型正確讀取文件後，重置寫入違規計數
-        globalWriteWithoutReadTracker.Reset()
+        globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
 }
 
 // MarkFilePartialRead 標記文件已被部分讀取（由 read_file_line, text_grep 調用）
@@ -295,18 +295,6 @@ func (e *RepeatedErrorEscalator) ResetKey(category EscalationCategory, errorKey 
 	trackKey := string(category) + ":" + errorKey
 	delete(e.trackers, trackKey)
 }
-
-// writeWithoutReadTracker 保留向後兼容的別名（供 MarkFileFullyRead 調用 Reset）
-// Deprecated: 使用 globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
-type writeWithoutReadTracker struct{}
-
-var globalWriteWithoutReadTracker = &writeWithoutReadTracker{}
-
-// Reset 重置寫入違規計數（向後兼容）
-func (t *writeWithoutReadTracker) Reset() {
-	globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
-}
-
 // ============================================================================
 // 未知工具引导（Unknown Tool Guidance）
 // ============================================================================
