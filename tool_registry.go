@@ -61,8 +61,7 @@ func init() {
 • 其他命令 → 同步执行
 
 可选参数：
-• async: true 强制异步执行
-• sync: true 强制同步执行
+• mode: "async" 强制异步执行，"sync" 强制同步执行，默认自动判断
 • timeout_secs: 异步任务最大执行时间（秒），超时自动终止并唤醒（默认无限制）
 • wake_after_minutes: 异步唤醒时间（默认5分钟）
 
@@ -75,14 +74,11 @@ func init() {
                                         "type":        "string",
                                         "description": "要执行的 shell 命令",
                                 },
-                                "async": map[string]interface{}{
-                                        "type":        "boolean",
-                                        "description": "强制异步执行（可选）",
-                                },
-                                "sync": map[string]interface{}{
-                                        "type":        "boolean",
-                                        "description": "强制同步执行（可选）",
-                                },
+				"mode": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"sync", "async", "auto"},
+					"description": "执行模式：\"sync\" 强制同步，\"async\" 强制异步，\"auto\" 自动判断（默认）",
+				},
                                 "timeout_secs": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "异步任务最大执行时间（秒），超时自动终止并唤醒（可选，默认无限制）",

@@ -57,18 +57,22 @@ func handleSmartShell(ctx context.Context, argsMap map[string]interface{}, ch Ch
                 return "Error: missing or invalid 'command' parameter", false
         }
 
-        forceAsync := false
-        if a, ok := argsMap["async"].(bool); ok {
-                forceAsync = a
-        }
-        forceSync := false
-        if s, ok := argsMap["sync"].(bool); ok {
-                forceSync = s
-        }
-
-        if forceAsync && forceSync {
-                return "Error: cannot specify both async=true and sync=true", false
-        }
+	// mode 参数统一控制执行模式（替代旧的 async/sync 两个互斥 boolean）
+	// "sync": 强制同步执行；"async": 强制异步执行；默认 "" = 自动检测
+	forceAsync := false
+	forceSync := false
+	if mode, ok := argsMap["mode"].(string); ok {
+		switch mode {
+		case "async":
+			forceAsync = true
+		case "sync":
+			forceSync = true
+		case "auto":
+			// 默认行为，不强制覆盖
+		default:
+			return fmt.Sprintf("Error: invalid mode '%s'. Valid values: 'sync', 'async', 'auto'", mode), false
+		}
+	}
 
         wakeAfterMinutes := globalToolsConfig.SmartShell.DefaultWakeMins
         if wakeAfterMinutes <= 0 {
