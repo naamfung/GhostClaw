@@ -493,10 +493,10 @@ func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
 
 // ========== 浏览器工具 handlers ==========
 
-func execWebSearch(ec *ToolExecContext) (string, TaskStatus) {
+func execBrowserSearch(ec *ToolExecContext) (string, TaskStatus) {
         keyword, ok := ec.ArgsMap["keyword"].(string)
         if !ok || keyword == "" {
-                return "Error: Empty keyword in web_search tool call", TaskStatusFailed
+                return "Error: Empty keyword in browser_search tool call", TaskStatusFailed
         }
 
         resultsList, err := Search(ec.Ch.GetSessionID(), keyword)
@@ -2252,7 +2252,7 @@ func init() {
                 "read_file_range":  execReadFileRange,
 
                 // Browser basic tools
-                "web_search":    execWebSearch,
+                "browser_search":    execBrowserSearch,
                 "browser_visit":     execBrowserVisit,
                 "browser_download":  execBrowserDownload,
 

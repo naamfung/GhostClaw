@@ -388,7 +388,7 @@ func GetExtendedToolNames() []string {
 //     browser_snapshot, browser_element_screenshot, browser_pdf, browser_pdf_from_file）
 //   - browser_form_fill: 表单填写（合并 browser_fill_form, browser_select_option,
 //     browser_key_press, browser_upload_file）
-//   - web_search: 搜索引擎查询
+//   - browser_search: 搜索引擎查询（合并 browser_search）
 func GetConsolidatedBrowserTools() []map[string]interface{} {
         return []map[string]interface{}{
                 // --- browser_navigate: 导航与访问 ---
@@ -534,11 +534,11 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                 },
                         },
                 },
-                // --- web_search: 搜索引擎 ---
+                // --- browser_search: 搜索引擎 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "web_search",
+                                "name": "browser_search",
                                 "description": "Search for a keyword using a search engine. Returns search results with titles and links.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -692,9 +692,9 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                 "additionalProperties": false,
                         },
                 },
-                // --- web_search: 搜索引擎 ---
+                // --- browser_search: 搜索引擎 ---
                 {
-                        "name": "web_search",
+                        "name": "browser_search",
                         "description": "Search for a keyword using a search engine. Returns search results with titles and links.",
                         "input_schema": map[string]interface{}{
                                 "type": "object",

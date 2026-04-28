@@ -189,7 +189,7 @@ type distributionConfigFile struct {
 //      {
 //        "distributions": [
 //          {"name": "core", "tool_names": ["shell", "read_file"], "weight": 1.0, "description": "Core tools"},
-//          {"name": "web", "tool_names": ["web_search", "browser_visit"], "weight": 0.5, "description": "Web tools"}
+//          {"name": "web", "tool_names": ["browser_search", "browser_visit"], "weight": 0.5, "description": "Web tools"}
 //        ]
 //      }
 func (tdm *ToolDistributionManager) LoadDistributionConfig(configPath string) error {
