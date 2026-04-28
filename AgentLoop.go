@@ -566,6 +566,30 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
         }
 
+
+		// ========== 即时唤醒通知注入 ==========
+		// 当模型忙碌时，延迟任务（shell_delayed/spawn）的完成/失败通知
+		// 通常只能等到模型空闲才发送。此处检查 InputMessages 队列，
+		// 若有待处理的唤醒通知，立即注入为 user 消息，使模型在下一次
+		// API 调用时即可看到，无需等待当前 AgentLoop 完全结束。
+		if session := GetGlobalSession(); session != nil {
+			session.inputMu.Lock()
+			var remaining []string
+			for _, input := range session.InputMessages {
+				if strings.Contains(input, "任务唤醒通知") {
+					messages = append(messages, Message{
+						Role:      "user",
+						Content:   input,
+						Timestamp: time.Now().Unix(),
+					})
+					log.Printf("[AgentLoop] Injected pending wake notification into conversation (iteration=%d)", iteration)
+				} else {
+					remaining = append(remaining, input)
+				}
+			}
+			session.InputMessages = remaining
+			session.inputMu.Unlock()
+		}
         // ========== 自适应历史消息管理（Pipeline 模式）==========
         modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
         adaptiveMaxHistory := MaxHistoryMessages
