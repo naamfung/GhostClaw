@@ -376,14 +376,24 @@ func shouldExclude(path string, excludeDirs, excludeFiles []string) bool {
 }
 
 // TextSearch 执行文本搜索
+// 当未指定 RootDir 时，采用级联搜索策略：
+// 先从当前工作目录开始搜索，若无结果则逐级向上（父目录）直到根目录 /
+// 这避免了模型在模糊指令下从 / 全局搜索导致的性能问题
 func TextSearch(keyword string, opts TextSearchOptions) ([]TextSearchResult, error) {
         if keyword == "" {
                 return nil, errors.New("keyword cannot be empty")
         }
 
+        // 记录是否由调用者显式指定了 root_dir
+        explicitRoot := opts.RootDir != ""
+
         // 设置默认值
         if opts.RootDir == "" {
-                opts.RootDir = getDefaultRootDir()
+                if globalOriginalWorkingDir != "" {
+                        opts.RootDir = globalOriginalWorkingDir
+                } else {
+                        opts.RootDir = getDefaultRootDir()
+                }
         }
         if len(opts.ExcludeDirs) == 0 {
                 opts.ExcludeDirs = getDefaultExcludeDirs()
@@ -395,43 +405,72 @@ func TextSearch(keyword string, opts TextSearchOptions) ([]TextSearchResult, err
                 opts.MaxDepth = 20 // 默认最大深度 20
         }
 
-        // 准备匹配模式
-        var pattern *regexp.Regexp
-        var err error
-        
+        // 准备搜索模式（只构建一次，级联搜索时复用）
+        pattern, err := buildSearchPattern(keyword, opts)
+        if err != nil {
+                return nil, err
+        }
+
+        // 在起始目录执行搜索
+        results, err := searchInDir(opts.RootDir, pattern, opts)
+        if err != nil {
+                return results, err
+        }
+
+        // 级联回退：如果未显式指定 root_dir 且当前目录无结果，
+        // 逐级向上搜索（父目录 → 祖父目录 → ... → /）
+        if !explicitRoot && len(results) == 0 {
+                currentDir := opts.RootDir
+                for {
+                        parent := filepath.Dir(currentDir)
+                        if parent == currentDir {
+                                break // 已到达文件系统根目录，无法继续向上
+                        }
+                        currentDir = parent
+
+                        cascadeResults, cascadeErr := searchInDir(currentDir, pattern, opts)
+                        if cascadeErr != nil {
+                                // 跳过无法访问的目录（如权限不足），继续向上
+                                continue
+                        }
+                        results = cascadeResults
+                        if len(results) > 0 {
+                                break // 找到结果，停止级联
+                        }
+                }
+        }
+
+        return results, err
+}
+
+// buildSearchPattern 根据选项构建搜索正则表达式
+func buildSearchPattern(keyword string, opts TextSearchOptions) (*regexp.Regexp, error) {
         searchKeyword := keyword
         if opts.UseRegex {
                 if opts.IgnoreCase {
                         searchKeyword = "(?i)" + keyword
                 }
-                pattern, err = regexp.Compile(searchKeyword)
-                if err != nil {
-                        return nil, fmt.Errorf("invalid regex pattern: %v", err)
-                }
+                return regexp.Compile(searchKeyword)
         } else if opts.IgnoreCase {
                 searchKeyword = "(?i)" + regexp.QuoteMeta(keyword)
-                pattern, err = regexp.Compile(searchKeyword)
-                if err != nil {
-                        return nil, fmt.Errorf("invalid regex pattern: %v", err)
-                }
-        } else {
-                pattern, err = regexp.Compile(regexp.QuoteMeta(keyword))
-                if err != nil {
-                        return nil, fmt.Errorf("invalid regex pattern: %v", err)
-                }
+                return regexp.Compile(searchKeyword)
         }
+        return regexp.Compile(regexp.QuoteMeta(keyword))
+}
 
+// searchInDir 在指定目录中执行文本搜索的 WalkDir 核心逻辑
+func searchInDir(rootDir string, pattern *regexp.Regexp, opts TextSearchOptions) ([]TextSearchResult, error) {
         var results []TextSearchResult
 
         // 遍历文件系统
-        err = filepath.WalkDir(opts.RootDir, func(path string, d fs.DirEntry, err error) error {
+        err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
                 if err != nil {
                         // 跳过无法访问的目录/文件
                         return nil
                 }
 
                 // 计算当前深度
-                relPath, _ := filepath.Rel(opts.RootDir, path)
+                relPath, _ := filepath.Rel(rootDir, path)
                 depth := strings.Count(relPath, string(filepath.Separator))
                 if depth > opts.MaxDepth {
                         if d.IsDir() {
@@ -517,4 +556,5 @@ func TextSearch(keyword string, opts TextSearchOptions) ([]TextSearchResult, err
 
         return results, err
 }
+
 

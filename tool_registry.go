@@ -1619,7 +1619,7 @@ Example commands:
 
         // ========== 文本搜索工具 ==========
         reg("text_search",
-                "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。",
+                "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。未指定 root_dir 时自动从当前工作目录开始级联向上搜索（CWD → 父目录 → ... → /）。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -1630,7 +1630,7 @@ Example commands:
                                 },
                                 "root_dir": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "搜索根目录，默认为用户主目录（可选）",
+                                        "description": "搜索根目录。默认自动使用当前工作目录并在无结果时级联向上搜索，仅当需限定搜索范围时才显式指定（可选）",
                                 },
                                 "file_pattern": map[string]interface{}{
                                         "type":        "string",

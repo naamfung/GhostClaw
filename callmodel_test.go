@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -2357,6 +2359,140 @@ func TestReasoningContentPersistenceRoundTrip(t *testing.T) {
 	})
 }
 
+// ============================================================================
+// 21. TextSearch 级联搜索策略测试
+// ============================================================================
+
+func TestTextSearchCascading(t *testing.T) {
+	t.Run("显式指定 root_dir 不触发级联", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "empty_subdir")
+		os.MkdirAll(subDir, 0755)
+
+		// 在父目录放文件
+		os.WriteFile(filepath.Join(tmpDir, "readme.txt"), []byte("hello world\ncascade target here\n"), 0644)
+
+		// 显式指定 root_dir 为空子目录，不应级联到父目录
+		results, err := TextSearch("cascade target", TextSearchOptions{
+			RootDir:     subDir,
+			MaxDepth:    5,
+			MaxResults:  10,
+			ExcludeDirs: []string{".git"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) > 0 {
+			t.Error("explicit root_dir should NOT cascade to parent directory")
+		}
+	})
+
+	t.Run("无 root_dir 在 CWD 找到结果不级联", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(`{"search_engine": "google"}`), 0644)
+
+		oldCWD := globalOriginalWorkingDir
+		globalOriginalWorkingDir = tmpDir
+		defer func() { globalOriginalWorkingDir = oldCWD }()
+
+		results, err := TextSearch("search_engine", TextSearchOptions{
+			MaxDepth:    5,
+			MaxResults:  10,
+			ExcludeDirs: []string{".git"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) == 0 {
+			t.Error("should find results in CWD without cascading")
+		}
+	})
+
+	t.Run("无 root_dir CWD 无结果级联到兄弟目录找到", func(t *testing.T) {
+		// 结构：
+		//   tmpDir/
+		//     sibling/          ← 文件在这里
+		//       target.go
+		//     project/src/a/    ← CWD = this（深层空目录）
+		tmpDir := t.TempDir()
+		siblingDir := filepath.Join(tmpDir, "sibling")
+		deepDir := filepath.Join(tmpDir, "project", "src", "a")
+		os.MkdirAll(siblingDir, 0755)
+		os.MkdirAll(deepDir, 0755)
+
+		// 文件放在 sibling（非 CWD，非祖先目录）
+		// 级联：a → src → project → tmpDir（找到 sibling/ 内的文件）
+		os.WriteFile(filepath.Join(siblingDir, "target.go"),
+			[]byte("package sibling\nconst CascadeFound = true\n"), 0644)
+
+		oldCWD := globalOriginalWorkingDir
+		globalOriginalWorkingDir = deepDir
+		defer func() { globalOriginalWorkingDir = oldCWD }()
+
+		results, err := TextSearch("CascadeFound", TextSearchOptions{
+			MaxDepth:    10,
+			MaxResults:  10,
+			ExcludeDirs: []string{".git"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) == 0 {
+			t.Error("should cascade up and find results in sibling directory")
+		}
+		found := false
+		for _, r := range results {
+			if strings.Contains(r.FilePath, "target.go") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected result from sibling/target.go, got %d results", len(results))
+		}
+	})
+
+	t.Run("无 root_dir CWD 无结果级联到上级目录找到", func(t *testing.T) {
+		// 结构：
+		//   tmpDir/
+		//     myproject/
+		//       app.go           ← 文件在这里
+		//       src/backend/cmd/  ← CWD = this
+		tmpDir := t.TempDir()
+		projectDir := filepath.Join(tmpDir, "myproject")
+		deepDir := filepath.Join(projectDir, "src", "backend", "cmd")
+		os.MkdirAll(deepDir, 0755)
+
+		os.WriteFile(filepath.Join(projectDir, "app.go"),
+			[]byte("package main\nvar AppName = \"GhostClaw\"\n"), 0644)
+
+		oldCWD := globalOriginalWorkingDir
+		globalOriginalWorkingDir = deepDir
+		defer func() { globalOriginalWorkingDir = oldCWD }()
+
+		results, err := TextSearch("GhostClaw", TextSearchOptions{
+			MaxDepth:    10,
+			MaxResults:  10,
+			ExcludeDirs: []string{".git"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) == 0 {
+			t.Error("should cascade up from deep CWD and find results in ancestor")
+		}
+		found := false
+		for _, r := range results {
+			if strings.Contains(r.FilePath, "app.go") && strings.Contains(r.MatchText, "GhostClaw") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected GhostClaw in app.go, got %d results", len(results))
+		}
+	})
+}
 // ============================================================================
 // itoa helper (no need for strconv import)
 // ============================================================================

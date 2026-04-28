@@ -77,6 +77,7 @@ var (
         globalAuthConfig       AuthConfig
         globalCancel           context.CancelFunc
         globalExecDir          string // 程序自身目录（embed、uploads、download、output 等运行时文件）
+	globalOriginalWorkingDir string // 启动时的原始工作目录（chdir 前保存，用于 text_search 级联搜索）
         globalDataDir          string // 数据目录（plugins、skills、memory、数据库等资产/配置文件）
         globalUploadDir        string
         globalConfig           Config // 全局配置对象
@@ -992,6 +993,10 @@ func testPluginSystem() {
         globalExecDir = filepath.Dir(execPath)
         
         // 切换到程序所在目录
+		// 保存启动时的原始工作目录（chdir 前），供 text_search 级联搜索使用
+		if cwd, err := os.Getwd(); err == nil {
+			globalOriginalWorkingDir = cwd
+		}
         if err := os.Chdir(globalExecDir); err != nil {
                 log.Printf("Warning: cannot change to executable directory: %v", err)
         }
