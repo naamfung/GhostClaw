@@ -1136,26 +1136,46 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             results = append(results, result)
         }
 
-        // 檢查是否有寫入前未讀取違規的 force-stop 信號
-        var forceStopInjected bool
-        for _, result := range results {
-            contentStr, _ := result.Content.(string)
-            if strings.HasPrefix(contentStr, forceStopWriteWithoutReadPrefix) {
-                userMsg := strings.TrimPrefix(contentStr, forceStopWriteWithoutReadPrefix)
-                messages = append(messages, Message{
-                    Role:      "user",
-                    Content:   userMsg,
-                    Timestamp: time.Now().Unix(),
-                })
-                log.Printf("[AgentLoop] Force-stop: injecting write-without-read violation as user message")
-                forceStopInjected = true
-                break
-            }
-        }
-        if forceStopInjected {
-            continue
-        }
+		// 通用錯誤升級檢測：檢查 (1) sentinel prefix 信號 (2) 重複工具失敗模式
+		// escalatePrefix = "__ESCALATE__:" 開頭的信號會以用戶身份注入消息歷史
+		var escalateInjected bool
+		for _, result := range results {
+		    contentStr, _ := result.Content.(string)
 
+		    // (1) Sentinel prefix 檢測：來自 SafeExecuteTool 或其他安全檢查的升級信號
+		    if strings.HasPrefix(contentStr, escalatePrefix) {
+				userMsg := strings.TrimPrefix(contentStr, escalatePrefix)
+				messages = append(messages, Message{
+				    Role:      "user",
+				    Content:   userMsg,
+				    Timestamp: time.Now().Unix(),
+				})
+				log.Printf("[AgentLoop] Error escalated via sentinel: injecting user message")
+				escalateInjected = true
+				break
+		    }
+
+		    // (2) 重複工具失敗檢測：同一工具連續失敗 N 次後觸發升級
+		    if result.Meta.Status == TaskStatusFailed && result.Meta.ToolName != "" {
+				errorKey := result.Meta.ToolName
+				shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
+					EscalateRepeatedFailure, errorKey, contentStr,
+				)
+				if shouldStop {
+					messages = append(messages, Message{
+					    Role:      "user",
+					    Content:   userMsg,
+					    Timestamp: time.Now().Unix(),
+					})
+					log.Printf("[AgentLoop] Repeated tool failure escalated: tool=%s", errorKey)
+					escalateInjected = true
+					break
+				}
+		    }
+		}
+		if escalateInjected {
+		    continue
+		}
         // 将工具结果添加到消息历史
         for _, result := range results {
             messages = append(messages, result.ToAPIMessage())

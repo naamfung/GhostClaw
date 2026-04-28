@@ -39,10 +39,12 @@ const (
         readLevelFull                     // 完整讀取（read_all_lines）
 )
 
-// forceStopWriteWithoutReadPrefix sentinel prefix for write-without-read force-stop signals.
-// When SafeExecuteTool returns an EnrichedMessage with Content starting with this prefix,
-// the main AgentLoop will extract the message and inject it as a user message.
-const forceStopWriteWithoutReadPrefix = "__FORCE_STOP_WRITE_WITHOUT_READ__:"
+// escalatePrefix 通用錯誤升級 sentinel prefix。
+// 當 SafeExecuteTool 或其他錯誤處理返回以此前綴開頭的 EnrichedMessage 時，
+// AgentLoop 主循環會提取消息內容並以用戶身份注入對話歷史。
+// 格式：__ESCALATE__:<category>:<message>
+// 目前支援的 category: write_without_read, repeated_tool_failure
+const escalatePrefix = "__ESCALATE__:"
 
 // readWriteTracker 追踪已讀取的文件及其讀取級別，強制先讀後寫
 // 核心設計：只有完整讀取（read_all_lines）才能滿足全量寫入工具的先讀要求，
@@ -179,52 +181,130 @@ func CheckWritePermission(filePath string, toolName string) error {
 // 寫入前未讀取違規追蹤（Write-Without-Read Violation Tracking）
 // ============================================================================
 
-// writeWithoutReadTracker 追蹤連續寫入違規次數。當模型連續 3 次在未讀取文件的情況下
-// 嘗試寫入，觸發強制終止，以用戶身份將錯誤信息注入消息歷史。
-type writeWithoutReadTracker struct {
-	mu                    sync.Mutex
-	consecutiveViolations int
-	violationMessages     []string // 保存每次違規的完整錯誤信息
+// EscalationCategory 錯誤升級類別
+type EscalationCategory string
+
+const (
+	// EscalateWriteWithoutRead 寫入前未讀取違規
+	EscalateWriteWithoutRead EscalationCategory = "write_without_read"
+	// EscalateRepeatedFailure 重複工具調用失敗（同一工具+參數連續失敗）
+	EscalateRepeatedFailure EscalationCategory = "repeated_tool_failure"
+)
+
+// escalationTracker 單個錯誤類別的追蹤器
+type escalationTracker struct {
+	category  EscalationCategory
+	errorKey  string   // 錯誤鍵（如文件路徑、工具名+參數哈希）
+	count     int
+	messages  []string // 保存每次錯誤的完整信息
 }
 
-var globalWriteWithoutReadTracker = &writeWithoutReadTracker{}
+// RepeatedErrorEscalator 通用重複錯誤升級器。
+// 為不同類別和鍵的錯誤獨立追蹤連續失敗次數，
+// 達到閾值後觸發升級：以用戶身份將錯誤摘要注入消息歷史。
+type RepeatedErrorEscalator struct {
+	mu       sync.Mutex
+	trackers map[string]*escalationTracker // key: "category:errorKey"
+}
 
-const maxWriteWithoutReadViolations = 3
+var globalErrorEscalator = &RepeatedErrorEscalator{
+	trackers: make(map[string]*escalationTracker),
+}
 
-// RecordViolation 記錄一次寫入違規。返回 shouldStop=true 表示已達到最大違規次數，
-// 需要強制終止並以用戶消息形式通知模型。
-func (t *writeWithoutReadTracker) RecordViolation(filePath, errMsg string) (shouldStop bool, userMsg string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+const defaultEscalationThreshold = 3
 
-	t.consecutiveViolations++
-	t.violationMessages = append(t.violationMessages, errMsg)
+// RecordEscalation 記錄一次錯誤並判斷是否需要升級。
+// category: 錯誤類別
+// errorKey: 錯誤鍵（同類別+同鍵的錯誤累計計數）
+// errMsg:   錯誤消息
+// 返回 shouldStop=true 表示已達到閾值，需強制升級
+func (e *RepeatedErrorEscalator) RecordEscalation(
+	category EscalationCategory, errorKey, errMsg string,
+) (shouldStop bool, userMsg string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
-	if t.consecutiveViolations >= maxWriteWithoutReadViolations {
-		var sb strings.Builder
-		sb.WriteString("以下是你連續多次無視安全檢查錯誤的記錄：\n\n")
-		for i, msg := range t.violationMessages {
-			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
+	trackKey := string(category) + ":" + errorKey
+	t, ok := e.trackers[trackKey]
+	if !ok {
+		t = &escalationTracker{
+			category: category,
+			errorKey: errorKey,
 		}
-		sb.WriteString("你必須使用 read_all_lines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
+		e.trackers[trackKey] = t
+	}
 
-		userMsg = sb.String()
+	t.count++
+	t.messages = append(t.messages, errMsg)
+
+	if t.count >= defaultEscalationThreshold {
+		userMsg = e.buildEscalationMessage(t)
 		shouldStop = true
-
-		// 重置計數器，為下一輪追蹤做準備
-		t.consecutiveViolations = 0
-		t.violationMessages = nil
+		// 重置此追蹤器，為下一輪做準備
+		delete(e.trackers, trackKey)
 	}
 
 	return
 }
 
-// Reset 重置所有違規計數和消息
+// buildEscalationMessage 根據類別構建升級消息
+func (e *RepeatedErrorEscalator) buildEscalationMessage(t *escalationTracker) string {
+	var sb strings.Builder
+
+	switch t.category {
+	case EscalateWriteWithoutRead:
+		sb.WriteString("以下是你連續多次無視安全檢查錯誤的記錄：\n\n")
+		for i, msg := range t.messages {
+			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
+		}
+		sb.WriteString("你必須使用 read_all_lines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
+
+	case EscalateRepeatedFailure:
+		sb.WriteString("以下是你連續多次重複相同失敗操作的記錄：\n\n")
+		for i, msg := range t.messages {
+			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
+		}
+		sb.WriteString("請停止重複此操作。分析錯誤原因後嘗試不同的方法，或向用戶說明遇到的問題並請求指導。")
+
+	default:
+		sb.WriteString("以下是你連續多次錯誤的記錄：\n\n")
+		for i, msg := range t.messages {
+			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
+		}
+		sb.WriteString("請停止重複操作，分析原因並採取不同的策略。")
+	}
+
+	return sb.String()
+}
+
+// ResetCategory 重置指定類別的所有追蹤器
+func (e *RepeatedErrorEscalator) ResetCategory(category EscalationCategory) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for key, t := range e.trackers {
+		if t.category == category {
+			delete(e.trackers, key)
+		}
+	}
+}
+
+// ResetKey 重置指定類別+鍵的追蹤器
+func (e *RepeatedErrorEscalator) ResetKey(category EscalationCategory, errorKey string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	trackKey := string(category) + ":" + errorKey
+	delete(e.trackers, trackKey)
+}
+
+// writeWithoutReadTracker 保留向後兼容的別名（供 MarkFileFullyRead 調用 Reset）
+// Deprecated: 使用 globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
+type writeWithoutReadTracker struct{}
+
+var globalWriteWithoutReadTracker = &writeWithoutReadTracker{}
+
+// Reset 重置寫入違規計數（向後兼容）
 func (t *writeWithoutReadTracker) Reset() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.consecutiveViolations = 0
-	t.violationMessages = nil
+	globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
 }
 
 // ============================================================================
@@ -600,13 +680,15 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 log.Printf("[ToolSafety] 先读后写检查失败: tool=%s file=%s", toolName, filePath)
 
                                 errStr := err.Error()
-                                shouldStop, userMsg := globalWriteWithoutReadTracker.RecordViolation(filePath, errStr)
+                                shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
+                                        EscalateWriteWithoutRead, filePath, errStr,
+                                )
                                 if shouldStop {
                                         // 連續 3 次違規：前端只顯示一般錯誤，內部返回 force-stop 標記
                                         // 主循環檢測標記後會以用戶身份注入消息（僅模型可見）
                                         emitToolCallTags(ch, toolName, argsMap, errStr, TaskStatusFailed)
                                         return EnrichedMessage{
-                                                Content: forceStopWriteWithoutReadPrefix + userMsg,
+                                                Content: escalatePrefix + userMsg,
                                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                                         }
                                 }

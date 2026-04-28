@@ -2493,6 +2493,188 @@ func TestTextSearchCascading(t *testing.T) {
 		}
 	})
 }
+
+// ============================================================================
+// 22. RepeatedErrorEscalator 通用錯誤升級器測試
+// ============================================================================
+
+func TestRepeatedErrorEscalator(t *testing.T) {
+	t.Run("write_without_read 連續 3 次後升級", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// 前 2 次不升級
+		for i := 0; i < 2; i++ {
+			shouldStop, _ := e.RecordEscalation(
+				EscalateWriteWithoutRead, "test.txt",
+				"安全檢查失敗：你必須先使用 read_all_lines",
+			)
+			if shouldStop {
+				t.Errorf("violation %d should not escalate", i+1)
+			}
+		}
+
+		// 第 3 次應升級
+		shouldStop, userMsg := e.RecordEscalation(
+			EscalateWriteWithoutRead, "test.txt",
+			"安全檢查失敗：你必須先使用 read_all_lines",
+		)
+		if !shouldStop {
+			t.Error("3rd violation should trigger escalation")
+		}
+		if !strings.Contains(userMsg, "安全檢查錯誤") {
+			t.Errorf("escalation message should mention safety check, got: %s", userMsg)
+		}
+	})
+
+	t.Run("write_without_read 不同文件獨立計數", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// file A: 2 次
+		for i := 0; i < 2; i++ {
+			e.RecordEscalation(EscalateWriteWithoutRead, "a.go", "err")
+		}
+		// file B: 2 次
+		for i := 0; i < 2; i++ {
+			e.RecordEscalation(EscalateWriteWithoutRead, "b.go", "err")
+		}
+
+		// file A 第 3 次應該只升級 A
+		shouldStop, _ := e.RecordEscalation(EscalateWriteWithoutRead, "a.go", "err")
+		if !shouldStop {
+			t.Error("file A 3rd violation should escalate")
+		}
+
+		// file B 仍未達到閾值，不應升級
+		shouldStop, _ = e.RecordEscalation(EscalateWriteWithoutRead, "b.go", "err")
+		if !shouldStop {
+			t.Error("file B 3rd violation should also escalate now")
+		}
+	})
+
+	t.Run("repeated_tool_failure 連續失敗後升級", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// 同一工具連續失敗 2 次
+		for i := 0; i < 2; i++ {
+			shouldStop, _ := e.RecordEscalation(
+				EscalateRepeatedFailure, "write_file_line",
+				"Error: permission denied",
+			)
+			if shouldStop {
+				t.Errorf("failure %d should not escalate yet", i+1)
+			}
+		}
+
+		// 第 3 次升級
+		shouldStop, userMsg := e.RecordEscalation(
+			EscalateRepeatedFailure, "write_file_line",
+			"Error: permission denied",
+		)
+		if !shouldStop {
+			t.Error("3rd repeated failure should escalate")
+		}
+		if !strings.Contains(userMsg, "重複") {
+			t.Errorf("escalation message should mention '重複', got: %s", userMsg)
+		}
+	})
+
+	t.Run("不同類別獨立追蹤互不干擾", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// write_without_read: 累積 2 次
+		for i := 0; i < 2; i++ {
+			e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "err1")
+		}
+		// repeated_tool_failure: 累積 2 次（不同 key）
+		for i := 0; i < 2; i++ {
+			e.RecordEscalation(EscalateRepeatedFailure, "smart_shell", "err2")
+		}
+
+		// write_without_read 第 3 次觸發升級
+		shouldStop, _ := e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "err1")
+		if !shouldStop {
+			t.Error("write_without_read should escalate on 3rd")
+		}
+
+		// repeated_tool_failure 計數不受影響
+		shouldStop, _ = e.RecordEscalation(EscalateRepeatedFailure, "smart_shell", "err2")
+		if !shouldStop {
+			t.Error("repeated_tool_failure should also escalate on 3rd (independent)")
+		}
+	})
+
+	t.Run("ResetCategory 清除指定類別", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// 累積 2 次
+		e.RecordEscalation(EscalateWriteWithoutRead, "f.go", "err")
+		e.RecordEscalation(EscalateWriteWithoutRead, "f.go", "err")
+
+		// 重置（模擬模型正確讀取文件）
+		e.ResetCategory(EscalateWriteWithoutRead)
+
+		// 計數應從零開始
+		shouldStop, _ := e.RecordEscalation(EscalateWriteWithoutRead, "f.go", "err")
+		if shouldStop {
+			t.Error("after reset, 1st violation should not escalate")
+		}
+	})
+
+	t.Run("ResetKey 清除單個 key", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		e.RecordEscalation(EscalateWriteWithoutRead, "x.go", "err")
+		e.RecordEscalation(EscalateWriteWithoutRead, "y.go", "err")
+		e.RecordEscalation(EscalateWriteWithoutRead, "x.go", "err")
+		e.RecordEscalation(EscalateWriteWithoutRead, "y.go", "err")
+
+		// 只重置 x.go
+		e.ResetKey(EscalateWriteWithoutRead, "x.go")
+
+		// x.go: 應從零開始
+		shouldStop, _ := e.RecordEscalation(EscalateWriteWithoutRead, "x.go", "err")
+		if shouldStop {
+			t.Error("after ResetKey, x.go 1st should not escalate")
+		}
+
+		// y.go: 仍然有 2 次，第 3 次應升級
+		shouldStop, _ = e.RecordEscalation(EscalateWriteWithoutRead, "y.go", "err")
+		if !shouldStop {
+			t.Error("y.go should escalate (not reset)")
+		}
+	})
+
+	t.Run("升級後 tracker 自動重置", func(t *testing.T) {
+		e := &RepeatedErrorEscalator{
+			trackers: make(map[string]*escalationTracker),
+		}
+
+		// 觸發升級
+		for i := 0; i < 3; i++ {
+			e.RecordEscalation(EscalateRepeatedFailure, "browser_visit", "timeout")
+		}
+
+		// 升級後，同一 key 的追蹤器應被清除
+		// 下一次失敗從 1 開始
+		shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "browser_visit", "timeout")
+		if shouldStop {
+			t.Error("after escalation, counter should reset — 1st new violation should not escalate")
+		}
+	})
+}
+
 // ============================================================================
 // itoa helper (no need for strconv import)
 // ============================================================================
