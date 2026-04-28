@@ -1136,6 +1136,26 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             results = append(results, result)
         }
 
+        // 檢查是否有寫入前未讀取違規的 force-stop 信號
+        var forceStopInjected bool
+        for _, result := range results {
+            contentStr, _ := result.Content.(string)
+            if strings.HasPrefix(contentStr, forceStopWriteWithoutReadPrefix) {
+                userMsg := strings.TrimPrefix(contentStr, forceStopWriteWithoutReadPrefix)
+                messages = append(messages, Message{
+                    Role:      "user",
+                    Content:   userMsg,
+                    Timestamp: time.Now().Unix(),
+                })
+                log.Printf("[AgentLoop] Force-stop: injecting write-without-read violation as user message")
+                forceStopInjected = true
+                break
+            }
+        }
+        if forceStopInjected {
+            continue
+        }
+
         // 将工具结果添加到消息历史
         for _, result := range results {
             messages = append(messages, result.ToAPIMessage())

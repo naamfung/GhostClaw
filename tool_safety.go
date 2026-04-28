@@ -39,6 +39,11 @@ const (
         readLevelFull                     // 完整讀取（read_all_lines）
 )
 
+// forceStopWriteWithoutReadPrefix sentinel prefix for write-without-read force-stop signals.
+// When SafeExecuteTool returns an EnrichedMessage with Content starting with this prefix,
+// the main AgentLoop will extract the message and inject it as a user message.
+const forceStopWriteWithoutReadPrefix = "__FORCE_STOP_WRITE_WITHOUT_READ__:"
+
 // readWriteTracker 追踪已讀取的文件及其讀取級別，強制先讀後寫
 // 核心設計：只有完整讀取（read_all_lines）才能滿足全量寫入工具的先讀要求，
 // 防止模型只讀一行就用幻覺重寫整個文件
@@ -66,6 +71,9 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
         // 升級後同時從部分讀取中移除（避免冗餘）
         delete(t.partialReadFiles, filePath)
         t.evictIfNeeded()
+
+        // 模型正確讀取文件後，重置寫入違規計數
+        globalWriteWithoutReadTracker.Reset()
 }
 
 // MarkFilePartialRead 標記文件已被部分讀取（由 read_file_line, text_grep 調用）
@@ -165,6 +173,58 @@ func CheckWritePermission(filePath string, toolName string) error {
                 return fmt.Errorf("安全檢查失敗：你必須先使用 read_all_lines 完整讀取 %s 才能進行寫入/編輯操作（read_file_line / read_file_range 或 text_grep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
         }
         return nil
+}
+
+// ============================================================================
+// 寫入前未讀取違規追蹤（Write-Without-Read Violation Tracking）
+// ============================================================================
+
+// writeWithoutReadTracker 追蹤連續寫入違規次數。當模型連續 3 次在未讀取文件的情況下
+// 嘗試寫入，觸發強制終止，以用戶身份將錯誤信息注入消息歷史。
+type writeWithoutReadTracker struct {
+	mu                    sync.Mutex
+	consecutiveViolations int
+	violationMessages     []string // 保存每次違規的完整錯誤信息
+}
+
+var globalWriteWithoutReadTracker = &writeWithoutReadTracker{}
+
+const maxWriteWithoutReadViolations = 3
+
+// RecordViolation 記錄一次寫入違規。返回 shouldStop=true 表示已達到最大違規次數，
+// 需要強制終止並以用戶消息形式通知模型。
+func (t *writeWithoutReadTracker) RecordViolation(filePath, errMsg string) (shouldStop bool, userMsg string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.consecutiveViolations++
+	t.violationMessages = append(t.violationMessages, errMsg)
+
+	if t.consecutiveViolations >= maxWriteWithoutReadViolations {
+		var sb strings.Builder
+		sb.WriteString("以下是你連續多次無視安全檢查錯誤的記錄：\n\n")
+		for i, msg := range t.violationMessages {
+			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
+		}
+		sb.WriteString("你必須使用 read_all_lines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
+
+		userMsg = sb.String()
+		shouldStop = true
+
+		// 重置計數器，為下一輪追蹤做準備
+		t.consecutiveViolations = 0
+		t.violationMessages = nil
+	}
+
+	return
+}
+
+// Reset 重置所有違規計數和消息
+func (t *writeWithoutReadTracker) Reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.consecutiveViolations = 0
+	t.violationMessages = nil
 }
 
 // ============================================================================
@@ -538,10 +598,22 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 if filePath != "" {
                         if err := CheckWritePermission(filePath, toolName); err != nil {
                                 log.Printf("[ToolSafety] 先读后写检查失败: tool=%s file=%s", toolName, filePath)
-                                content := err.Error()
-                                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
+
+                                errStr := err.Error()
+                                shouldStop, userMsg := globalWriteWithoutReadTracker.RecordViolation(filePath, errStr)
+                                if shouldStop {
+                                        // 連續 3 次違規：前端只顯示一般錯誤，內部返回 force-stop 標記
+                                        // 主循環檢測標記後會以用戶身份注入消息（僅模型可見）
+                                        emitToolCallTags(ch, toolName, argsMap, errStr, TaskStatusFailed)
+                                        return EnrichedMessage{
+                                                Content: forceStopWriteWithoutReadPrefix + userMsg,
+                                                Meta:    MessageMeta{Status: TaskStatusFailed},
+                                        }
+                                }
+
+                                emitToolCallTags(ch, toolName, argsMap, errStr, TaskStatusFailed)
                                 return EnrichedMessage{
-                                        Content: content,
+                                        Content: errStr,
                                         Meta:    MessageMeta{Status: TaskStatusFailed},
                                 }
                         }
