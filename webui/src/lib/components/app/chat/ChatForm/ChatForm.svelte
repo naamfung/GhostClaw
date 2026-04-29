@@ -293,7 +293,7 @@
 			return;
 		}
 
-		if (event.key === KeyboardKey.ENTER && !event.shiftKey && !isIMEComposing(event)) {
+		if (event.key === KeyboardKey.ENTER && !event.shiftKey && !event.ctrlKey && !event.metaKey && !isIMEComposing(event)) {
 			event.preventDefault();
 
 			if (!canSubmit || disabled || isLoading || hasLoadingAttachments) return;
