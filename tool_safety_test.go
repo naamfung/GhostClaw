@@ -1,8 +1,11 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ============================================================================
@@ -429,5 +432,387 @@ func TestSanitizeContent(t *testing.T) {
 				t.Errorf("sanitizeContent(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+// ============================================================================
+// readWriteTracker
+// ============================================================================
+
+func newReadWriteTracker() *readWriteTracker {
+	return &readWriteTracker{
+		fullReadFiles:    make(map[string]time.Time),
+		partialReadFiles: make(map[string]time.Time),
+		maxEntries:       200,
+	}
+}
+
+func TestReadWriteTracker_MarkFileFullyRead(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelFull {
+		t.Errorf("GetFileReadLevel after MarkFileFullyRead = %v, want readLevelFull", lvl)
+	}
+}
+
+func TestReadWriteTracker_MarkFilePartialRead(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFilePartialRead("/tmp/test.txt")
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelPartial {
+		t.Errorf("GetFileReadLevel after MarkFilePartialRead = %v, want readLevelPartial", lvl)
+	}
+}
+
+func TestReadWriteTracker_PartialReadDoesNotDowngradeFull(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	trk.MarkFilePartialRead("/tmp/test.txt")
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelFull {
+		t.Errorf("MarkFilePartialRead should not downgrade from full, got %v", lvl)
+	}
+}
+
+func TestReadWriteTracker_NeverReadIsNone(t *testing.T) {
+	trk := newReadWriteTracker()
+	lvl := trk.GetFileReadLevel("/tmp/never_read.txt")
+	if lvl != readLevelNone {
+		t.Errorf("unread file GetFileReadLevel = %v, want readLevelNone", lvl)
+	}
+}
+
+func TestReadWriteTracker_HasFileBeenRead(t *testing.T) {
+	trk := newReadWriteTracker()
+	if trk.HasFileBeenRead("/tmp/test.txt") {
+		t.Error("HasFileBeenRead should be false for unread file")
+	}
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	if !trk.HasFileBeenRead("/tmp/test.txt") {
+		t.Error("HasFileBeenRead should be true after MarkFileFullyRead")
+	}
+}
+
+func TestReadWriteTracker_HasFileBeenRead_Partial(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFilePartialRead("/tmp/partial.txt")
+	if !trk.HasFileBeenRead("/tmp/partial.txt") {
+		t.Error("HasFileBeenRead should be true after MarkFilePartialRead")
+	}
+}
+
+func TestReadWriteTracker_MultipleFiles(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileFullyRead("/tmp/a.txt")
+	trk.MarkFilePartialRead("/tmp/b.txt")
+
+	if trk.GetFileReadLevel("/tmp/a.txt") != readLevelFull {
+		t.Error("a.txt should be full read")
+	}
+	if trk.GetFileReadLevel("/tmp/b.txt") != readLevelPartial {
+		t.Error("b.txt should be partial read")
+	}
+	if trk.GetFileReadLevel("/tmp/c.txt") != readLevelNone {
+		t.Error("c.txt should be none")
+	}
+}
+
+// ============================================================================
+// normalizeFilePath
+// ============================================================================
+
+func TestNormalizeFilePath_Relative(t *testing.T) {
+	result := normalizeFilePath("foo/bar")
+	if !filepath.IsAbs(result) {
+		t.Errorf("normalizeFilePath(%q) = %q, should be absolute", "foo/bar", result)
+	}
+	if strings.Contains(result, "..") {
+		t.Errorf("normalizeFilePath should clean .. components: %q", result)
+	}
+}
+
+func TestNormalizeFilePath_Absolute(t *testing.T) {
+	result := normalizeFilePath("/tmp/foo/bar")
+	if result != "/tmp/foo/bar" {
+		t.Errorf("normalizeFilePath(/tmp/foo/bar) = %q, want %q", result, "/tmp/foo/bar")
+	}
+}
+
+func TestNormalizeFilePath_WithDotDot(t *testing.T) {
+	result := normalizeFilePath("/tmp/foo/../bar")
+	if strings.Contains(result, "..") {
+		t.Errorf("normalizeFilePath should resolve .. : %q", result)
+	}
+}
+
+// ============================================================================
+// CheckWritePermission
+// ============================================================================
+
+func TestCheckWritePermission_NewFile(t *testing.T) {
+	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "write_all_lines")
+	if err != nil {
+		t.Errorf("CheckWritePermission for new file should allow, got error: %v", err)
+	}
+}
+
+func TestCheckWritePermission_ExistingFileNotRead(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "safety_test_*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	if err == nil {
+		t.Error("CheckWritePermission should block write on unread existing file")
+	}
+}
+
+func TestCheckWritePermission_ExistingFileFullyRead(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "safety_test_*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileFullyRead(tmpFile.Name())
+	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	if err != nil {
+		t.Errorf("CheckWritePermission should allow write on fully read file, got error: %v", err)
+	}
+}
+
+func TestCheckWritePermission_ExistingFilePartialRead(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "safety_test_*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFilePartialRead(tmpFile.Name())
+	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	if err == nil {
+		t.Error("CheckWritePermission should block write on partial-read file (need full read)")
+	}
+}
+
+// ============================================================================
+// RepeatedErrorEscalator
+// ============================================================================
+
+func TestRepeatedErrorEscalator_BelowThreshold(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "key1", "error msg 1")
+	if shouldStop {
+		t.Error("first error should not trigger escalation")
+	}
+
+	shouldStop, _ = e.RecordEscalation(EscalateRepeatedFailure, "key1", "error msg 2")
+	if shouldStop {
+		t.Error("second error should not trigger escalation")
+	}
+}
+
+func TestRepeatedErrorEscalator_AtThreshold(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 1")
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 2")
+	shouldStop, userMsg := e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 3")
+
+	if !shouldStop {
+		t.Error("third error should trigger escalation")
+	}
+	if userMsg == "" {
+		t.Error("escalation message should not be empty")
+	}
+	if !strings.Contains(userMsg, "msg 1") {
+		t.Error("escalation message should contain all recorded messages")
+	}
+}
+
+func TestRepeatedErrorEscalator_ResetAfterEscalation(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 1")
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 2")
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 3")
+
+	shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "key1", "new msg")
+	if shouldStop {
+		t.Error("after escalation reset, first new error should not trigger")
+	}
+}
+
+func TestRepeatedErrorEscalator_DifferentKeys(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg")
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg")
+	e.RecordEscalation(EscalateRepeatedFailure, "key2", "msg")
+	shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "key2", "msg")
+
+	if shouldStop {
+		t.Error("different error key should not trigger escalation with only 2 occurrences")
+	}
+}
+
+func TestRepeatedErrorEscalator_ResetCategory(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 1")
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 2")
+	e.ResetCategory(EscalateRepeatedFailure)
+
+	shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 3")
+	if shouldStop {
+		t.Error("after ResetCategory, count should restart from 0")
+	}
+}
+
+func TestRepeatedErrorEscalator_ResetKey(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key1", "msg 1")
+	e.RecordEscalation(EscalateRepeatedFailure, "key2", "msg 1")
+	e.ResetKey(EscalateRepeatedFailure, "key1")
+
+	e.RecordEscalation(EscalateRepeatedFailure, "key2", "msg 2")
+	shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "key2", "msg 3")
+	if !shouldStop {
+		t.Error("key2 should still escalate after key1 was reset")
+	}
+}
+
+func TestRepeatedErrorEscalator_WriteWithoutReadMessage(t *testing.T) {
+	e := &RepeatedErrorEscalator{
+		trackers: make(map[string]*escalationTracker),
+	}
+
+	e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 1")
+	e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 2")
+	_, userMsg := e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 3")
+
+	if !strings.Contains(userMsg, "read_all_lines") {
+		t.Error("WriteWithoutRead escalation should mention read_all_lines")
+	}
+}
+
+// ============================================================================
+// LoopWarningInjector
+// ============================================================================
+
+func TestLoopWarningInjector_NoLimit(t *testing.T) {
+	oldMax := MaxAgentLoopIterations
+	MaxAgentLoopIterations = 0
+	defer func() { MaxAgentLoopIterations = oldMax }()
+
+	inj := &LoopWarningInjector{}
+	if inj.ShouldInjectWarning(100) {
+		t.Error("ShouldInjectWarning with no limit should return false")
+	}
+}
+
+func TestLoopWarningInjector_BelowThreshold(t *testing.T) {
+	oldMax := MaxAgentLoopIterations
+	oldThreshold := IterationWarningThreshold
+	MaxAgentLoopIterations = 100
+	IterationWarningThreshold = 80 // 80% of 100
+	defer func() {
+		MaxAgentLoopIterations = oldMax
+		IterationWarningThreshold = oldThreshold
+	}()
+
+	inj := &LoopWarningInjector{}
+	if inj.ShouldInjectWarning(10) {
+		t.Error("ShouldInjectWarning below threshold (10 < 80) should return false")
+	}
+}
+
+func TestLoopWarningInjector_NotBeforeCooldown(t *testing.T) {
+	oldMax := MaxAgentLoopIterations
+	oldThreshold := IterationWarningThreshold
+	MaxAgentLoopIterations = 100
+	IterationWarningThreshold = 10
+	defer func() {
+		MaxAgentLoopIterations = oldMax
+		IterationWarningThreshold = oldThreshold
+	}()
+
+	inj := &LoopWarningInjector{}
+	if !inj.ShouldInjectWarning(80) {
+		t.Error("first call above threshold should return true")
+	}
+
+	inj.warningInjected = true
+	lastWarnIteration = 80
+
+	if inj.ShouldInjectWarning(81) {
+		t.Error("ShouldInjectWarning should respect cooldown (min 3 iterations)")
+	}
+}
+
+func TestLoopWarningInjector_AfterCooldown(t *testing.T) {
+	oldMax := MaxAgentLoopIterations
+	oldThreshold := IterationWarningThreshold
+	MaxAgentLoopIterations = 100
+	IterationWarningThreshold = 10
+	defer func() {
+		MaxAgentLoopIterations = oldMax
+		IterationWarningThreshold = oldThreshold
+	}()
+
+	inj := &LoopWarningInjector{}
+	inj.warningInjected = true
+	lastWarnIteration = 80
+
+	if !inj.ShouldInjectWarning(84) {
+		t.Error("ShouldInjectWarning after cooldown should return true")
+	}
+}
+
+func TestLoopWarningInjector_ResetState(t *testing.T) {
+	oldMax := MaxAgentLoopIterations
+	oldThreshold := IterationWarningThreshold
+	MaxAgentLoopIterations = 100
+	IterationWarningThreshold = 10
+	defer func() {
+		MaxAgentLoopIterations = oldMax
+		IterationWarningThreshold = oldThreshold
+	}()
+
+	inj := &LoopWarningInjector{}
+	if !inj.ShouldInjectWarning(90) {
+		t.Error("fresh LoopWarningInjector should allow first warning above threshold")
 	}
 }

@@ -194,6 +194,7 @@
 </script>
 
 <div
+	id="msg-{message.id}"
 	class="text-md group w-full leading-7.5 {className}"
 	role="group"
 	aria-label="Assistant message with actions"

@@ -7,6 +7,7 @@ import (
         "fmt"
         "log"
         "os"
+        "path/filepath"
         "strconv"
         "strings"
         "time"
@@ -165,6 +166,11 @@ func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Invalid arguments for read_file_line", TaskStatusFailed
         }
 
+        // 二進制文件檢測
+        if isBinaryFile(filename) {
+                return getFileTypeDescription(filename), TaskStatusSuccess
+        }
+
         lineNum := int(lineNumFloat)
         c, err := ReadFileLine(filename, lineNum)
         if err != nil {
@@ -253,6 +259,11 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Invalid arguments for read_all_lines", TaskStatusFailed
         }
 
+        // 二進制文件檢測
+        if isBinaryFile(filename) {
+                return getFileTypeDescription(filename), TaskStatusSuccess
+        }
+
         lines, err := ReadAllLines(filename)
         if err != nil {
                 return "Error: " + err.Error(), TaskStatusFailed
@@ -319,6 +330,11 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
         startLineFloat, ok2 := ec.ArgsMap["start_line"].(float64)
         if !ok1 || !ok2 || filename == "" || startLineFloat < 1 {
                 return "Error: Invalid arguments for read_file_range", TaskStatusFailed
+        }
+
+        // 二進制文件檢測
+        if isBinaryFile(filename) {
+                return getFileTypeDescription(filename), TaskStatusSuccess
         }
 
         startLine := int(startLineFloat)
@@ -388,6 +404,127 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
         }
         fmt.Println(TruncateString(content, 200))
         return content, TaskStatusSuccess
+}
+
+// execFileInfo 獲取文件的詳細信息（類似 Unix file 命令）
+func execFileInfo(ec *ToolExecContext) (string, TaskStatus) {
+        filename, ok := ec.ArgsMap["filename"].(string)
+        if !ok || filename == "" {
+                return "Error: Invalid arguments for file_info", TaskStatusFailed
+        }
+
+        info, err := os.Stat(filename)
+        if err != nil {
+                return fmt.Sprintf("Error: 無法讀取檔案: %v", err), TaskStatusFailed
+        }
+
+        var sb strings.Builder
+        sb.WriteString(fmt.Sprintf("📄 **檔案資訊**: %s\n\n", filepath.Base(filename)))
+
+        // 基本檔案屬性
+        sb.WriteString(fmt.Sprintf("- **完整路徑**: %s\n", filename))
+        sb.WriteString(fmt.Sprintf("- **檔案大小**: %s\n", formatFileSize(info.Size())))
+        sb.WriteString(fmt.Sprintf("- **修改時間**: %s\n", info.ModTime().Format(time.RFC3339)))
+        sb.WriteString(fmt.Sprintf("- **權限**: %s\n", info.Mode().String()))
+        sb.WriteString(fmt.Sprintf("- **副檔名**: %s\n", filepath.Ext(filename)))
+
+        // 檢測是否為二進制文件
+        isBin := isBinaryFile(filename)
+        if isBin {
+                sb.WriteString(fmt.Sprintf("- **類型**: 二進制文件\n"))
+        } else {
+                sb.WriteString(fmt.Sprintf("- **類型**: 純文字文件\n"))
+        }
+
+        // MIME 類型（優先 magic bytes，次選副檔名比對）
+        mimeType := detectMIMEType(filename)
+        if mimeType != "" {
+                sb.WriteString(fmt.Sprintf("- **MIME 類型**: %s\n", mimeType))
+        }
+
+        // 使用系統 file 命令獲取詳細描述
+        fileDesc := runFileCommand(filename)
+        if fileDesc != "" {
+                sb.WriteString(fmt.Sprintf("- **系統 file 描述**: %s\n", fileDesc))
+        }
+
+        // 對於文字檔案，顯示編碼資訊
+        if !isBin {
+                enc := detectTextEncoding(filename)
+                if enc != "" {
+                        sb.WriteString(fmt.Sprintf("- **編碼**: %s\n", enc))
+                }
+                // 顯示行數和字符數
+                lineCount, charCount := countLinesAndChars(filename)
+                if lineCount >= 0 {
+                        sb.WriteString(fmt.Sprintf("- **行數**: %d\n", lineCount))
+                        sb.WriteString(fmt.Sprintf("- **字符數**: %d\n", charCount))
+                }
+        }
+
+        return sb.String(), TaskStatusSuccess
+}
+
+// detectTextEncoding 檢測文字檔案的編碼
+func detectTextEncoding(path string) string {
+        data, err := os.ReadFile(path)
+        if err != nil {
+                return ""
+        }
+        if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+                return "UTF-8 with BOM"
+        }
+        if len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF {
+                return "UTF-16 BE"
+        }
+        if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE {
+                return "UTF-16 LE"
+        }
+        // 快速檢查是否為合法 UTF-8
+        if isValidUTF8(data) {
+                return "UTF-8"
+        }
+        return "未知編碼（可能為 ANSI/Latin1 或二進制）"
+}
+
+// isValidUTF8 檢查數據是否為合法 UTF-8
+func isValidUTF8(data []byte) bool {
+        i := 0
+        for i < len(data) {
+                if data[i] < 0x80 {
+                        i++
+                        continue
+                }
+                // 計算後續字節數
+                var count int
+                if (data[i] & 0xE0) == 0xC0 {
+                        count = 1
+                } else if (data[i] & 0xF0) == 0xE0 {
+                        count = 2
+                } else if (data[i] & 0xF8) == 0xF0 {
+                        count = 3
+                } else {
+                        return false
+                }
+                i++
+                for j := 0; j < count; j++ {
+                        if i >= len(data) || (data[i] & 0xC0) != 0x80 {
+                                return false
+                        }
+                        i++
+                }
+        }
+        return true
+}
+
+// countLinesAndChars 計算文字檔案的行數和字符數
+func countLinesAndChars(path string) (lines int, chars int) {
+        data, err := os.ReadFile(path)
+        if err != nil {
+                return -1, -1
+        }
+        content := string(data)
+        return strings.Count(content, "\n"), len([]rune(content))
 }
 
 func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
@@ -2259,6 +2396,7 @@ func init() {
                 "append_to_file":  execAppendToFile,
                 "write_file_range": execWriteFileRange,
                 "read_file_range":  execReadFileRange,
+                "file_info":       execFileInfo,
 
                 // Browser basic tools
                 "browser_search":    execBrowserSearch,

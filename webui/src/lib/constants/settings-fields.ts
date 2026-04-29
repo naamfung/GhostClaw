@@ -8,11 +8,24 @@ export const NUMERIC_FIELDS = [
         'timeoutShell',
         'timeoutHttp',
         'timeoutPlugin',
-        'timeoutBrowser'
+        'timeoutBrowser',
+        'smartShellSyncTimeout',
+        'smartShellUnknownTimeout',
+        'smartShellDefaultWakeMins',
+        'smartShellMaxDirectOutput',
+        'maxAgentIterations'
 ] as const;
 
 /**
  * Fields that must be positive integers (>= 1).
  * These will be clamped to minimum 1 and rounded during save.
  */
-export const POSITIVE_INTEGER_FIELDS = ['timeoutShell', 'timeoutHttp', 'timeoutPlugin', 'timeoutBrowser'] as const;
+export const POSITIVE_INTEGER_FIELDS = [
+        'timeoutShell',
+        'timeoutHttp',
+        'timeoutPlugin',
+        'timeoutBrowser',
+        'smartShellSyncTimeout',
+        'smartShellUnknownTimeout',
+        'smartShellDefaultWakeMins'
+] as const;

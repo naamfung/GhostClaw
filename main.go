@@ -44,7 +44,6 @@ var (
         globalAPIConfig      APIConfig
         globalTimeoutConfig  TimeoutConfig
         globalToolsConfig    ToolsConfig
-        globalPlanModeEnabled bool // 規劃模式是否啟用（默認 false，僅使用 todos 控制進度）
         globalEmailConfig    *EmailConfig
         globalTelegramConfig *TelegramConfig
         globalDiscordConfig  *DiscordConfig
@@ -191,9 +190,6 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                 // 普通对话：读取全局会话历史并发送给模型
                 history := session.GetHistory()
                 history = append(history, Message{Role: "user", Content: line})
-                if globalTaskTracker != nil {
-                        globalTaskTracker.StartNewTask(line)
-                }
                 newHistory, err := AgentLoop(ctx, cmdChan, history, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking)
                 if err != nil {
                         fmt.Printf("Agent error: %v\n", err)
@@ -398,7 +394,6 @@ func main() {
         globalMatrixConfig = config.MatrixConfig
         globalTimeoutConfig = config.Timeout
         globalToolsConfig = config.Tools
-        globalPlanModeEnabled = config.Tools.PlanModeEnabled
         setDefaultRole(config.DefaultRole)
         globalAuthConfig = config.Auth
         globalGroupChatConfig = config.GroupChatConfig
@@ -953,9 +948,6 @@ func runDebugMode(prompt string, session *GlobalSession) {
         defer cancel()
         cmdChan := NewCmdChannel()
         history := []Message{{Role: "user", Content: prompt}}
-        if globalTaskTracker != nil {
-                globalTaskTracker.StartNewTask(prompt)
-        }
         ok, taskID := session.TryStartTask()
         if !ok {
                 log.Println("[Debug Mode] Another task already running.")

@@ -34,6 +34,13 @@ export const SETTINGS_KEYS = {
         BROWSER_DISABLE_DEV_TOOLS: 'browserDisableDevTools',
         BROWSER_NO_SANDBOX: 'browserNoSandbox',
         BROWSER_DISABLE_TOOLS: 'browserDisableTools',
-        // Workflow
-        PLAN_MODE_ENABLED: 'planModeEnabled'
+        // SmartShell
+        SMART_SHELL_SYNC_TIMEOUT: 'smartShellSyncTimeout',
+        SMART_SHELL_UNKNOWN_TIMEOUT: 'smartShellUnknownTimeout',
+        SMART_SHELL_DEFAULT_WAKE_MINS: 'smartShellDefaultWakeMins',
+        SMART_SHELL_MAX_DIRECT_OUTPUT: 'smartShellMaxDirectOutput',
+        // Agent Loop
+        MAX_AGENT_ITERATIONS: 'maxAgentIterations',
+        // Security extra
+        ALLOW_PRIVATE_IPS: 'allowPrivateIPs',
 } as const;

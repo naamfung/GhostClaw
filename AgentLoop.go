@@ -397,6 +397,33 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         }
     }
 
+    // === LLM 二元分類：CHAT vs TASK ===
+    // 在入口處用 LLM 對用戶最新訊息做粗分類，成本極低（~5 tokens 輸出）
+    // 分類結果決定是否啟用工作模式（需求澄清提示 + todos 引導 + 退出守衛）
+    // 分類失敗時默認為 TASK（安全默認：寧可觸發工作模式都唔好漏判）
+    if !isNewSession {
+        if globalTaskTracker != nil {
+            var latestQuery string
+            for i := len(messages) - 1; i >= 0; i-- {
+                if messages[i].Role == "user" {
+                    if content, ok := messages[i].Content.(string); ok {
+                        latestQuery = content
+                    }
+                    break
+                }
+            }
+            if latestQuery != "" {
+                intent, err := ClassifyUserIntent(ctx, latestQuery, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID)
+                if err != nil {
+                    log.Printf("[AgentLoop] LLM classification failed: %v, defaulting to TASK", err)
+                    intent = IntentTask
+                }
+                globalTaskTracker.StartNewTask(latestQuery, intent)
+                log.Printf("[AgentLoop] Intent classified as: %d (0=CHAT, 1=TASK), query: %.100s", intent, latestQuery)
+            }
+        }
+    }
+
     // 注入或更新系统提示
     if len(messages) > 0 {
         hasSystemPrompt := false
@@ -451,18 +478,18 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     }
 
     // === 注入工作模式提示 ===
-    // 當意圖為 task 且複雜度為 moderate/complex 時，提醒模型使用 todos 管理進度
-    // 這使退出守衛能基於 todo 狀態進行程序化判斷，而非依賴模型自評
+    // TASK 模式：需求澄清優先 + 引導模型自行判斷複雜度
+    // 唔再做第二次 LLM 分類，模型根據用戶回應自行決定用 todos 定係 plan mode
     // 注意：如果 Plan Mode 已激活，不注入工作模式提示（Plan Mode 有自己的 todo 系統）
-    if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && !isNewSession {
+    if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() {
         planModeActive := globalPlanMode != nil && globalPlanMode.IsActive()
         if !planModeActive {
-            workModeHint := "\n\n[工作模式] 你正在執行一個結構化任務。\n" +
-                "請使用 todos 工具管理你的子任務進度：\n" +
-                "- 開始前先用 todos 創建任務列表\n" +
-                "- 完成子任務後更新為 completed\n" +
-                "- 對於異步操作（如 cron_add、shell_delayed），將項目標記為 waiting\n" +
-                "- 所有任務完成或等待中後再總結結果"
+            workModeHint := "\n\n[工作模式] 用戶的請求被識別為任務。\n" +
+                "在開始執行前，請先向用戶確認任務的具體需求、範圍和期望結果。\n\n" +
+                "根據用戶提供的詳細資訊，自行判斷任務複雜度並選擇合適的工作方式：\n" +
+                "- 簡單/明確任務（1-3 步驟）→ 使用 todos 工具規劃並執行\n" +
+                "- 複雜任務（涉及多檔案、多步驟、需要審慎規劃）→ 使用 enter_plan_mode 進入結構化規劃\n\n" +
+                "不要基於模糊的單句請求就做重大技術決策。"
             for i := len(messages) - 1; i >= 0; i-- {
                 if messages[i].Role == "system" {
                     if content, ok := messages[i].Content.(string); ok {
@@ -498,6 +525,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     resumeCount := 0              // 工作模式退出守衛續行計數器
     subagentResumeCount := 0      // 子代理運行守衛續行計數器（獨立計數，避免互相消耗配額）
     xmlRePromptCount := 0         // XML 工具調用偵測重新提示計數器
+    todoReminderCount := 0      // todos 使用提醒計數器（最多 2 次）
 
     // 记录用户消息到记忆整合器
     if globalMemoryConsolidator != nil && len(messages) > 0 {
@@ -539,7 +567,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         // ========== Plan Mode 自动提醒 ==========
         // 如果迭代次数较多且 Plan Mode 未激活，注入一次性提醒
         // 僅在規劃模式已啟用（配置開關打開）時才提醒，否則模型無法使用此功能
-        if iteration == 4 && globalPlanModeEnabled && globalPlanMode != nil && !globalPlanMode.IsActive() {
+        if iteration == 4 && globalPlanMode != nil && !globalPlanMode.IsActive() {
             log.Printf("[AgentLoop] Plan Mode suggestion: iteration=%d, plan mode inactive", iteration)
             // 注入到消息歷史中（僅模型可見），而非 ch.WriteChunk（前端可見）
             messages = append([]Message{{
@@ -1120,6 +1148,27 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 } else if len(runningSubagentIDs) > 0 {
                     log.Printf("[AgentLoop] Subagent running guard: max resume rounds (%d) reached, allowing exit despite %d running subagents", maxWorkModeResumeRounds, len(runningSubagentIDs))
                 }
+            }
+
+            // ========== todos 使用提醒守衛 ==========
+            // 工作模式下，如果模型尚未使用 todos 工具，主動提醒
+            // 最多提醒 2 次，避免騷擾
+            if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() && todoReminderCount < 2 {
+                todoReminderCount++
+                reminderHint := fmt.Sprintf(
+                    "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 todos 工具規劃任務。\n"+
+                        "請使用 todos 將任務分解為可追蹤的子步驟。\n"+
+                        "如果任務非常簡單（1 步驟可完成），請直接執行並完成。\n"+
+                        "(此提醒不會再出現超過 %d 次)",
+                    2-todoReminderCount,
+                )
+                messages = append(messages, Message{
+                    Role:      "user",
+                    Content:   reminderHint,
+                    Timestamp: time.Now().Unix(),
+                })
+                log.Printf("[AgentLoop] Todos reminder #%d injected", todoReminderCount)
+                continue
             }
 
             loopExitedNaturally = true

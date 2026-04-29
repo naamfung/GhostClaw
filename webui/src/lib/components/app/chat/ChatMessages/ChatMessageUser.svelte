@@ -73,6 +73,7 @@
 </script>
 
 <div
+	id="msg-{message.id}"
 	aria-label="User message with actions"
 	class="group flex flex-col items-end gap-3 md:gap-2 {className}"
 	role="group"

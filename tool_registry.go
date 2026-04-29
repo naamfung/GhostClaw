@@ -297,6 +297,21 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
+        reg("file_info",
+                "Get detailed file information (similar to the Unix 'file' command). Returns file size, type, MIME type, encoding, permissions, and system file description. Use this to inspect a file before reading it, especially for unknown or binary files.",
+                "core", "core",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "filename": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "The path to the file to inspect.",
+                                },
+                        },
+                        "required":             []string{"filename"},
+                        "additionalProperties": false,
+                })
+
         // ========== 基础浏览器工具 ==========
         reg("browser_search", `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
 

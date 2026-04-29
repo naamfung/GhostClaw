@@ -222,7 +222,11 @@
 	/>
 
 	<Sidebar.Provider bind:open={sidebarOpen}>
-		<div class="flex h-screen w-full" style:height="{innerHeight}px">
+		<div
+			class="flex h-screen w-full"
+			style:height="{innerHeight}px"
+			style:--nav-width="18rem"
+		>
 			<Sidebar.Root class="h-full">
 				<ChatSidebar bind:this={chatSidebar} />
 			</Sidebar.Root>

@@ -27,12 +27,9 @@ func resetGlobalPlanMode() {
 	TODO.Clear("phase2")
 }
 
-// enablePlanMode 在測試期間啟用 Plan Mode
+// enablePlanMode 在測試期間啟用 Plan Mode（總是啟用）並返回清理函數
 func enablePlanMode() func() {
-	old := globalPlanModeEnabled
-	globalPlanModeEnabled = true
 	return func() {
-		globalPlanModeEnabled = old
 		resetGlobalPlanMode()
 	}
 }
@@ -90,21 +87,6 @@ func TestPhaseMetadata(t *testing.T) {
 // ============================================================================
 // EnterPlanMode / 查詢
 // ============================================================================
-
-func TestEnterPlanMode_Disabled(t *testing.T) {
-	defer resetGlobalPlanMode()
-	old := globalPlanModeEnabled
-	globalPlanModeEnabled = false
-	defer func() { globalPlanModeEnabled = old }()
-
-	errMsg := EnterPlanMode("test task")
-	if errMsg == "" {
-		t.Error("should return error when Plan Mode is disabled")
-	}
-	if !strings.Contains(errMsg, "未啟用") {
-		t.Errorf("unexpected error message: %s", errMsg)
-	}
-}
 
 func TestEnterPlanMode_Enabled(t *testing.T) {
 	cleanup := enablePlanMode()
@@ -1328,10 +1310,6 @@ func TestEnterPlanMode_RepeatCallBlocked(t *testing.T) {
 
 func TestEnterPlanMode_AllowedWhenInactive(t *testing.T) {
 	defer resetGlobalPlanMode()
-
-	old := globalPlanModeEnabled
-	globalPlanModeEnabled = true
-	defer func() { globalPlanModeEnabled = old }()
 
 	// 當 Plan Mode 未激活時，enter_plan_mode 應該可以調用
 	// IsToolAllowedInPlanMode 返回 true（PlanPhaseInactive branch）

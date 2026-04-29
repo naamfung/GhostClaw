@@ -2,14 +2,17 @@ package main
 
 import (
         "bufio"
+        "context"
         "errors"
         "fmt"
         "io/fs"
         "os"
+        "os/exec"
         "path/filepath"
         "regexp"
         "runtime"
         "strings"
+        "time"
         "unicode"
 )
 
@@ -326,28 +329,209 @@ func getDefaultExcludeDirs() []string {
 }
 
 // isBinaryFile 检查文件是否为二进制文件
+// 採用雙重檢測策略：先檢查 null byte（最可靠），再檢查非可打印字符比例
 func isBinaryFile(path string) bool {
-        file, err := os.Open(path)
-        if err != nil {
-                return true
-        }
-        defer file.Close()
+	file, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer file.Close()
 
-        // 读取前 512 字节进行检测
-        buf := make([]byte, 512)
-        n, err := file.Read(buf)
-        if err != nil {
-                return true
-        }
+	// 读取前 8192 字节进行检测
+	buf := make([]byte, 8192)
+	n, err := file.Read(buf)
+	if n == 0 {
+		return false // 空檔案不是二進制
+	}
+	if err != nil {
+		return true
+	}
+	buf = buf[:n]
 
-        // 检查是否包含空字节（二进制文件的典型特征）
-        for i := 0; i < n; i++ {
-                if buf[i] == 0 {
-                        return true
-                }
-        }
+	// 策略 1：檢查是否包含空字節（二進制文件的典型特徵）
+	for i := 0; i < n; i++ {
+		if buf[i] == 0 {
+			return true
+		}
+	}
 
-        return false
+	// 策略 2：檢查非可打印字符比例
+	// 超過 30% 非可打印字符（排除常見空白字符）視為二進制
+	nonPrintable := 0
+	for _, b := range buf {
+		if b < 0x20 && b != '\n' && b != '\r' && b != '\t' && b != '\f' && b != '\v' {
+			nonPrintable++
+		} else if b == 0x7F {
+			nonPrintable++
+		}
+	}
+	if n > 0 && float64(nonPrintable)/float64(n) > 0.3 {
+		return true
+	}
+
+	return false
+}
+
+// getFileTypeDescription 獲取文件類型描述
+// 優先使用系統的 file 命令，失敗時回退到基本檔案資訊
+func getFileTypeDescription(path string) string {
+	// 先獲取基本檔案資訊，確保檔案存在且可讀
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Sprintf("無法讀取檔案: %v", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("⚠️ 此文件為二進制文件，無法以純文字形式顯示內容。\n\n")
+	sb.WriteString(fmt.Sprintf("**檔案名稱**: %s\n", filepath.Base(path)))
+	sb.WriteString(fmt.Sprintf("**檔案大小**: %s\n", formatFileSize(info.Size())))
+	sb.WriteString(fmt.Sprintf("**修改時間**: %s\n", info.ModTime().Format(time.RFC3339)))
+	sb.WriteString(fmt.Sprintf("**副檔名**: %s\n", filepath.Ext(path)))
+
+	// 嘗試使用系統的 file 命令獲取 MIME 類型
+	mimeType := detectMIMEType(path)
+	if mimeType != "" {
+		sb.WriteString(fmt.Sprintf("**MIME 類型**: %s\n", mimeType))
+	}
+
+	// 嘗試使用系統的 file 命令獲取詳細描述
+	fileDesc := runFileCommand(path)
+	if fileDesc != "" {
+		sb.WriteString(fmt.Sprintf("**檔案類型**: %s\n", fileDesc))
+	}
+
+	sb.WriteString("\n💡 **建議**: 如需查看或操作此二進制文件的內容，可以使用以下工具：\n")
+	sb.WriteString("- 使用 `smart_shell` 執行 `xxd <file>`、`hexdump -C <file>` 或 `od -A x -t x1z <file>` 查看十六進制內容\n")
+	sb.WriteString("- 使用 `smart_shell` 執行 `file <file>` 獲取詳細文件類型信息\n")
+	sb.WriteString("- 如需讀取二進制數據塊，可以使用 `read_file_bytes` 工具\n")
+
+	return sb.String()
+}
+
+// detectMIMEType 檢測文件的 MIME 類型
+func detectMIMEType(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	// 讀取前 512 字節用於 magic bytes 檢測
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	buf = buf[:n]
+
+	return detectMIMEFromBytes(buf)
+}
+
+// detectMIMEFromBytes 從字節內容檢測 MIME 類型
+func detectMIMEFromBytes(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	// 常見 magic bytes 檢測
+	switch {
+	// 圖片
+	case len(data) >= 4 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "image/jpeg"
+	case len(data) >= 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G':
+		return "image/png"
+	case len(data) >= 6 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F':
+		return "image/gif"
+	case len(data) >= 2 && data[0] == 'B' && data[1] == 'M':
+		return "image/bmp"
+	case len(data) >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F':
+		return "image/webp" // 部分匹配
+	case len(data) >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00:
+		return "image/x-icon"
+
+	// 壓縮檔案
+	case len(data) >= 2 && data[0] == 0x1F && data[1] == 0x8B:
+		return "application/gzip"
+	case len(data) >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 0x03 && data[3] == 0x04:
+		return "application/zip"
+	case len(data) >= 6 && data[0] == 'R' && data[1] == 'a' && data[2] == 'r' && data[3] == '!':
+		return "application/x-rar"
+	case len(data) >= 5 && data[0] == 0x42 && data[1] == 0x5A && data[2] == 0x68:
+		return "application/x-bzip2"
+	case len(data) >= 6 && data[0] == 0xFD && data[1] == '7' && data[2] == 'z' && data[3] == 'X' && data[4] == 'Z':
+		return "application/x-7z-compressed"
+
+	// 二進制可執行檔
+	case len(data) >= 4 && data[0] == 0x7F && data[1] == 'E' && data[2] == 'L' && data[3] == 'F':
+		return "application/x-elf"
+	case len(data) >= 2 && data[0] == 'M' && data[1] == 'Z':
+		return "application/x-msdos-program" // PE/EXE
+	case len(data) >= 4 && data[0] == 0xCA && data[1] == 0xFE && data[2] == 0xBA && data[3] == 0xBE:
+		return "application/java-vm" // Mach-O
+
+	// 文件格式
+	case len(data) >= 5 && data[0] == '%' && data[1] == 'P' && data[2] == 'D' && data[3] == 'F' && data[4] == '-':
+		return "application/pdf"
+	case len(data) >= 8 && data[0] == 0xD0 && data[1] == 0xCF && data[2] == 0x11 && data[3] == 0xE0:
+		return "application/msword" // DOC/XLS/PPT (OLE2)
+	case len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF:
+		return "text/plain; charset=UTF-16BE"
+	case len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE:
+		return "text/plain; charset=UTF-16LE"
+	case len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF:
+		return "text/plain; charset=UTF-8-BOM"
+
+	// 音頻/視頻
+	case len(data) >= 4 && data[0] == 'O' && data[1] == 'g' && data[2] == 'g' && data[3] == 'S':
+		return "video/ogg"
+	case len(data) >= 4 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F':
+		if len(data) >= 12 && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P' {
+			return "image/webp"
+		}
+		return "application/x-riff"
+
+	// 憑證/密鑰
+	case len(data) >= 27 && string(data[:27]) == "-----BEGIN CERTIFICATE-----":
+		return "application/x-pem-certificate"
+	case len(data) >= 10 && string(data[:10]) == "-----BEGIN":
+		return "application/x-pem-file"
+	}
+
+	return ""
+}
+
+// runFileCommand 執行系統的 file 命令獲取檔案類型
+func runFileCommand(path string) string {
+	filePath := "/usr/bin/file"
+	if runtime.GOOS == "freebsd" {
+		filePath = "/usr/local/bin/file" // FreeBSD 上 file 可能在 /usr/local/bin
+	}
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// file 命令不可用
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, filePath, "-b", path)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(output))
+}
+
+// formatFileSize 格式化文件大小為人類可讀格式
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }
 
 // shouldExclude 检查路径是否应该被排除

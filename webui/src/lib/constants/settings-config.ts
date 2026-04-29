@@ -21,9 +21,10 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         timeoutShell: 60,
         timeoutHttp: 120,
         timeoutPlugin: 120,
-        timeoutBrowser: 30,
+        timeoutBrowser: 90,
         // security settings
         enableSSRFProtection: true,
+        allowPrivateIPs: false,
         // browser settings
         browserUserMode: true,
         browserHeadless: false,
@@ -31,8 +32,13 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         browserDisableDevTools: false,
         browserNoSandbox: true,
         browserDisableTools: false,
-        // workflow settings
-        planModeEnabled: true
+        // smart_shell settings
+        smartShellSyncTimeout: 60,
+        smartShellUnknownTimeout: 120,
+        smartShellDefaultWakeMins: 5,
+        smartShellMaxDirectOutput: 1000,
+        // agent loop
+        maxAgentIterations: 0,
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -76,9 +82,15 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         timeoutHttp: 'HTTP 请求的超时时间（秒）。包括 API 调用和网络请求。',
         timeoutPlugin: '插件内 HTTP 请求的超时时间（秒）。插件调用网络接口时的等待上限。',
         timeoutBrowser: '浏览器每次操作的超时时间（秒）。每次页面访问/搜索/下载的等待上限。',
-        // Workflow settings
-        planModeEnabled:
-                '啟用規劃模式（Plan Mode）。啟用後模型可使用 3 階段結構化任務分解工作流（探索→設計→執行），Phase 2 支援回溯。關閉時僅使用待辦事項（todos）控制工作進度。'
+        // smart_shell settings
+        smartShellSyncTimeout: 'SmartShell 快速命令（已知命令）的超时时间（秒）。',
+        smartShellUnknownTimeout: 'SmartShell 未知命令的超时时间（秒）。未知命令可能需要更长的等待时间。',
+        smartShellDefaultWakeMins: 'ShellDelayed 延迟任务的默认唤醒间隔（分钟）。',
+        smartShellMaxDirectOutput: 'Shell 输出直接返回给模型的最大字符数。超过此值将保存为文件再返回。设为 0 使用默认值（1000）。Plan Mode 探索阶段自动提升至 2000。',
+        // agent loop
+        maxAgentIterations: 'Agent Loop 最大迭代次数。设为 0 则不限制（默认 100）。降低此值可防止模型无限制循环。',
+        // security extra
+        allowPrivateIPs: '允许访问私有 IP 地址（如 192.168.x.x、10.x.x.x）。仅在内网开发环境中启用。',
 };
 
 export const SETTINGS_COLOR_MODES_CONFIG = [

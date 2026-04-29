@@ -13,7 +13,7 @@ export const SETTINGS_SECTION_TITLES = {
         SKILLS: '技能管理',
         SECURITY: '安全',
         BROWSER: '浏览器',
-        WORKFLOW: '工作模式',
+        TOOLS: '工具配置',
         TIMEOUT: '超时配置',
         IMPORT_EXPORT: '导入/导出',
         MCP: 'MCP 服务'

@@ -146,12 +146,7 @@ func (pm *PlanMode) phaseNameLocked() string {
 // ============================================================================
 
 // EnterPlanMode 進入 Plan Mode，從 Phase 1 開始
-// 如果規劃模式未在配置中啟用，返回錯誤信息
 func EnterPlanMode(taskDesc string) string {
-        if !globalPlanModeEnabled {
-                return "規劃模式（Plan Mode）未啟用。當前工作模式僅使用待辦事項（todos）控制進度。如需啟用規劃模式，請在設置中開啟「規劃模式」選項。"
-        }
-
         globalPlanMode.mu.Lock()
         defer globalPlanMode.mu.Unlock()
 
@@ -504,7 +499,7 @@ func GetPlanModeSystemPrompt() string {
 func explorePhasePrompt() string {
         return `## Phase 1: 探索
 
-目標：充分理解任務涉及的文件結構和依賴關係。
+目標：充分理解任務涉及的文件結構和依賴關係，並掌握可用的工具資源。
 
 操作指引：
 1. 使用 text_search / text_grep 搜索關鍵詞，定位相關文件
@@ -512,13 +507,24 @@ func explorePhasePrompt() string {
 3. 對於複雜任務，使用 spawn 創建最多 3 個並行子代理探索不同方面
 4. 使用 todos 工具管理探索子任務
 
+工具探索（第五步 — 必須在資料收集之後、調用 next_phase 之前執行）：
+5. 使用 menu 工具瀏覽與任務最相關的工具分類，了解你可用的工具資源。
+   注意：此階段僅瀏覽（action="show"），不要使用 action="load" 加載工具。
+   進入 Phase 3（執行階段）後系統會自動解鎖所有工具，無需在此階段提前加載。
+   例如：
+   - menu() — 先查看所有工具分類
+   - menu(action="show", target="file") — 展開與任務相關的文件操作分類
+   - 可根據任務需求展開多個分類，了解完整畫像
+   目的：在進入設計階段前，對整體工具資源有清晰認知，以便制定更精準的執行計劃。
+
 探索要點：
 - 項目整體結構是什麼？
 - 需要修改哪些文件？每個文件的職責是什麼？
 - 有哪些依賴和約束？
 - 是否有類似的現有實現可以參考？
+- 當前任務最可能需要哪些工具分類？
 
-完成探索後，調用 next_phase 進入設計階段。`
+完成探索和工具加載後，調用 next_phase 進入設計階段。`
 }
 
 func designPhasePrompt() string {

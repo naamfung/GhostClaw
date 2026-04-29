@@ -15,9 +15,17 @@ import (
 // 默认直接返回的最大字符数（超过则保存到文件）
 const DefaultMaxDirectOutput = 1000
 
+// Plan Mode 探索階段（Phase 1）使用的臨時門檻值
+const PlanModeExploreMaxDirectOutput = 2000
+
 // getMaxDirectOutput 返回配置的 stdout/stderr 直接输出最大字符数
 // 未配置（值為 0）時使用默認值 1000，配置了非零值則直接使用
+// Plan Mode 探索階段（Phase 1）時使用 2000 字臨時門檻，離開探索階段後恢復
 func getMaxDirectOutput() int {
+        // Plan Mode 探索階段（Phase 1）使用更大的門檻，便於模型閱讀大量輸出
+        if globalPlanMode != nil && globalPlanMode.CurrentPhase() == PlanPhaseExplore {
+                return PlanModeExploreMaxDirectOutput
+        }
         v := globalToolsConfig.SmartShell.MaxDirectOutput
         if v <= 0 {
                 return DefaultMaxDirectOutput

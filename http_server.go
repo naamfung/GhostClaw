@@ -243,7 +243,6 @@ func (s *HTTPServer) propsHandler(w http.ResponseWriter, r *http.Request) {
                         "show_thinking":     thinking,
                         "api_type":          apiType,
                         "base_url":          baseURL,
-                        "plan_mode_enabled": globalPlanModeEnabled,
                 },
         }
         json.NewEncoder(w).Encode(props)

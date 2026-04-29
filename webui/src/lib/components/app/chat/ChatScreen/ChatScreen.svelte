@@ -38,6 +38,7 @@
         import { fade, fly, slide } from 'svelte/transition';
         import { Trash2, AlertTriangle, RefreshCw } from '@lucide/svelte';
         import ChatScreenDragOverlay from './ChatScreenDragOverlay.svelte';
+        import ChatMessageNav from '$lib/components/app/chat/ChatMessageNav.svelte';
 
         let { showCenteredEmpty = false } = $props();
 
@@ -346,6 +347,8 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <ChatScreenHeader />
+
+<ChatMessageNav scrollContainer={chatScrollContainer} />
 
 {#if !isEmpty}
         <div

@@ -92,7 +92,6 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                 },
                 "DefaultRole":     getDefaultRole(),
                 "NeedsSetup":      needsSetup,
-                "PlanModeEnabled": globalToolsConfig.PlanModeEnabled,
                 "Timeout": map[string]interface{}{
                         "Shell":   globalTimeoutConfig.Shell,
                         "HTTP":    globalTimeoutConfig.HTTP,
@@ -121,10 +120,12 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
 
         // 解析请求
         var newConfig struct {
-                APIConfig       APIConfig     `json:"APIConfig"`
-                DefaultRole     string        `json:"DefaultRole"`
-                Timeout         TimeoutConfig `json:"Timeout"`
-                PlanModeEnabled *bool         `json:"PlanModeEnabled"` // 使用指針區分「未提供」和「提供了 false」
+                APIConfig       APIConfig         `json:"APIConfig"`
+                DefaultRole     string            `json:"DefaultRole"`
+                Timeout         TimeoutConfig     `json:"Timeout"`
+                BrowserConfig   *BrowserConfig    `json:"BrowserConfig"`
+                Security        *SecurityConfig   `json:"Security"`
+                Tools           *ToolsConfig      `json:"Tools"`
         }
         if err := json.Unmarshal(body, &newConfig); err != nil {
                 http.Error(w, `{"error": "解析 JSON 失败"}`, http.StatusBadRequest)
@@ -191,10 +192,27 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 }
         }
 
-        // 更新規劃模式開關
-        if _, exists := rawMap["PlanModeEnabled"]; exists && newConfig.PlanModeEnabled != nil {
-                if err := globalConfigManager.UpdatePlanModeEnabled(*newConfig.PlanModeEnabled); err != nil {
-                        log.Printf("Warning: failed to update plan mode config: %v", err)
+        // 更新浏览器配置
+        if _, exists := rawMap["BrowserConfig"]; exists && newConfig.BrowserConfig != nil {
+                if err := globalConfigManager.UpdateBrowserConfig(*newConfig.BrowserConfig); err != nil {
+                        log.Printf("Warning: failed to update browser config: %v", err)
+                }
+        }
+
+        // 更新安全配置
+        if _, exists := rawMap["Security"]; exists && newConfig.Security != nil {
+                if err := globalConfigManager.UpdateSecurityConfig(*newConfig.Security); err != nil {
+                        log.Printf("Warning: failed to update security config: %v", err)
+                }
+        }
+
+        // 更新工具配置（SmartShell + MaxAgentIterations）
+        if _, exists := rawMap["Tools"]; exists && newConfig.Tools != nil {
+                if err := globalConfigManager.UpdateSmartShellConfig(newConfig.Tools.SmartShell); err != nil {
+                        log.Printf("Warning: failed to update smart_shell config: %v", err)
+                }
+                if err := globalConfigManager.UpdateMaxAgentIterations(newConfig.Tools.MaxAgentIterations); err != nil {
+                        log.Printf("Warning: failed to update max agent iterations: %v", err)
                 }
         }
 

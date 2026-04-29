@@ -181,7 +181,6 @@ type ToolsConfig struct {
         Shell              ShellToolConfig    `toon:"Shell" json:"Shell"`
         ShellDelayed       ShellDelayedConfig `toon:"ShellDelayed" json:"ShellDelayed"`
         MaxAgentIterations int               `toon:"MaxAgentIterations,omitempty" json:"MaxAgentIterations,omitempty"` // Agent Loop 最大迭代次数（0=使用默认值100）
-        PlanModeEnabled    bool              `toon:"PlanModeEnabled" json:"PlanModeEnabled"`                       // 是否啟用規劃模式（默認關閉，關閉時僅使用 todos 控制工作進度）
 }
 
 // ProfileConfig 个人资料配置

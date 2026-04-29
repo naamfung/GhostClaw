@@ -12,8 +12,7 @@
                 Users,
                 Timer,
                 Shield,
-                Globe,
-                ListChecks
+                Globe
         } from '@lucide/svelte';
         import { McpLogo, McpServersSettings } from '$lib/components/app/mcp';
         import {
@@ -21,7 +20,6 @@
                 ChatSettingsImportExportTab,
                 ChatSettingsFields
         } from '$lib/components/app';
-        import { onMount } from 'svelte';
         import { ScrollArea } from '$lib/components/ui/scroll-area';
         import { config, settingsStore } from '$lib/stores/settings.svelte';
         import {
@@ -149,6 +147,11 @@
                                         key: SETTINGS_KEYS.ENABLE_SSRF_PROTECTION,
                                         label: '启用 SSRF 防护',
                                         type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.ALLOW_PRIVATE_IPS,
+                                        label: '允许访问私有 IP',
+                                        type: SettingsFieldType.CHECKBOX
                                 }
                         ]
                 },
@@ -189,15 +192,35 @@
                                 }
                         ]
                 },
-                // ===== 工作模式 =====
+                // ===== 工具配置 =====
                 {
-                        title: SETTINGS_SECTION_TITLES.WORKFLOW,
-                        icon: ListChecks,
+                        title: SETTINGS_SECTION_TITLES.TOOLS,
+                        icon: Wrench,
                         fields: [
                                 {
-                                        key: SETTINGS_KEYS.PLAN_MODE_ENABLED,
-                                        label: '規劃模式（Plan Mode）',
-                                        type: SettingsFieldType.CHECKBOX
+                                        key: SETTINGS_KEYS.SMART_SHELL_SYNC_TIMEOUT,
+                                        label: 'SmartShell 快速命令超时（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.SMART_SHELL_UNKNOWN_TIMEOUT,
+                                        label: 'SmartShell 未知命令超时（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.SMART_SHELL_DEFAULT_WAKE_MINS,
+                                        label: 'ShellDelayed 默认唤醒间隔（分）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.SMART_SHELL_MAX_DIRECT_OUTPUT,
+                                        label: 'Shell 输出直接返回最大字符数',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.MAX_AGENT_ITERATIONS,
+                                        label: 'Agent Loop 最大迭代次数',
+                                        type: SettingsFieldType.INPUT
                                 }
                         ]
                 },
@@ -267,22 +290,6 @@
                 }
         });
 
-        // 從後端同步 PlanModeEnabled 到本地設置，避免設置頁面顯示過期值
-        onMount(async () => {
-                try {
-                        const resp = await fetch('/api/config');
-                        if (resp.ok) {
-                                const data = await resp.json();
-                                if (data.PlanModeEnabled !== undefined) {
-                                        settingsStore.updateMultipleConfig({ planModeEnabled: data.PlanModeEnabled });
-                                        localConfig.planModeEnabled = data.PlanModeEnabled;
-                                }
-                        }
-                } catch {
-                        // 靜默失敗，不阻塞設置頁面
-                }
-        });
-
         function handleThemeChange(newTheme: string) {
                 localConfig.theme = newTheme;
 
@@ -330,7 +337,7 @@
                                 shell: Number(processedConfig.timeoutShell) || 60,
                                 http: Number(processedConfig.timeoutHttp) || 120,
                                 plugin: Number(processedConfig.timeoutPlugin) || 120,
-                                browser: Number(processedConfig.timeoutBrowser) || 30
+                                browser: Number(processedConfig.timeoutBrowser) || 90
                         };
 
                         // Default role
@@ -338,9 +345,50 @@
                                 backendConfig.defaultRole = processedConfig.defaultRole;
                         }
 
-                        // Plan Mode toggle
-                        if (processedConfig.planModeEnabled !== undefined) {
-                                backendConfig.PlanModeEnabled = !!processedConfig.planModeEnabled;
+                        // Browser configuration
+                        const browserFields = [
+                                'browserUserMode', 'browserHeadless', 'browserDisableGPU',
+                                'browserDisableDevTools', 'browserNoSandbox', 'browserDisableTools'
+                        ];
+                        const hasBrowserConfig = browserFields.some(f => processedConfig[f] !== undefined);
+                        if (hasBrowserConfig) {
+                                backendConfig.BrowserConfig = {
+                                        UserMode: !!processedConfig.browserUserMode,
+                                        Headless: !!processedConfig.browserHeadless,
+                                        DisableGPU: !!processedConfig.browserDisableGPU,
+                                        DisableDevTools: !!processedConfig.browserDisableDevTools,
+                                        NoSandbox: !!processedConfig.browserNoSandbox,
+                                        DisableBrowserTools: !!processedConfig.browserDisableTools
+                                };
+                        }
+
+                        // Security configuration
+                        const securityFields = ['enableSSRFProtection', 'allowPrivateIPs'];
+                        const hasSecurityConfig = securityFields.some(f => processedConfig[f] !== undefined);
+                        if (hasSecurityConfig) {
+                                backendConfig.Security = {
+                                        EnableSSRFProtection: !!processedConfig.enableSSRFProtection,
+                                        AllowPrivateIPs: !!processedConfig.allowPrivateIPs
+                                };
+                        }
+
+                        // Tools configuration (SmartShell + AgentLoop)
+                        const toolsFields = [
+                                'smartShellSyncTimeout', 'smartShellUnknownTimeout',
+                                'smartShellDefaultWakeMins', 'smartShellMaxDirectOutput',
+                                'maxAgentIterations'
+                        ];
+                        const hasToolsConfig = toolsFields.some(f => processedConfig[f] !== undefined);
+                        if (hasToolsConfig) {
+                                backendConfig.Tools = {
+                                        SmartShell: {
+                                                SyncTimeout: Number(processedConfig.smartShellSyncTimeout) || 60,
+                                                UnknownTimeout: Number(processedConfig.smartShellUnknownTimeout) || 120,
+                                                DefaultWakeMins: Number(processedConfig.smartShellDefaultWakeMins) || 5,
+                                                MaxDirectOutput: Number(processedConfig.smartShellMaxDirectOutput) ?? 1000
+                                        },
+                                        MaxAgentIterations: Number(processedConfig.maxAgentIterations) || 0
+                                };
                         }
 
                         await fetch('/api/config', {

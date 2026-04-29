@@ -155,7 +155,6 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.SystemInfo.IncludeMemory = true
         config.SystemInfo.IncludeGPU = false
         config.SystemInfo.IncludeOSDetails = true
-        config.Tools.PlanModeEnabled = false // 規劃模式默認關閉
         return config
 }
 
@@ -269,8 +268,6 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
         config.BrowserConfig.DisableDevTools = false
         config.BrowserConfig.NoSandbox = true
         config.BrowserConfig.DisableBrowserTools = false
-
-        // PlanModeEnabled 默認值（bool 零值為 false，無需額外處理）
 
         // SystemInfo 默认值
         if !config.SystemInfo.Enabled {
@@ -558,12 +555,39 @@ func (cm *ConfigManager) UpdateTimeout(timeout TimeoutConfig) error {
         return cm.saveLocked()
 }
 
-// UpdatePlanModeEnabled 更新規劃模式開關，保存
-func (cm *ConfigManager) UpdatePlanModeEnabled(enabled bool) error {
+// UpdateBrowserConfig 更新浏览器配置，保存
+func (cm *ConfigManager) UpdateBrowserConfig(bc BrowserConfig) error {
         cm.mu.Lock()
         defer cm.mu.Unlock()
 
-        cm.config.Tools.PlanModeEnabled = enabled
+        cm.config.BrowserConfig = bc
+        return cm.saveLocked()
+}
+
+// UpdateSecurityConfig 更新安全配置，保存
+func (cm *ConfigManager) UpdateSecurityConfig(sc SecurityConfig) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        cm.config.Security = sc
+        return cm.saveLocked()
+}
+
+// UpdateSmartShellConfig 更新 SmartShell 配置，保存
+func (cm *ConfigManager) UpdateSmartShellConfig(ssc SmartShellConfig) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        cm.config.Tools.SmartShell = ssc
+        return cm.saveLocked()
+}
+
+// UpdateMaxAgentIterations 更新 Agent Loop 最大迭代次数，保存
+func (cm *ConfigManager) UpdateMaxAgentIterations(maxIter int) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        cm.config.Tools.MaxAgentIterations = maxIter
         return cm.saveLocked()
 }
 
@@ -665,7 +689,6 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         DisableBrowserTools = cm.config.BrowserConfig.DisableBrowserTools
         globalTimeoutConfig = cm.config.Timeout
         globalToolsConfig = cm.config.Tools
-        globalPlanModeEnabled = cm.config.Tools.PlanModeEnabled
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）

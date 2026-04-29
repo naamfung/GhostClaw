@@ -545,6 +545,11 @@ func handleTextSearch(ctx context.Context, argsMap map[string]interface{}, ch Ch
                 return "Error: 必须提供 'pattern' 参数", false
         }
 
+        // 二進制文件檢測
+        if isBinaryFile(filePath) {
+                return getFileTypeDescription(filePath), false
+        }
+
         data, err := os.ReadFile(filePath)
         if err != nil {
                 return fmt.Sprintf("Error: 无法读取文件: %v", err), false

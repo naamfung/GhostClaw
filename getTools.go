@@ -289,23 +289,6 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
         // 添加动态工具
         toolList = append(toolList, dynamicTools...)
 
-        // 如果規劃模式未啟用，從工具列表中移除 Plan Mode 相關靜態工具
-        // 動態工具（next_phase, plan_write, plan_read）僅在 Plan Mode 激活時注入，此處無需處理
-        if !globalPlanModeEnabled && !(globalPlanMode != nil && globalPlanMode.IsActive()) {
-                planModeToolNames := map[string]bool{
-                        "enter_plan_mode": true,
-                        "exit_plan_mode":  true,
-                }
-                filtered := make([]map[string]interface{}, 0, len(toolList))
-                for _, t := range toolList {
-                        name := getToolName(t)
-                        if !planModeToolNames[name] {
-                                filtered = append(filtered, t)
-                        }
-                }
-                toolList = filtered
-        }
-
         return toolList
 }
 
