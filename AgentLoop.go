@@ -354,8 +354,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         }
 
         fencedBlock := BuildMemoryContextBlock(memoryContext)
-        if fencedBlock != "" && latestUserIdx > 0 {
+        if fencedBlock != "" && latestUserIdx >= 0 {
             // 插入到最新 user message 之前（紧跟上一条消息之后）
+            // 如果 user 在 index 0，則插入到消息列表最前面
             insertIdx := latestUserIdx
             memMsg := Message{Role: "system", Content: fencedBlock}
             messages = append(messages[:insertIdx], append([]Message{memMsg}, messages[insertIdx:]...)...)
@@ -1068,7 +1069,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                                         break
                                     }
                                 }
-                                if userInsertIdx > 0 {
+                                if userInsertIdx >= 0 {
                                     memMsg := Message{Role: "system", Content: fencedBlock}
                                     newMessages = append(newMessages[:userInsertIdx], append([]Message{memMsg}, newMessages[userInsertIdx:]...)...)
                                 }
