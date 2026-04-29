@@ -255,7 +255,7 @@ func GetMenuToolDefinitionAnthropic() map[string]interface{} {
 - menu(action="show", target="web") → 查看 web 分类下有哪些工具
 - menu(action="load", target="web") → 加载整个 web 分类
 - menu(action="load", target="BrowserSearch") → 仅加载单个工具`,
-                "InputSchema": map[string]interface{}{
+                "input_schema": map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
                                 "action": map[string]interface{}{

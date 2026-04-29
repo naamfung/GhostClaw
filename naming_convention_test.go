@@ -38,6 +38,7 @@ var allowedSnakeCase = map[string]bool{
 	"ghostclaw_token":      true,
 	"content_type":   true,
 	"authorization":  true,
+	"input_schema":   true, // Anthropic API 協議 key
 }
 
 // isSnakeCase checks if a string looks like snake_case
@@ -309,4 +310,87 @@ func TestNoSnakeCaseInErrorMessages(t *testing.T) {
 			}
 		}
 	}
+}
+
+// ==========================================================================
+// 規則 8：API 協議格式驗證 — ToOpenAI / ToAnthropic 輸出必須符合 API 規範
+// ==========================================================================
+
+var anthropicAPIKeys = []string{"name", "description", "input_schema"}
+var openaiAPIKeys = []string{"type", "function", "name", "description", "parameters"}
+
+func TestToolFormatAPISpec(t *testing.T) {
+	// 對每個已註冊的工具，驗證 ToAnthropic() 和 ToOpenAI() 輸出格式
+	allTools := GetRegistryTools()
+	if len(allTools) == 0 {
+		t.Skip("no registered tools")
+	}
+
+	for _, td := range allTools {
+		t.Run(td.Name+"/Anthropic", func(t *testing.T) {
+			result := td.ToAnthropic()
+			// 必須包含 Anthropic API 所需的所有 key
+			for _, key := range anthropicAPIKeys {
+				if _, ok := result[key]; !ok {
+					t.Errorf("Anthropic 格式缺少必要 key %q（工具 %s）", key, td.Name)
+				}
+			}
+			// 參數 schema 不能為 nil
+			if result["input_schema"] == nil {
+				t.Errorf("Anthropic 格式 input_schema 為 nil（工具 %s）", td.Name)
+			}
+		})
+
+		t.Run(td.Name+"/OpenAI", func(t *testing.T) {
+			result := td.ToOpenAI()
+			// 必須是 function 類型
+			if result["type"] != "function" {
+				t.Errorf("OpenAI 格式 type 應為 'function'，得到 %v（工具 %s）", result["type"], td.Name)
+			}
+			// function 子對象不能為 nil
+			fn, ok := result["function"].(map[string]interface{})
+			if !ok || fn == nil {
+				t.Errorf("OpenAI 格式 function 為 nil 或類型錯誤（工具 %s）", td.Name)
+				return
+			}
+			// 必須包含 name, description, parameters
+			for _, key := range []string{"name", "description", "parameters"} {
+				if _, ok := fn[key]; !ok {
+					t.Errorf("OpenAI 格式 function 缺少必要 key %q（工具 %s）", key, td.Name)
+				}
+			}
+			if fn["parameters"] == nil {
+				t.Errorf("OpenAI 格式 parameters 為 nil（工具 %s）", td.Name)
+			}
+		})
+	}
+}
+
+func TestAnthropicInputSchemaKeyIsCorrect(t *testing.T) {
+	// 直接檢驗 ToAnthropic 函數使用正確的 key 名稱
+	td := &ToolDef{
+		Name:        "Test",
+		Description: "Test tool",
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+	}
+	result := td.ToAnthropic()
+
+	// 必須使用 "input_schema"（小寫蛇形）而非 "InputSchema"
+	if _, ok := result["input_schema"]; !ok {
+		t.Errorf("ToAnthropic() 必須使用 'input_schema'（蛇形小寫），當前 key: %v", getKeys(result))
+	}
+	if _, ok := result["InputSchema"]; ok {
+		t.Error("ToAnthropic() 不應包含 'InputSchema'（PascalCase），必須使用 'input_schema'")
+	}
+}
+
+func getKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

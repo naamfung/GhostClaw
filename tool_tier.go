@@ -565,7 +565,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 {
                         "name": "BrowserNavigate",
                         "description": "Navigate to a URL, visit a web page, and extract its text content. Supports optional wait time for dynamic pages.",
-                        "InputSchema": map[string]interface{}{
+                        "input_schema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -585,7 +585,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 {
                         "name": "BrowserInteract",
                         "description": "Interact with elements on a web page. Supports click, double-click, hover, type text, scroll, right-click, and drag. Uses CSS selectors to target elements.",
-                        "InputSchema": map[string]interface{}{
+                        "input_schema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -627,7 +627,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 {
                         "name": "BrowserExtract",
                         "description": "Extract content from a web page. Supports screenshot capture, JavaScript execution, link/image extraction, element scraping, and PDF generation.",
-                        "InputSchema": map[string]interface{}{
+                        "input_schema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -664,7 +664,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 {
                         "name": "BrowserFormFill",
                         "description": "Fill out and submit web forms. Supports multi-field input, file uploads, select options, and key press simulation.",
-                        "InputSchema": map[string]interface{}{
+                        "input_schema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -696,7 +696,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 {
                         "name": "BrowserSearch",
                         "description": "Search for a keyword using a search engine. Returns search results with titles and links.",
-                        "InputSchema": map[string]interface{}{
+                        "input_schema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "keyword": map[string]interface{}{

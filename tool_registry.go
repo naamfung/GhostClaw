@@ -2324,7 +2324,7 @@ func (td *ToolDef) ToAnthropic() map[string]interface{} {
         return map[string]interface{}{
                 "name":         td.Name,
                 "description":  td.Description,
-                "InputSchema": td.Parameters,
+                "input_schema": td.Parameters,
         }
 }
 

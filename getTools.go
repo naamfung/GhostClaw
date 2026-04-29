@@ -70,7 +70,7 @@ func getToolName(tool map[string]interface{}) string {
                         return name
                 }
         }
-        // Anthropic 格式: {"name": "xxx", "InputSchema": {...}}
+        // Anthropic 格式: {"name": "xxx", "input_schema": {...}}
         if name, ok := tool["name"].(string); ok {
                 return name
         }
@@ -92,7 +92,7 @@ func convertOpenAIToolToAnthropic(tool map[string]interface{}) map[string]interf
         anthropicTool := map[string]interface{}{
                 "name":         name,
                 "description":  description,
-                "InputSchema": parameters,
+                "input_schema": parameters,
         }
 
         return anthropicTool
