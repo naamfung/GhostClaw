@@ -17,7 +17,7 @@ func handleMemorySave(ctx context.Context, argsMap map[string]interface{}, ch Ch
 
     key, ok := argsMap["key"].(string)
     if !ok || key == "" {
-        return "Error: missing or invalid 'key' parameter. Example: memory_save(key=\"user_name\", value=\"张三\")", false
+        return "Error: missing or invalid 'key' parameter. Example: MemorySave(key=\"user_name\", value=\"张三\")", false
     }
     value, ok := argsMap["value"].(string)
     if !ok || value == "" {
@@ -175,7 +175,7 @@ func handleMemoryForget(ctx context.Context, argsMap map[string]interface{}, ch 
 
     key, ok := argsMap["key"].(string)
     if !ok || key == "" {
-        return "Error: missing or invalid 'key' parameter. Example: memory_forget(key=\"old_preference\")", false
+        return "Error: missing or invalid 'key' parameter. Example: MemoryForget(key=\"old_preference\")", false
     }
 
     // 尝试在所有分类中删除

@@ -303,7 +303,7 @@ func (so *StrategyOptimizer) optimizeSystemPrompt(report *InsightsReport) *Appli
 		}
 
 		return &AppliedChange{
-			Type:        "system_prompt",
+			Type:        "SystemPrompt",
 			Description: fmt.Sprintf("优化系统提示，添加 %d 项改进建议", len(improvements)),
 			Priority:    "high",
 			Success:     true,

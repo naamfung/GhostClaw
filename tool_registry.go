@@ -9,7 +9,7 @@ package main
 //
 // 不包含在此注册表中的特殊/动态工具：
 //   - menu（tool_menu.go 中定义）
-//   - Plan Mode 动态工具（next_phase, plan_write, plan_read - plan_mode.go）
+//   - Plan Mode 动态工具（next_phase, PlanWrite, PlanRead - plan_mode.go）
 //   - 合并浏览器工具（GetConsolidatedBrowserTools - tool_tier.go）
 //   - MCP 动态工具（运行时加载）
 //   - 记忆整合工具（GetConsolidationTools - memory_consolidator.go）
@@ -47,7 +47,7 @@ func init() {
         toolRegistryMap = make(map[string]*ToolDef)
 
         // ========== 原有工具 ==========
-        reg("smart_shell", `智能执行 shell 命令，自动判断同步或异步执行模式。
+        reg("SmartShell", `智能执行 shell 命令，自动判断同步或异步执行模式。
 
 ✅ 快速命令（ls, cat, grep 等）：同步执行，立即返回结果
 ✅ 慢速命令（apt, make, npm install 等）：异步执行，后台运行
@@ -79,11 +79,11 @@ func init() {
 					"enum":        []string{"sync", "async", "auto"},
 					"description": "执行模式：\"sync\" 强制同步，\"async\" 强制异步，\"auto\" 自动判断（默认）",
 				},
-                                "timeout_secs": map[string]interface{}{
+                                "TimeoutSecs": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "异步任务最大执行时间（秒），超时自动终止并唤醒（可选，默认无限制）",
                                 },
-                                "wake_after_minutes": map[string]interface{}{
+                                "WakeAfterMinutes": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "异步唤醒时间（分钟，默认5分钟）",
                                 },
@@ -92,11 +92,11 @@ func init() {
                         "additionalProperties": false,
                 })
 
-        reg("shell", `Execute a shell command synchronously with a timeout (default 60s). This tool BLOCKS until the command completes or times out.
+        reg("Shell", `Execute a shell command synchronously with a timeout (default 60s). This tool BLOCKS until the command completes or times out.
 
 ✅ USE THIS FOR: ls, cat, mkdir, rm, cp, mv, grep, find, echo, pwd, which, stat, date, simple git commands, and other quick operations under 60 seconds.
 
-🚫 CRITICAL WARNING - USE shell_delayed INSTEAD:
+🚫 CRITICAL WARNING - USE ShellDelayed INSTEAD:
 ❌ Package managers: apt, apt-get, yum, dnf, pacman, pkg (FreeBSD/GhostBSD)
 ❌ Compilation: make, cmake, npm install, pip install, cargo build, go build
 ❌ Downloads: wget, curl, git clone, rsync, scp, sftp
@@ -131,7 +131,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
-        reg("read_file_line",
+        reg("ReadFileLine",
                 "Read a specific line from a file. Use this when you need to read a particular line from a file without reading the entire file.",
                 "core", "core",
                 map[string]interface{}{
@@ -141,7 +141,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "type":        "string",
                                         "description": "The path to the file to read.",
                                 },
-                                "line_num": map[string]interface{}{
+                                "LineNum": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The line number to read (starting from 1).",
                                 },
@@ -150,11 +150,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "description": "Whether to return verbose information (line number, encoding, file size, etc.). Default: false (only returns content).",
                                 },
                         },
-                        "required":             []string{"filename", "line_num"},
+                        "required":             []string{"filename", "LineNum"},
                         "additionalProperties": false,
                 })
 
-        reg("write_file_line",
+        reg("WriteFileLine",
                 "Write content to a specific line in a file. If the line number is beyond the current file length, the file will be extended with empty lines.",
                 "core", "core",
                 map[string]interface{}{
@@ -164,7 +164,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "type":        "string",
                                         "description": "The path to the file to write to.",
                                 },
-                                "line_num": map[string]interface{}{
+                                "LineNum": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The line number to write to (starting from 1).",
                                 },
@@ -173,11 +173,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "description": "The content to write to the specified line.",
                                 },
                         },
-                        "required":             []string{"filename", "line_num", "content"},
+                        "required":             []string{"filename", "LineNum", "content"},
                         "additionalProperties": false,
                 })
 
-        reg("read_all_lines",
+        reg("ReadAllLines",
                 "Read all lines from a file and return them as a list of strings.",
                 "core", "core",
                 map[string]interface{}{
@@ -196,7 +196,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
-        reg("write_all_lines",
+        reg("WriteAllLines",
                 "Write all lines to a file.",
                 "core", "core",
                 map[string]interface{}{
@@ -220,7 +220,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
-        reg("append_to_file",
+        reg("AppendToFile",
                 "Append content to the end of a file.",
                 "file", "extended",
                 map[string]interface{}{
@@ -234,7 +234,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "type":        "string",
                                         "description": "The content to append to the file.",
                                 },
-                                "line_break": map[string]interface{}{
+                                "LineBreak": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "Whether to add a line break after the content. Default is true.",
                                 },
@@ -243,7 +243,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
-        reg("write_file_range",
+        reg("WriteFileRange",
                 "Write content to a specific range of lines in a file.",
                 "file", "extended",
                 map[string]interface{}{
@@ -253,11 +253,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "type":        "string",
                                         "description": "The path to the file to write to.",
                                 },
-                                "start_line": map[string]interface{}{
+                                "StartLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The starting line number (1-based).",
                                 },
-                                "end_line": map[string]interface{}{
+                                "EndLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The ending line number (1-based). If not specified, only the start_line will be written.",
                                 },
@@ -266,11 +266,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "description": "The content to write. Each line in the content will replace one line in the file range.",
                                 },
                         },
-                        "required":             []string{"filename", "start_line", "content"},
+                        "required":             []string{"filename", "StartLine", "content"},
                         "additionalProperties": false,
                 })
 
-        reg("read_file_range",
+        reg("ReadFileRange",
                 "Read a specific range of lines from a file. Use this when you need to read a portion of a file without reading the entire file.",
                 "core", "core",
                 map[string]interface{}{
@@ -280,11 +280,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "type":        "string",
                                         "description": "The path to the file to read.",
                                 },
-                                "start_line": map[string]interface{}{
+                                "StartLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The starting line number (1-based, inclusive).",
                                 },
-                                "end_line": map[string]interface{}{
+                                "EndLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "The ending line number (1-based, inclusive). If not specified, only the start_line is read.",
                                 },
@@ -293,11 +293,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                         "description": "Whether to return verbose information (line numbers, encoding, file size, etc.). Default: false (only returns lines content).",
                                 },
                         },
-                        "required":             []string{"filename", "start_line"},
+                        "required":             []string{"filename", "StartLine"},
                         "additionalProperties": false,
                 })
 
-        reg("file_info",
+        reg("FileInfo",
                 "Get detailed file information (similar to the Unix 'file' command). Returns file size, type, MIME type, encoding, permissions, and system file description. Use this to inspect a file before reading it, especially for unknown or binary files.",
                 "core", "core",
                 map[string]interface{}{
@@ -313,7 +313,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         // ========== 基础浏览器工具 ==========
-        reg("browser_search", `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
+        reg("BrowserSearch", `Search for a keyword using Baidu search engine. Returns a list of search results with titles and links.
 
 ⚠️ PRIORITY NOTICE: If OpenCLI is available on the system, prefer using OpenCLI commands via the 'shell' tool instead of this built-in browser tool.
 OpenCLI provides better session persistence and more reliable web automation.
@@ -334,7 +334,7 @@ Example OpenCLI alternative:
                         "additionalProperties": false,
                 })
 
-        reg("browser_visit", `Visit a URL and extract the text content from the web page. Useful for reading article content, product descriptions, etc.
+        reg("BrowserVisit", `Visit a URL and extract the text content from the web page. Useful for reading article content, product descriptions, etc.
 
 ⚠️ PRIORITY NOTICE: If OpenCLI is available on the system, prefer using OpenCLI commands via the 'shell' tool instead of this built-in browser tool.
 OpenCLI provides better session persistence, cookie reuse, and more reliable web automation.
@@ -356,43 +356,231 @@ Example OpenCLI alternative:
                 })
 
         // ========== OpenCLI 工具 ==========
-        reg("opencli", `Execute OpenCLI commands. OpenCLI is available on this system!
+        reg("Opencli", `OpenCLI — 深度包装的网站交互工具。支持 70+ 网站适配器、网页抓取、适配器开发管理。
 
-✅ USE THIS FOR ALL WEB-RELATED TASKS:
-• Web browsing and page reading
-• Web searching (Google, Bing, etc.)
-• Website automation (click, type, fill forms)
-• Interacting with specific websites (YouTube, GitHub, etc.)
-• Any task that would have used browser_* tools
+# 一、数据获取
 
-✅ OPENCLI ADVANTAGES:
-• Better session persistence
-• Cookie reuse
-• More reliable web automation
-• Rich adapter ecosystem
+## WebRead — 获取网页 Markdown
+将任意网页转为干净 Markdown，支持图片下载和格式输出。
+参数：url (必填), download_images (可选，默认 true), wait (可选，默认 3 秒), output (可选，输出目录)
 
-⚠️ FOR DOWNLOADING FILES:
-If you need to download a file (not just browse), use curl/wget via the 'shell' tool instead.
+## Adapter — 调用网站适配器
+直接调用 70+ 预置网站 API 适配器。
+参数：site (必填), command (必填), args (可选，额外参数如 --limit 10)
 
-Example commands:
-- opencli web read https://example.com
-- opencli google search keyword
-- opencli doctor
-- opencli --help`,
+# 二、适配器开发
+
+## Explore — 探索网站发现 API
+分析网站结构，推荐数据抓取策略。
+参数：url (必填), goal (可选), AutoFuzz (可选)
+
+## Synthesize — 从探索结果合成 CLI
+将 explore 的结果合成为适配器定义。
+参数：site (必填), top (可选，默认 3)
+
+## Generate — 一键生成适配器
+explore → synthesize → verify → register 全自动。
+参数：url (必填), SiteName (可选), goal (可选)
+
+## Validate — 验证适配器定义
+检查适配器 YAML 定义合法性。
+参数：target (可选，site 或 site/command)
+
+## Verify — 验证并冒烟测试
+validate + 可选冒烟测试。
+参数：target (可选), smoke (可选)
+
+## Record — 录制浏览器 API 调用
+录制实时浏览器会话的 API 调用，生成适配器候选 YAML。
+参数：url (必填), site (可选), out (可选，输出目录), poll (可选，默认 2000ms), timeout (可选，默认 60000ms)
+
+## Cascade — 策略级联
+自动尝试从简到繁的策略，找到最简单可行的方案。
+参数：url (必填), site (可选)
+
+# 三、管理
+
+## List — 列出所有适配器
+参数：format (可选, table/json/yaml/md/csv)
+
+## Adapter_status — 适配器覆写状态
+查看哪些网站有本地覆写 vs 使用官方版本。
+
+## Adapter_eject — 导出适配器到本地
+将官方适配器复制到 ~/.opencli/clis/ 供本地编辑。
+参数：site (必填)
+
+## Adapter_reset — 重置适配器
+移除本地覆写，恢复官方版本。
+参数：site (可选，不指定则配合 all=true 重置全部), all (可选)
+
+## Register — 注册外部 CLI
+参数：name (必填), binary (可选), install_cmd (可选), desc (可选)
+
+## Install — 安装外部 CLI
+参数：name (必填)
+
+## PluginList — 列出已安装插件
+参数：format (可选, table/json)
+
+## PluginInstall — 安装插件
+从 Git 仓库安装。
+参数：source (必填，如 github:user/repo)
+
+## PluginUninstall — 卸载插件
+参数：name (必填)
+
+## PluginUpdate — 更新插件
+参数：name (可选，不指定则更新全部)
+
+## PluginCreate — 创建插件脚手架
+参数：name (必填)
+
+## Doctor — 诊断连接状态
+
+## DaemonStop — 停止守护进程
+
+# 常用适配器速查
+| 网站 | site | 常用命令 |
+|------|------|---------|
+| B站 | bilibili | search, hot, comments, ranking, user-videos, subtitle, download, me |
+| Google | google | search, news, trends, suggest |
+| 知乎 | zhihu | search, hot, answers, questions |
+| GitHub | gh | repo, issue, pr, search, gist |
+| 百度贴吧 | tieba | search, hot, posts |
+| 小红书 | xiaohongshu | search, notes, user |
+| 微博 | weibo | search, hot, timeline |
+| 抖音 | douyin | search, user, video |
+| Twitter | twitter | search, tweet, user, timeline |
+| YouTube | youtube | search, video, channel |
+| Reddit | reddit | search, hot, subreddit |
+| Wikipedia | wikipedia | search, article |
+| HackerNews | hackernews | top, new, best, ask, show |
+| arXiv | arxiv | search, paper |
+| 豆瓣 | douban | search, movie, book |
+| 京东 | jd | search, product |
+| 淘宝 | taobao | search, product |
+| 36氪 | 36kr | news, flash |
+| V2EX | v2ex | hot, latest, nodes |
+| Steam | steam | search, game, deals |
+| 微信读书 | weread | search, book, review |
+| 什么值得买 | smzdm | search, deals, hot |
+| 闲鱼 | xianyu | search, product |
+| 虎扑 | hupu | hot, posts, search |
+| LinkedIn | linkedin | search, profile, jobs |
+| ProductHunt | producthunt | today, popular, search |
+| 飞书/Lark | lark-cli | search, docs, calendar, tasks |
+| 企业微信 | wecom-cli | search, contacts, todos, meetings, messages |
+| Obsidian | obsidian | search, notes, tags, tasks |
+| Docker | docker | ps, images, pull, run |
+| Medium | medium | search, articles |
+| Notion | notion | search, pages |
+| Spotify | spotify | search, playlist, track |
+| Instagram | instagram | search, user, posts |
+| Facebook | facebook | search, posts |
+| 豆瓣 | douban | search, movie, book |`,
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
+                                "action": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "操作：WebRead, Adapter, List, Explore, Synthesize, Generate, Validate, Verify, Record, Cascade, AdapterStatus, AdapterEject, AdapterReset, Register, Install, PluginList, PluginInstall, PluginUninstall, PluginUpdate, PluginCreate, Doctor, DaemonStop",
+                                },
+                                "url": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "URL（WebRead, Explore, Generate, Record, Cascade 需要）",
+                                },
+                                "site": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "网站适配器名称（Adapter, Synthesize, AdapterEject, AdapterReset 需要）",
+                                },
                                 "command": map[string]interface{}{
-                                        "type":        "string",
-                                        "description": "The OpenCLI command to execute (without 'opencli' prefix). Example: 'web read https://example.com', 'google search keyword', '--help'",
+                                        "type": "string",
+                                        "description": "适配器子命令（Adapter 需要），如 search, hot",
+                                },
+                                "args": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "子命令额外参数（Adapter 可选），如 --limit 10",
+                                },
+                                "goal": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "探索/生成目标（Explore, Generate 可选）",
+                                },
+                                "AutoFuzz": map[string]interface{}{
+                                        "type": "boolean",
+                                        "description": "交互式模糊测试（Explore 可选）",
+                                },
+                                "SiteName": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "网站名称（Generate 可选）",
+                                },
+                                "target": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "验证目标 (Validate, Verify 可选)，格式 site 或 site/command",
+                                },
+                                "smoke": map[string]interface{}{
+                                        "type": "boolean",
+                                        "description": "运行冒烟测试 (Verify 可选)",
+                                },
+                                "top": map[string]interface{}{
+                                        "type": "integer",
+                                        "description": "合成数量 (Synthesize 可选，默认 3)",
+                                },
+                                "format": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "输出格式 (List, PluginList 可选)：table, json, yaml, md, csv",
+                                },
+                                "name": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "名称 (register, Install, PluginUninstall, PluginUpdate, plugin_create 需要)",
+                                },
+                                "binary": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "二进制名称 (register 可选)",
+                                },
+                                "InstallCmd": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "自动安装命令 (register 可选)",
+                                },
+                                "desc": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "描述 (register 可选)",
+                                },
+                                "source": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "Git 仓库源 (plugin_install 需要)，如 github:user/repo",
+                                },
+                                "all": map[string]interface{}{
+                                        "type": "boolean",
+                                        "description": "应用于全部 (adapter_reset, plugin_update 可选)",
+                                },
+                                "DownloadImages": map[string]interface{}{
+                                        "type": "boolean",
+                                        "description": "下载图片到本地 (WebRead 可选，默认 true)",
+                                },
+                                "wait": map[string]interface{}{
+                                        "type": "integer",
+                                        "description": "页面加载后等待秒数 (WebRead 可选，默认 3)",
+                                },
+                                "output": map[string]interface{}{
+                                        "type": "string",
+                                        "description": "输出目录 (WebRead, record 可选)",
+                                },
+                                "poll": map[string]interface{}{
+                                        "type": "integer",
+                                        "description": "轮询间隔毫秒 (Record 可选，默认 2000)",
+                                },
+                                "timeout": map[string]interface{}{
+                                        "type": "integer",
+                                        "description": "自动停止毫秒数 (Record 可选，默认 60000)",
                                 },
                         },
-                        "required":             []string{"command"},
+                        "required":             []string{"action"},
                         "additionalProperties": false,
                 })
 
-        reg("browser_download",
+        reg("BrowserDownload",
                 "Download a web page HTML and save it to a local file. Returns the saved file path.",
                 "web", "expert",
                 map[string]interface{}{
@@ -408,7 +596,7 @@ Example commands:
                 })
 
         // ========== 浏览器增强工具 ==========
-        reg("browser_click",
+        reg("BrowserClick",
                 "Click an element on a web page. Navigate to the URL and click the specified element using CSS selector. Useful for buttons, links, and other interactive elements.",
                 "web", "expert",
                 map[string]interface{}{
@@ -431,7 +619,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_type",
+        reg("BrowserType",
                 "Type text into an input field on a web page. Can optionally submit the form by pressing Enter.",
                 "web", "expert",
                 map[string]interface{}{
@@ -458,7 +646,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_scroll",
+        reg("BrowserScroll",
                 "Scroll the web page up or down by a specified amount.",
                 "web", "expert",
                 map[string]interface{}{
@@ -482,7 +670,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_wait_element",
+        reg("BrowserWaitElement",
                 "Wait for a specific element to appear on the page. Useful for dynamic content that loads after page load.",
                 "web", "expert",
                 map[string]interface{}{
@@ -505,7 +693,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_extract_links",
+        reg("BrowserExtractLinks",
                 "Extract all links from a web page. Returns link text and URL for each link found.",
                 "web", "expert",
                 map[string]interface{}{
@@ -520,7 +708,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_extract_images",
+        reg("BrowserExtractImages",
                 "Extract all images from a web page. Returns image source URL and alt text for each image.",
                 "web", "expert",
                 map[string]interface{}{
@@ -535,7 +723,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_extract_elements",
+        reg("BrowserExtractElements",
                 "Extract content from specific elements matching a CSS selector. Returns text, HTML, and attributes of matched elements.",
                 "web", "expert",
                 map[string]interface{}{
@@ -549,7 +737,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "CSS selector for elements to extract. Examples: '.article', 'div.content p', 'h2.title'",
                                 },
-                                "include_html": map[string]interface{}{
+                                "IncludeHtml": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "Whether to include HTML content. Default: false",
                                 },
@@ -558,7 +746,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_screenshot",
+        reg("BrowserScreenshot",
                 "Take a screenshot of a web page. Returns base64-encoded image. Can capture full page or viewport only.",
                 "web", "expert",
                 map[string]interface{}{
@@ -568,7 +756,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to navigate to.",
                                 },
-                                "full_page": map[string]interface{}{
+                                "FullPage": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "Capture the entire page (including scrollable area) or just the viewport. Default: false (viewport only)",
                                 },
@@ -577,7 +765,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_execute_js",
+        reg("BrowserExecuteJs",
                 "Execute custom JavaScript code on a web page. Returns the result of the script execution.",
                 "web", "expert",
                 map[string]interface{}{
@@ -596,7 +784,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_fill_form",
+        reg("BrowserFillForm",
                 "Fill out and submit a web form. Automatically finds input fields by name or ID attribute.",
                 "web", "expert",
                 map[string]interface{}{
@@ -606,21 +794,21 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to navigate to.",
                                 },
-                                "form_data": map[string]interface{}{
+                                "FormData": map[string]interface{}{
                                         "type":        "object",
                                         "description": "Form field values as key-value pairs. Keys match input 'name' or 'id' attributes. Example: {\"username\": \"admin\", \"password\": \"123456\"}",
                                 },
-                                "submit_selector": map[string]interface{}{
+                                "SubmitSelector": map[string]interface{}{
                                         "type":        "string",
                                         "description": "CSS selector for submit button. If empty, presses Enter to submit.",
                                 },
                         },
-                        "required":             []string{"url", "form_data"},
+                        "required":             []string{"url", "FormData"},
                         "additionalProperties": false,
                 })
 
         // ========== 浏览器高级工具 ==========
-        reg("browser_hover",
+        reg("BrowserHover",
                 "Hover mouse over an element. Useful for triggering hover menus, tooltips, or hover effects.",
                 "web", "expert",
                 map[string]interface{}{
@@ -639,7 +827,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_double_click",
+        reg("BrowserDoubleClick",
                 "Double-click an element on a web page.",
                 "web", "expert",
                 map[string]interface{}{
@@ -658,7 +846,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_right_click",
+        reg("BrowserRightClick",
                 "Right-click an element to open context menu.",
                 "web", "expert",
                 map[string]interface{}{
@@ -677,7 +865,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_drag",
+        reg("BrowserDrag",
                 "Drag an element and drop it onto another element. Useful for drag-and-drop interfaces.",
                 "web", "expert",
                 map[string]interface{}{
@@ -687,20 +875,20 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to navigate to.",
                                 },
-                                "source_selector": map[string]interface{}{
+                                "SourceSelector": map[string]interface{}{
                                         "type":        "string",
                                         "description": "CSS selector for the element to drag.",
                                 },
-                                "target_selector": map[string]interface{}{
+                                "TargetSelector": map[string]interface{}{
                                         "type":        "string",
                                         "description": "CSS selector for the drop target.",
                                 },
                         },
-                        "required":             []string{"url", "source_selector", "target_selector"},
+                        "required":             []string{"url", "SourceSelector", "TargetSelector"},
                         "additionalProperties": false,
                 })
 
-        reg("browser_wait_smart",
+        reg("BrowserWaitSmart",
                 "Smart wait for element with options: visible, interactable, stable. More reliable than basic wait.",
                 "web", "expert",
                 map[string]interface{}{
@@ -735,7 +923,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_navigate",
+        reg("BrowserNavigate",
                 "Navigate browser: go back, forward, or refresh page.",
                 "web", "expert",
                 map[string]interface{}{
@@ -755,7 +943,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_get_cookies",
+        reg("BrowserGetCookies",
                 "Get all cookies from a web page.",
                 "web", "expert",
                 map[string]interface{}{
@@ -770,7 +958,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_cookie_save",
+        reg("BrowserCookieSave",
                 "Save cookies from a web page to a TOON file for persistence. Useful for saving login state.",
                 "web", "expert",
                 map[string]interface{}{
@@ -780,7 +968,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to get cookies from.",
                                 },
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "Path to save the cookies file. If empty, uses default name like 'cookies_domain.json'.",
                                 },
@@ -789,7 +977,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_cookie_load",
+        reg("BrowserCookieLoad",
                 "Load cookies from a TOON file and apply them to a web page. Useful for restoring login state.",
                 "web", "expert",
                 map[string]interface{}{
@@ -799,16 +987,16 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to apply cookies to.",
                                 },
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "Path to the cookies file to load.",
                                 },
                         },
-                        "required":             []string{"url", "file_path"},
+                        "required":             []string{"url", "FilePath"},
                         "additionalProperties": false,
                 })
 
-        reg("browser_snapshot",
+        reg("BrowserSnapshot",
                 "Get a simplified DOM snapshot of the page for visual analysis. Returns element tree with positions.",
                 "web", "expert",
                 map[string]interface{}{
@@ -818,7 +1006,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to analyze.",
                                 },
-                                "max_depth": map[string]interface{}{
+                                "MaxDepth": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "Maximum depth of element tree. Default: 5",
                                 },
@@ -827,7 +1015,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_upload_file",
+        reg("BrowserUploadFile",
                 "Upload files to a file input element.",
                 "web", "expert",
                 map[string]interface{}{
@@ -841,17 +1029,17 @@ Example commands:
                                         "type":        "string",
                                         "description": "CSS selector for the file input element.",
                                 },
-                                "file_paths": map[string]interface{}{
+                                "FilePaths": map[string]interface{}{
                                         "type":  "array",
                                         "items": map[string]interface{}{"type": "string"},
                                         "description": "List of file paths to upload.",
                                 },
                         },
-                        "required":             []string{"url", "selector", "file_paths"},
+                        "required":             []string{"url", "selector", "FilePaths"},
                         "additionalProperties": false,
                 })
 
-        reg("browser_select_option",
+        reg("BrowserSelectOption",
                 "Select options in a dropdown/select element.",
                 "web", "expert",
                 map[string]interface{}{
@@ -875,7 +1063,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_key_press",
+        reg("BrowserKeyPress",
                 "Simulate keyboard key presses. Useful for shortcuts like Ctrl+C, Ctrl+Enter, etc.",
                 "web", "expert",
                 map[string]interface{}{
@@ -895,7 +1083,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_element_screenshot",
+        reg("BrowserElementScreenshot",
                 "Take a screenshot of a specific element on the page.",
                 "web", "expert",
                 map[string]interface{}{
@@ -915,7 +1103,7 @@ Example commands:
                 })
 
         // ========== PDF 导出工具 ==========
-        reg("browser_pdf",
+        reg("BrowserPdf",
                 "Export a web page as PDF. Returns base64 encoded PDF data.",
                 "web", "expert",
                 map[string]interface{}{
@@ -930,23 +1118,23 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_pdf_from_file",
+        reg("BrowserPdfFromFile",
                 "Export a local HTML file as PDF. Useful for converting generated HTML to PDF. Returns base64 encoded PDF data.",
                 "web", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "Absolute path to the local HTML file to convert to PDF.",
                                 },
                         },
-                        "required":             []string{"file_path"},
+                        "required":             []string{"FilePath"},
                         "additionalProperties": false,
                 })
 
         // ========== Headers 与 UA 设置 ==========
-        reg("browser_set_headers",
+        reg("BrowserSetHeaders",
                 "Set custom HTTP headers and navigate to a page. Headers should be in 'Key: Value' format.",
                 "web", "expert",
                 map[string]interface{}{
@@ -966,7 +1154,7 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("browser_set_user_agent",
+        reg("BrowserSetUserAgent",
                 "Set a custom User-Agent and navigate to a page.",
                 "web", "expert",
                 map[string]interface{}{
@@ -976,17 +1164,17 @@ Example commands:
                                         "type":        "string",
                                         "description": "The URL to navigate to.",
                                 },
-                                "user_agent": map[string]interface{}{
+                                "UserAgent": map[string]interface{}{
                                         "type":        "string",
                                         "description": "The User-Agent string to use.",
                                 },
                         },
-                        "required":             []string{"url", "user_agent"},
+                        "required":             []string{"url", "UserAgent"},
                         "additionalProperties": false,
                 })
 
         // ========== 设备模拟 ==========
-        reg("browser_emulate_device",
+        reg("BrowserEmulateDevice",
                 "Emulate a mobile device (iPhone, iPad, Android, etc.) when accessing a page. Useful for testing responsive design.",
                 "web", "expert",
                 map[string]interface{}{
@@ -1006,7 +1194,7 @@ Example commands:
                 })
 
         // ========== 插件管理工具 ==========
-        reg("plugin_list",
+        reg("PluginList",
                 "列出所有已加载的插件及其提供的函数。",
                 "plugin", "extended",
                 map[string]interface{}{
@@ -1014,7 +1202,7 @@ Example commands:
                         "properties": map[string]interface{}{},
                 })
 
-        reg("plugin_create",
+        reg("PluginCreate",
                 "Create a new empty plugin skeleton. This creates a folder with the plugin name and a Lua entry file containing a basic template. Use this to start developing a new plugin.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1032,7 +1220,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("plugin_load",
+        reg("PluginLoad",
                 "Load a new plugin from Lua code. The plugin will be saved in its own folder under plugins directory.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1050,7 +1238,7 @@ Example commands:
                         "required": []string{"name", "code"},
                 })
 
-        reg("plugin_unload",
+        reg("PluginUnload",
                 "Unload a plugin by name (removes from memory only, files remain).",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1064,7 +1252,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("plugin_reload",
+        reg("PluginReload",
                 "Reload a specific plugin from disk (useful after code update). This only reloads one plugin at a time, not all plugins.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1078,8 +1266,8 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("plugin_call",
-                "调用已加载插件中的函数。先用 plugin_list 查看可用函数。args 中的 items 需要指定类型信息。",
+        reg("PluginCall",
+                "调用已加载插件中的函数。先用 PluginList 查看可用函数。args 中的 items 需要指定类型信息。",
                 "plugin", "extended",
                 map[string]interface{}{
                         "type": "object",
@@ -1101,7 +1289,7 @@ Example commands:
                         "required": []string{"plugin", "function"},
                 })
 
-        reg("plugin_compile",
+        reg("PluginCompile",
                 "Compile Lua code to bytecode (syntax check). If successful, no error; if compilation fails, returns error details. Use this to verify plugin code before loading.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1119,7 +1307,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("plugin_delete",
+        reg("PluginDelete",
                 "Permanently delete a plugin (removes its folder and all files). Use this to completely remove a plugin.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1133,7 +1321,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("plugin_apis",
+        reg("PluginApis",
                 "List plugin system internal API documentation for model reference.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1141,7 +1329,7 @@ Example commands:
                         "properties": map[string]interface{}{},
                 })
 
-        reg("plugin_detail",
+        reg("PluginDetail",
                 "Get detailed information about a specific plugin, including its functions, source code, and metadata.",
                 "plugin", "expert",
                 map[string]interface{}{
@@ -1151,7 +1339,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "Plugin name to get details for.",
                                 },
-                                "include_source": map[string]interface{}{
+                                "IncludeSource": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "Whether to include the full source code. Default: false.",
                                 },
@@ -1160,7 +1348,7 @@ Example commands:
                 })
 
         // ========== Cron 管理工具 ==========
-        reg("cron_add",
+        reg("CronAdd",
                 "添加定时任务。到指定时间自动执行一条自然语言指令。参数错误时会返回正确格式，请按格式重新调用。",
                 "schedule", "extended",
                 map[string]interface{}{
@@ -1178,7 +1366,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "到时要执行的自然语言指令（必填），如「去arXiv查看最新AI论文并汇总关键信息」",
                                 },
-                                "user_message": map[string]interface{}{
+                                "UserMessage": map[string]interface{}{
                                         "type":        "string",
                                         "description": "[兼容] 等同于 content，推荐使用 content",
                                 },
@@ -1190,8 +1378,8 @@ Example commands:
                         "required": []string{"name", "schedule", "content"},
                 })
 
-        reg("cron_remove",
-                "删除一个定时任务。先用 cron_list 确认任务名称。",
+        reg("CronRemove",
+                "删除一个定时任务。先用 CronList 确认任务名称。",
                 "schedule", "extended",
                 map[string]interface{}{
                         "type": "object",
@@ -1204,7 +1392,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("cron_list",
+        reg("CronList",
                 "列出所有已配置的定时任务（名称、排程、状态）。无参数。",
                 "schedule", "extended",
                 map[string]interface{}{
@@ -1212,7 +1400,7 @@ Example commands:
                         "properties": map[string]interface{}{},
                 })
 
-        reg("cron_status",
+        reg("CronStatus",
                 "查询指定定时任务的详细状态（下次执行时间、最近执行结果等）。",
                 "schedule", "expert",
                 map[string]interface{}{
@@ -1226,13 +1414,13 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("todos",
+        reg("Todos",
                 "管理待办事项列表（CRUD）。传入 todos 数组可批量创建/更新/删除任务。每个任务需包含 id、content、status。",
                 "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "todos": map[string]interface{}{
+                                "Todos": map[string]interface{}{
                                         "type": "array",
                                         "items": map[string]interface{}{
                                                 "type": "object",
@@ -1247,7 +1435,7 @@ Example commands:
                                                         },
                                                         "status": map[string]interface{}{
                                                                 "type":        "string",
-                                                                "enum":        []string{"pending", "in_progress", "completed", "waiting"},
+                                                                "enum":        []string{"pending", "InProgress", "completed", "Waiting"},
                                                                 "description": "任务状态：pending（待处理）、in_progress（进行中）、completed（已完成）、waiting（异步等待中）",
                                                         },
                                                         "priority": map[string]interface{}{
@@ -1265,11 +1453,11 @@ Example commands:
                                         "description": "任务执行摘要（可选）",
                                 },
                         },
-                        "required": []string{"todos"},
+                        "required": []string{"Todos"},
                 })
 
         // ========== 记忆管理工具 ==========
-        reg("memory_save",
+        reg("MemorySave",
                 "保存一条记忆到长期存储，跨会话持久化。支持分类（fact/preference/project/skill/context）和标签，便于后续检索。",
                 "memory", "extended",
                 map[string]interface{}{
@@ -1277,7 +1465,7 @@ Example commands:
                         "properties": map[string]interface{}{
                                 "key": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "记忆键名，如 'user_name', 'preferred_language'",
+                                        "description": "记忆键名，如 'UserName', 'PreferredLanguage'",
                                 },
                                 "value": map[string]interface{}{
                                         "type":        "string",
@@ -1302,7 +1490,7 @@ Example commands:
                         "required": []string{"key", "value"},
                 })
 
-        reg("memory_recall",
+        reg("MemoryRecall",
                 "检索已保存的记忆。支持按关键词模糊搜索（query）或按键名精确查找，可限定分类。无参数时返回所有记忆。",
                 "core", "core",
                 map[string]interface{}{
@@ -1325,8 +1513,8 @@ Example commands:
                         "required": []string{},
                 })
 
-        reg("memory_forget",
-                "删除指定键名的记忆（不可恢复）。建议先用 memory_recall 确认要删除的记忆内容。",
+        reg("MemoryForget",
+                "删除指定键名的记忆（不可恢复）。建议先用 MemoryRecall 确认要删除的记忆内容。",
                 "memory", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -1339,7 +1527,7 @@ Example commands:
                         "required": []string{"key"},
                 })
 
-        reg("memory_list",
+        reg("MemoryList",
                 "列出所有已保存的记忆，支持按分类（preference/fact/project/skill/context）和范围（user/global）过滤。",
                 "memory", "extended",
                 map[string]interface{}{
@@ -1360,7 +1548,7 @@ Example commands:
                 })
 
         // ========== Profile 工具 ==========
-        reg("profile_check",
+        reg("ProfileCheck",
                 "检查哪些引导（bootstrap）所需的关键信息尚未收集。返回缺失的 key 列表和建议的收集方式。",
                 "profile", "extended",
                 map[string]interface{}{
@@ -1370,7 +1558,7 @@ Example commands:
                 })
 
         // ========== 技能管理工具 ==========
-        reg("skill_list",
+        reg("SkillList",
                 "列出所有可用的技能，支持分页、过滤、搜索和排序。技能采用层次化目录结构，存储在skills/分类/技能名/SKILL.md格式。",
                 "skill", "extended",
                 map[string]interface{}{
@@ -1380,7 +1568,7 @@ Example commands:
                                         "type":        "integer",
                                         "description": "页码，从1开始，默认1",
                                 },
-                                "page_size": map[string]interface{}{
+                                "PageSize": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "每页数量，默认20，最大100",
                                 },
@@ -1393,11 +1581,11 @@ Example commands:
                                         "type":        "string",
                                         "description": "全文搜索关键词",
                                 },
-                                "sort_by": map[string]interface{}{
+                                "SortBy": map[string]interface{}{
                                         "type":        "string",
                                         "description": "排序字段：name, usage, quality, last_used",
                                 },
-                                "sort_order": map[string]interface{}{
+                                "SortOrder": map[string]interface{}{
                                         "type":        "string",
                                         "description": "排序方向：asc, desc",
                                 },
@@ -1405,7 +1593,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "当前上下文，用于智能推荐排序",
                                 },
-                                "suggest_only": map[string]interface{}{
+                                "SuggestOnly": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "只返回推荐技能",
                                 },
@@ -1413,7 +1601,7 @@ Example commands:
                         "required": []string{},
                 })
 
-        reg("skill_create",
+        reg("SkillCreate",
                 "创建一个新的技能，采用层次化目录结构，自动生成SKILL.md文件和相关子目录。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1423,7 +1611,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "技能的唯一标识符（用于目录名称）",
                                 },
-                                "display_name": map[string]interface{}{
+                                "DisplayName": map[string]interface{}{
                                         "type":        "string",
                                         "description": "技能的显示名称",
                                 },
@@ -1431,11 +1619,11 @@ Example commands:
                                         "type":        "string",
                                         "description": "技能的描述",
                                 },
-                                "system_prompt": map[string]interface{}{
+                                "SystemPrompt": map[string]interface{}{
                                         "type":        "string",
                                         "description": "技能的系统提示",
                                 },
-                                "trigger_words": map[string]interface{}{
+                                "TriggerWords": map[string]interface{}{
                                         "type":  "array",
                                         "items": map[string]interface{}{"type": "string"},
                                         "description": "触发关键词列表",
@@ -1451,10 +1639,10 @@ Example commands:
                                         "description": "支持的平台列表（windows, linux, macos）",
                                 },
                         },
-                        "required": []string{"name", "system_prompt"},
+                        "required": []string{"name", "SystemPrompt"},
                 })
 
-        reg("skill_delete",
+        reg("SkillDelete",
                 "删除指定的技能，包括其目录结构和所有关联文件。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1468,7 +1656,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("skill_get",
+        reg("SkillGet",
                 "获取指定技能的详细信息，包括YAML frontmatter和关联文件。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1482,7 +1670,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("skill_reload",
+        reg("SkillReload",
                 "重新加载所有技能，包括新的层次化结构和关联文件。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1491,8 +1679,8 @@ Example commands:
                         "required":   []string{},
                 })
 
-        reg("skill_load",
-                "激活指定技能，使其在后续对话中生效。需要先通过 skill_list 查看可用技能名称。",
+        reg("SkillLoad",
+                "激活指定技能，使其在后续对话中生效。需要先通过 SkillList 查看可用技能名称。",
                 "skill", "extended",
                 map[string]interface{}{
                         "type": "object",
@@ -1505,7 +1693,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("skill_update",
+        reg("SkillUpdate",
                 "更新技能的部分内容，支持YAML frontmatter和关联文件。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1515,7 +1703,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "技能的名称",
                                 },
-                                "display_name": map[string]interface{}{
+                                "DisplayName": map[string]interface{}{
                                         "type":        "string",
                                         "description": "技能的显示名称",
                                 },
@@ -1523,11 +1711,11 @@ Example commands:
                                         "type":        "string",
                                         "description": "技能的描述",
                                 },
-                                "system_prompt": map[string]interface{}{
+                                "SystemPrompt": map[string]interface{}{
                                         "type":        "string",
                                         "description": "技能的系统提示",
                                 },
-                                "trigger_words": map[string]interface{}{
+                                "TriggerWords": map[string]interface{}{
                                         "type":  "array",
                                         "items": map[string]interface{}{"type": "string"},
                                         "description": "触发关键词列表",
@@ -1546,7 +1734,7 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("skill_suggest",
+        reg("SkillSuggest",
                 "根据当前对话上下文智能推荐相关技能，返回技能名称、描述和匹配理由。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1556,7 +1744,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "当前对话上下文",
                                 },
-                                "top_k": map[string]interface{}{
+                                "TopK": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "返回推荐数量，默认5",
                                 },
@@ -1564,7 +1752,7 @@ Example commands:
                         "required": []string{"context"},
                 })
 
-        reg("skill_stats",
+        reg("SkillStats",
                 "获取技能系统的统计信息，包括层次化结构和关联文件统计。",
                 "skill", "expert",
                 map[string]interface{}{
@@ -1573,8 +1761,8 @@ Example commands:
                         "required":   []string{},
                 })
 
-        reg("skill_evaluate",
-                "评估指定技能的质量，返回结构化评分（含准确性、完整性、实用性等维度）。需要先通过 skill_list 查看可用技能名称。",
+        reg("SkillEvaluate",
+                "评估指定技能的质量，返回结构化评分（含准确性、完整性、实用性等维度）。需要先通过 SkillList 查看可用技能名称。",
                 "skill", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -1587,13 +1775,13 @@ Example commands:
                         "required": []string{"name"},
                 })
 
-        reg("actor_identity_set",
+        reg("ActorIdentitySet",
                 "设置演员的 IDENTITY.md 文件。将内容写入 profiles/actors/<actor_name>/IDENTITY.md。",
                 "profile", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "actor_name": map[string]interface{}{
+                                "ActorName": map[string]interface{}{
                                         "type":        "string",
                                         "description": "演员名称，如 \"hero_lin\"",
                                 },
@@ -1602,24 +1790,24 @@ Example commands:
                                         "description": "IDENTITY.md 的 Markdown 内容",
                                 },
                         },
-                        "required": []string{"actor_name", "content"},
+                        "required": []string{"ActorName", "content"},
                 })
 
-        reg("actor_identity_clear",
+        reg("ActorIdentityClear",
                 "删除演员的 IDENTITY.md 文件（profiles/actors/<actor_name>/IDENTITY.md）。",
                 "profile", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "actor_name": map[string]interface{}{
+                                "ActorName": map[string]interface{}{
                                         "type":        "string",
                                         "description": "演员名称",
                                 },
                         },
-                        "required": []string{"actor_name"},
+                        "required": []string{"ActorName"},
                 })
 
-        reg("profile_reload",
+        reg("ProfileReload",
                 "强制重新从磁盘加载所有 profile 文件（USER.md, SOUL.md, AGENT.md, TOOLS.md, actors/*/IDENTITY.md）。",
                 "profile", "expert",
                 map[string]interface{}{
@@ -1629,7 +1817,7 @@ Example commands:
                 })
 
         // ========== 文本搜索工具 ==========
-        reg("text_search",
+        reg("TextSearch",
                 "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。未指定 root_dir 时自动从当前工作目录开始级联向上搜索（CWD → 父目录 → ... → /）。搜索中文时请务必使用正则交替匹配简繁变体，如：'中文|華文'、'华语|華語'、'汉语|漢語'、'汉字|漢字'、'软件|軟體|軟件'、'网络|網路'等，以提升命中率。",
                 "core", "core",
                 map[string]interface{}{
@@ -1639,27 +1827,27 @@ Example commands:
                                         "type":        "string",
                                         "description": "搜索关键词或正则表达式模式。搜索中文时请使用正则交替匹配简繁变体，如 '中文|華文'、'软件|軟體' 等",
                                 },
-                                "root_dir": map[string]interface{}{
+                                "RootDir": map[string]interface{}{
                                         "type":        "string",
                                         "description": "搜索根目录。默认自动使用当前工作目录并在无结果时级联向上搜索，仅当需限定搜索范围时才显式指定（可选）",
                                 },
-                                "file_pattern": map[string]interface{}{
+                                "FilePattern": map[string]interface{}{
                                         "type":        "string",
                                         "description": "文件名模式（glob），如 '*.go', '*.txt', '*.md'（可选）",
                                 },
-                                "ignore_case": map[string]interface{}{
+                                "IgnoreCase": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "是否忽略大小写，默认 false",
                                 },
-                                "use_regex": map[string]interface{}{
+                                "UseRegex": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "是否使用正则表达式，默认 false",
                                 },
-                                "max_depth": map[string]interface{}{
+                                "MaxDepth": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "最大搜索深度，默认 20",
                                 },
-                                "max_results": map[string]interface{}{
+                                "MaxResults": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "最大结果数，默认 1000",
                                 },
@@ -1668,7 +1856,7 @@ Example commands:
                 })
 
         // ========== 文本替换工具（类 sed）==========
-        reg("text_replace",
+        reg("TextReplace",
                 "强大的文本替换工具，类似 sed 命令。支持字符串替换、正则表达式、行范围限制、多文件操作等。可用于文本处理、内容重构、批量修改等场景。",
                 "file", "extended",
                 map[string]interface{}{
@@ -1678,7 +1866,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "输入文本（与 file_path 二选一）",
                                 },
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "输入文件路径（与 text 二选一）",
                                 },
@@ -1690,15 +1878,15 @@ Example commands:
                                         "type":        "string",
                                         "description": "替换文本（为空则删除匹配内容）",
                                 },
-                                "output_to_file": map[string]interface{}{
+                                "OutputToFile": map[string]interface{}{
                                         "type":        "string",
                                         "description": "输出到指定文件（可选，默认返回文本）",
                                 },
-                                "use_regex": map[string]interface{}{
+                                "UseRegex": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "使用正则表达式模式，默认 false",
                                 },
-                                "ignore_case": map[string]interface{}{
+                                "IgnoreCase": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "忽略大小写，默认 false",
                                 },
@@ -1706,19 +1894,19 @@ Example commands:
                                         "type":        "boolean",
                                         "description": "全局替换（替换所有匹配），默认 true",
                                 },
-                                "start_line": map[string]interface{}{
+                                "StartLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "起始行号（1-based，0表示从头），默认 0",
                                 },
-                                "end_line": map[string]interface{}{
+                                "EndLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "结束行号（0表示到末尾），默认 0",
                                 },
-                                "line_pattern": map[string]interface{}{
+                                "LinePattern": map[string]interface{}{
                                         "type":        "string",
                                         "description": "只处理匹配此模式的行（可选）",
                                 },
-                                "exclude_pattern": map[string]interface{}{
+                                "ExcludePattern": map[string]interface{}{
                                         "type":        "string",
                                         "description": "排除匹配此模式的行（可选）",
                                 },
@@ -1727,7 +1915,7 @@ Example commands:
                                         "enum":        []string{"replace", "delete", "print", "count"},
                                         "description": "操作类型：replace(替换) / delete(删除行) / print(打印匹配行) / count(计数)，默认 replace",
                                 },
-                                "in_place": map[string]interface{}{
+                                "InPlace": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "原地修改文件（仅对文件有效），默认 false",
                                 },
@@ -1735,15 +1923,15 @@ Example commands:
                                         "type":        "boolean",
                                         "description": "修改前备份文件（.bak），默认 false",
                                 },
-                                "dry_run": map[string]interface{}{
+                                "DryRun": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "模拟运行，不实际修改，默认 false",
                                 },
-                                "show_line_numbers": map[string]interface{}{
+                                "ShowLineNumbers": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "显示行号，默认 false",
                                 },
-                                "max_replacements": map[string]interface{}{
+                                "MaxReplacements": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "每行最大替换次数（0无限制），默认 0",
                                 },
@@ -1752,13 +1940,13 @@ Example commands:
                 })
 
         // ========== 文本搜索工具（行内搜索）==========
-        reg("text_grep",
-                "在指定文件中搜索匹配的行（类似 grep）。与 text_search 不同：text_grep 需要指定文件路径，text_search 搜索整个目录。搜索中文时建议同时匹配简繁变体。",
+        reg("TextGrep",
+                "在指定文件中搜索匹配的行（类似 grep）。与 TextSearch 不同：TextGrep 需要指定文件路径，TextSearch 搜索整个目录。搜索中文时建议同时匹配简繁变体。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "要搜索的文件路径",
                                 },
@@ -1766,32 +1954,32 @@ Example commands:
                                         "type":        "string",
                                         "description": "搜索模式（字符串或正则表达式）",
                                 },
-                                "use_regex": map[string]interface{}{
+                                "UseRegex": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "使用正则表达式，默认 false",
                                 },
-                                "ignore_case": map[string]interface{}{
+                                "IgnoreCase": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "忽略大小写，默认 false",
                                 },
-                                "show_line_numbers": map[string]interface{}{
+                                "ShowLineNumbers": map[string]interface{}{
                                         "type":        "boolean",
                                         "description": "显示行号，默认 true",
                                 },
-                                "context_lines": map[string]interface{}{
+                                "ContextLines": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "显示匹配行的上下文行数，默认 0",
                                 },
-                                "max_results": map[string]interface{}{
+                                "MaxResults": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "最大结果数，默认 100",
                                 },
                         },
-                        "required": []string{"file_path", "pattern"},
+                        "required": []string{"FilePath", "pattern"},
                 })
 
         // ========== 文本转换工具 ==========
-        reg("text_transform",
+        reg("TextTransform",
                 "文本转换工具，支持大小写转换、行排序、去重、反转、添加行号等操作。",
                 "file", "extended",
                 map[string]interface{}{
@@ -1801,20 +1989,20 @@ Example commands:
                                         "type":        "string",
                                         "description": "输入文本（与 file_path 二选一）",
                                 },
-                                "file_path": map[string]interface{}{
+                                "FilePath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "输入文件路径（与 text 二选一）",
                                 },
                                 "transform": map[string]interface{}{
                                         "type":        "string",
-                                        "enum":        []string{"uppercase", "lowercase", "trim", "sort", "unique", "reverse", "number_lines", "remove_empty"},
+                                        "enum":        []string{"uppercase", "lowercase", "trim", "sort", "unique", "reverse", "NumberLines", "RemoveEmpty"},
                                         "description": "转换类型：uppercase/lowercase(大小写) / trim(去空白) / sort(排序) / unique(去重) / reverse(反转) / number_lines(加行号) / remove_empty(移除空行)",
                                 },
-                                "start_line": map[string]interface{}{
+                                "StartLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "起始行号（可选）",
                                 },
-                                "end_line": map[string]interface{}{
+                                "EndLine": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "结束行号（可选）",
                                 },
@@ -1823,7 +2011,7 @@ Example commands:
                 })
 
         // ========== 后台任务管理工具 ==========
-        reg("shell_delayed", "Execute a shell command in background with NO timeout. Use this for long-running commands that may take minutes or hours.\n\n✅ USE THIS FOR:\n• Package managers: apt/yum/dnf/pacman (Linux), pkg (FreeBSD/GhostBSD)\n• System updates: apt update, yum update, pkg update, freebsd-update, portsnap\n• Compilation: make, cmake, npm install, pip install, cargo build, go build\n• Network transfers: ssh, scp, rsync, sftp, wget, curl, git clone\n• Docker: docker build, docker-compose build\n• Archives: tar, unzip, 7z (large files)\n• Media encoding: ffmpeg, handbrake\n• Backups, long scripts, any command > 60 seconds\n\n❌ DO NOT USE THIS FOR: quick commands like ls, cat, mkdir - use 'shell' instead.\n\n⏱️ The command runs in background. You specify when to wake up (1-1440 minutes).\n\n🚫 DO NOT POLL: After starting the task, DO NOT call shell_delayed_check repeatedly. The system will automatically notify you when the task completes or wake time arrives.",
+        reg("ShellDelayed", "Execute a shell command in background with NO timeout. Use this for long-running commands that may take minutes or hours.\n\n✅ USE THIS FOR:\n• Package managers: apt/yum/dnf/pacman (Linux), pkg (FreeBSD/GhostBSD)\n• System updates: apt update, yum update, pkg update, freebsd-update, portsnap\n• Compilation: make, cmake, npm install, pip install, cargo build, go build\n• Network transfers: ssh, scp, rsync, sftp, wget, curl, git clone\n• Docker: docker build, docker-compose build\n• Archives: tar, unzip, 7z (large files)\n• Media encoding: ffmpeg, handbrake\n• Backups, long scripts, any command > 60 seconds\n\n❌ DO NOT USE THIS FOR: quick commands like ls, cat, mkdir - use 'shell' instead.\n\n⏱️ The command runs in background. You specify when to wake up (1-1440 minutes).\n\n🚫 DO NOT POLL: After starting the task, DO NOT call ShellDelayed_check repeatedly. The system will automatically notify you when the task completes or wake time arrives.",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -1832,7 +2020,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "要执行的 shell 命令",
                                 },
-                                "wake_after_minutes": map[string]interface{}{
+                                "WakeAfterMinutes": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "唤醒时间（分钟），最小1分钟，最大1440分钟(24小时)，默认5分钟",
                                 },
@@ -1844,26 +2032,26 @@ Example commands:
                         "required": []string{"command"},
                 })
 
-        reg("shell_delayed_check", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
+        reg("ShellDelayedCheck", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "任务ID",
                                 },
                         },
-                        "required": []string{"task_id"},
+                        "required": []string{"TaskId"},
                 })
 
-        reg("shell_delayed_terminate",
-                "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 shell_delayed_list 获取任务ID。",
+        reg("ShellDelayedTerminate",
+                "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 ShellDelayed_list 获取任务ID。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "任务ID",
                                 },
@@ -1872,10 +2060,10 @@ Example commands:
                                         "description": "是否强制终止（SIGKILL），默认 false（优雅终止 SIGTERM）",
                                 },
                         },
-                        "required": []string{"task_id"},
+                        "required": []string{"TaskId"},
                 })
 
-        reg("shell_delayed_list",
+        reg("ShellDelayedList",
                 "列出所有后台任务，显示任务ID、命令、状态和运行时长。无参数。",
                 "core", "expert",
                 map[string]interface{}{
@@ -1883,40 +2071,40 @@ Example commands:
                         "properties": map[string]interface{}{},
                 })
 
-        reg("shell_delayed_wait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
+        reg("ShellDelayedWait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "任务ID",
                                 },
-                                "wait_minutes": map[string]interface{}{
+                                "WaitMinutes": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "继续等待的时间（分钟），最小1分钟，最大1440分钟",
                                 },
                         },
-                        "required": []string{"task_id", "wait_minutes"},
+                        "required": []string{"TaskId", "WaitMinutes"},
                 })
 
-        reg("shell_delayed_remove",
+        reg("ShellDelayedRemove",
                 "从任务列表中移除已完成或已终止的任务。运行中的任务需要先终止才能移除。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "任务ID",
                                 },
                         },
-                        "required": []string{"task_id"},
+                        "required": []string{"TaskId"},
                 })
 
         // ========== 子代理工具 ==========
-        reg("spawn", "创建一个后台子代理执行独立任务。子代理有自己的上下文，可以独立完成复杂任务，完成后会通知你。\n\n✅ 适用场景：\n- 需要独立执行的复杂任务\n- 不需要用户交互的后台任务\n- 可以并行执行的任务\n\n❌ 限制：\n- 子代理不能创建新的子代理\n- 子代理不能发送消息给用户\n- 最多执行 15 次工具调用迭代",
-                "spawn", "expert",
+        reg("Spawn", "创建一个后台子代理执行独立任务。子代理有自己的上下文，可以独立完成复杂任务，完成后会通知你。\n\n✅ 适用场景：\n- 需要独立执行的复杂任务\n- 不需要用户交互的后台任务\n- 可以并行执行的任务\n\n❌ 限制：\n- 子代理不能创建新的子代理\n- 子代理不能发送消息给用户\n- 最多执行 15 次工具调用迭代",
+                "Spawn", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1924,7 +2112,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "任务描述，清晰说明子代理需要完成的工作",
                                 },
-                                "max_iterations": map[string]interface{}{
+                                "MaxIterations": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "最大迭代次数（1-50），默认15",
                                 },
@@ -1932,45 +2120,45 @@ Example commands:
                         "required": []string{"task"},
                 })
 
-        reg("spawn_check",
+        reg("SpawnCheck",
                 "检查子代理任务的执行状态和结果。返回 exit_code、stdout、stderr 和运行时长。",
-                "spawn", "expert",
+                "Spawn", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "子代理任务ID",
                                 },
                         },
-                        "required": []string{"task_id"},
+                        "required": []string{"TaskId"},
                 })
 
-        reg("spawn_list",
+        reg("SpawnList",
                 "列出所有子代理任务，显示任务ID、状态、命令和运行时间。",
-                "spawn", "expert",
+                "Spawn", "expert",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
                 })
 
-        reg("spawn_cancel",
-                "取消正在运行的子代理任务。任务终止后可用 spawn_check 查看已产出的部分结果。",
-                "spawn", "expert",
+        reg("SpawnCancel",
+                "取消正在运行的子代理任务。任务终止后可用 SpawnCheck 查看已产出的部分结果。",
+                "Spawn", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task_id": map[string]interface{}{
+                                "TaskId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "子代理任务ID",
                                 },
                         },
-                        "required": []string{"task_id"},
+                        "required": []string{"TaskId"},
                 })
 
         // ========== SSH 持久化连接工具 ==========
-        reg("ssh_connect",
-                "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 ssh_exec 命令使用。支持密码或私钥认证。",
+        reg("SshConnect",
+                "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 SshExec 命令使用。支持密码或私钥认证。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -1987,7 +2175,7 @@ Example commands:
                                         "type":        "string",
                                         "description": "密码（与 private_key_path 二选一）",
                                 },
-                                "private_key_path": map[string]interface{}{
+                                "PrivateKeyPath": map[string]interface{}{
                                         "type":        "string",
                                         "description": "私钥文件路径（与 password 二选一）",
                                 },
@@ -1999,15 +2187,15 @@ Example commands:
                         "required": []string{"username", "host"},
                 })
 
-        reg("ssh_exec",
+        reg("SshExec",
                 "在一个已建立的持久化 SSH 连接上执行命令。支持同步和异步模式，可以维护会话上下文（如当前目录、环境变量）。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "session_id": map[string]interface{}{
+                                "SessionId": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "由 ssh_connect 返回的会话 ID",
+                                        "description": "由 SshConnect 返回的会话 ID",
                                 },
                                 "command": map[string]interface{}{
                                         "type":        "string",
@@ -2017,19 +2205,19 @@ Example commands:
                                         "type":        "boolean",
                                         "description": "是否异步执行（适用于长时间命令），默认 false",
                                 },
-                                "timeout_secs": map[string]interface{}{
+                                "TimeoutSecs": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "同步命令超时时间（秒），默认 60",
                                 },
-                                "wake_after_minutes": map[string]interface{}{
+                                "WakeAfterMinutes": map[string]interface{}{
                                         "type":        "integer",
                                         "description": "异步执行时的唤醒时间（分钟），默认 5",
                                 },
                         },
-                        "required": []string{"session_id", "command"},
+                        "required": []string{"SessionId", "command"},
                 })
 
-        reg("ssh_list",
+        reg("SshList",
                 "列出所有活跃的持久化 SSH 连接，显示别名、主机、用户和连接状态。",
                 "core", "expert",
                 map[string]interface{}{
@@ -2037,22 +2225,22 @@ Example commands:
                         "properties": map[string]interface{}{},
                 })
 
-        reg("ssh_close",
-                "关闭指定的持久化 SSH 连接并释放资源。先用 ssh_list 查看连接别名。",
+        reg("SshClose",
+                "关闭指定的持久化 SSH 连接并释放资源。先用 SshList 查看连接别名。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "session_id": map[string]interface{}{
+                                "SessionId": map[string]interface{}{
                                         "type":        "string",
                                         "description": "要关闭的会话 ID",
                                 },
                         },
-                        "required": []string{"session_id"},
+                        "required": []string{"SessionId"},
                 })
 
         // ========== Lisp/Scheme 计算工具 ==========
-        reg("scheme_eval", `执行 Clojure/Lisp (S-表达式) 并返回计算结果。
+        reg("SchemeEval", `执行 Clojure/Lisp (S-表达式) 并返回计算结果。
 
                 ✅ 适用场景：
                 • 精确数学计算（整数/浮点运算、三角函数、对数、幂运算等）
@@ -2086,8 +2274,8 @@ Example commands:
                 })
 
         // ========== Plan Mode 工具 ==========
-        reg("enter_plan_mode",
-                "進入 Plan Mode（結構化任務分解模式）。系統將啟動 3 階段工作流：探索→設計→執行。每階段有獨立的工具集和 todos 列表。Phase 間需調用 next_phase 推進，Phase 2 可使用 prev_phase 回溯。",
+        reg("EnterPlanMode",
+                "進入 Plan Mode（結構化任務分解模式）。系統將啟動 3 階段工作流：探索→設計→執行。每階段有獨立的工具集和 todos 列表。Phase 間需調用 NextPhase 推進，Phase 2 可使用 PrevPhase 回溯。",
                 "plan", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -2101,8 +2289,8 @@ Example commands:
                         "additionalProperties": false,
                 })
 
-        reg("exit_plan_mode",
-                "強制退出 Plan Mode（跳過剩餘階段）。正常流程應使用 next_phase 逐步推進。強制退出會丟失未完成的階段。",
+        reg("ExitPlanMode",
+                "強制退出 Plan Mode（跳過剩餘階段）。正常流程應使用 NextPhase 逐步推進。強制退出會丟失未完成的階段。",
                 "plan", "expert",
                 map[string]interface{}{
                         "type":                 "object",
@@ -2136,7 +2324,7 @@ func (td *ToolDef) ToAnthropic() map[string]interface{} {
         return map[string]interface{}{
                 "name":         td.Name,
                 "description":  td.Description,
-                "input_schema": td.Parameters,
+                "InputSchema": td.Parameters,
         }
 }
 
@@ -2174,7 +2362,7 @@ func GetCategoryRegistry() []ToolCategory {
         orderIdx := 0
 
         // 预定义的分类顺序和顯示名稱
-        predefinedOrder := []string{"core", "file", "web", "memory", "schedule", "plan", "skill", "plugin", "profile", "spawn", "misc"}
+        predefinedOrder := []string{"core", "file", "web", "memory", "schedule", "plan", "skill", "plugin", "profile", "Spawn", "misc"}
         categoryDisplayNames := map[string]string{
                 "core":    "命令执行",
                 "file":    "文件操作",
@@ -2185,7 +2373,7 @@ func GetCategoryRegistry() []ToolCategory {
                 "skill":   "技能管理",
                 "plugin":  "插件管理",
                 "profile": "配置管理",
-                "spawn":   "子代理",
+                "Spawn":   "子代理",
                 "misc":    "其他工具",
         }
 

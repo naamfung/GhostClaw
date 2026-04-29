@@ -380,22 +380,22 @@ func GetExtendedToolNames() []string {
 
 // GetConsolidatedBrowserTools 返回合并后的浏览器工具定义
 // 将 33 个独立浏览器工具合并为 5 个聚合工具：
-//   - browser_navigate: 导航/访问网页（合并 browser_visit, browser_navigate）
-//   - browser_interact: 页面交互（合并 browser_click, browser_double_click,
-//     browser_hover, browser_type, browser_scroll, browser_right_click, browser_drag）
-//   - browser_extract: 内容提取（合并 browser_screenshot, browser_execute_js,
-//     browser_extract_links, browser_extract_images, browser_extract_elements,
-//     browser_snapshot, browser_element_screenshot, browser_pdf, browser_pdf_from_file）
+//   - browser_navigate: 导航/访问网页（合并 BrowserVisit, browser_navigate）
+//   - browser_interact: 页面交互（合并 browser_click, browser_DoubleClick,
+//     browser_hover, browser_type, browser_scroll, browser_RightClick, browser_drag）
+//   - browser_extract: 内容提取（合并 browser_screenshot, browser_ExecuteJs,
+//     browser_ExtractLinks, browser_ExtractImages, browser_ExtractElements,
+//     browser_snapshot, browser_ElementScreenshot, browser_pdf, browser_pdf_from_file）
 //   - browser_form_fill: 表单填写（合并 browser_fill_form, browser_select_option,
 //     browser_key_press, browser_upload_file）
-//   - browser_search: 搜索引擎查询（合并 browser_search）
+//   - BrowserSearch: 搜索引擎查询（合并 BrowserSearch）
 func GetConsolidatedBrowserTools() []map[string]interface{} {
         return []map[string]interface{}{
                 // --- browser_navigate: 导航与访问 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "browser_navigate",
+                                "name": "BrowserNavigate",
                                 "description": "Navigate to a URL, visit a web page, and extract its text content. Supports optional wait time for dynamic pages.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -418,7 +418,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "browser_interact",
+                                "name": "BrowserInteract",
                                 "description": "Interact with elements on a web page. Supports click, double-click, hover, type text, scroll, right-click, and drag. Uses CSS selectors to target elements.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -429,12 +429,12 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                                 },
                                                 "action": map[string]interface{}{
                                                         "type":        "string",
-                                                        "enum":        []string{"click", "double_click", "hover", "right_click", "type", "scroll", "drag"},
+                                                        "enum":        []string{"click", "DoubleClick", "hover", "RightClick", "type", "scroll", "drag"},
                                                         "description": "The interaction action to perform.",
                                                 },
                                                 "selector": map[string]interface{}{
                                                         "type":        "string",
-                                                        "description": "CSS selector for the target element. Required for click, double_click, hover, right_click, drag. Example: 'button.submit', '#login-btn'.",
+                                                        "description": "CSS selector for the target element. Required for click, DoubleClick, hover, RightClick, drag. Example: 'button.submit', '#login-btn'.",
                                                 },
                                                 "text": map[string]interface{}{
                                                         "type":        "string",
@@ -463,7 +463,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "browser_extract",
+                                "name": "BrowserExtract",
                                 "description": "Extract content from a web page. Supports screenshot capture, JavaScript execution, link/image extraction, element scraping, and PDF generation.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -474,24 +474,24 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                                 },
                                                 "mode": map[string]interface{}{
                                                         "type":        "string",
-                                                        "enum":        []string{"screenshot", "execute_js", "extract_links", "extract_images", "extract_elements", "snapshot", "pdf"},
+                                                        "enum":        []string{"screenshot", "ExecuteJs", "ExtractLinks", "ExtractImages", "ExtractElements", "snapshot", "pdf"},
                                                         "description": "The extraction mode.",
                                                 },
                                                 "selector": map[string]interface{}{
                                                         "type":        "string",
-                                                        "description": "CSS selector for 'extract_elements' mode. Example: '.article', 'div.content p'.",
+                                                        "description": "CSS selector for 'ExtractElements' mode. Example: '.article', 'div.content p'.",
                                                 },
                                                 "script": map[string]interface{}{
                                                         "type":        "string",
-                                                        "description": "JavaScript code for 'execute_js' mode. Must be a function expression.",
+                                                        "description": "JavaScript code for 'ExecuteJs' mode. Must be a function expression.",
                                                 },
-                                                "full_page": map[string]interface{}{
+                                                "FullPage": map[string]interface{}{
                                                         "type":        "boolean",
                                                         "description": "Capture full page screenshot (for 'screenshot' mode). Default: false.",
                                                 },
-                                                "include_html": map[string]interface{}{
+                                                "IncludeHtml": map[string]interface{}{
                                                         "type":        "boolean",
-                                                        "description": "Include HTML content (for 'extract_elements' mode). Default: false.",
+                                                        "description": "Include HTML content (for 'ExtractElements' mode). Default: false.",
                                                 },
                                         },
                                         "required":             []string{"url", "mode"},
@@ -503,7 +503,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "browser_form_fill",
+                                "name": "BrowserFormFill",
                                 "description": "Fill out and submit web forms. Supports multi-field input, file uploads, select options, and key press simulation.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -512,33 +512,33 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                                         "type":        "string",
                                                         "description": "The URL to navigate to.",
                                                 },
-                                                "form_data": map[string]interface{}{
+                                                "FormData": map[string]interface{}{
                                                         "type":        "object",
                                                         "description": "Form field values as key-value pairs. Keys match input 'name' or 'id' attributes. Example: {\"username\": \"admin\", \"password\": \"123456\"}",
                                                 },
-                                                "submit_selector": map[string]interface{}{
+                                                "SubmitSelector": map[string]interface{}{
                                                         "type":        "string",
                                                         "description": "CSS selector for submit button. If empty, presses Enter to submit.",
                                                 },
-                                                "file_path": map[string]interface{}{
+                                                "FilePath": map[string]interface{}{
                                                         "type":        "string",
                                                         "description": "Path to file for file upload fields.",
                                                 },
-                                                "select_value": map[string]interface{}{
+                                                "SelectValue": map[string]interface{}{
                                                         "type":        "string",
                                                         "description": "Value to select for dropdown menus.",
                                                 },
                                         },
-                                        "required":             []string{"url", "form_data"},
+                                        "required":             []string{"url", "FormData"},
                                         "additionalProperties": false,
                                 },
                         },
                 },
-                // --- browser_search: 搜索引擎 ---
+                // --- BrowserSearch: 搜索引擎 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name": "browser_search",
+                                "name": "BrowserSearch",
                                 "description": "Search for a keyword using a search engine. Returns search results with titles and links.",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -563,9 +563,9 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
         return []map[string]interface{}{
                 // --- browser_navigate: 导航与访问 ---
                 {
-                        "name": "browser_navigate",
+                        "name": "BrowserNavigate",
                         "description": "Navigate to a URL, visit a web page, and extract its text content. Supports optional wait time for dynamic pages.",
-                        "input_schema": map[string]interface{}{
+                        "InputSchema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -583,9 +583,9 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 },
                 // --- browser_interact: 页面交互 ---
                 {
-                        "name": "browser_interact",
+                        "name": "BrowserInteract",
                         "description": "Interact with elements on a web page. Supports click, double-click, hover, type text, scroll, right-click, and drag. Uses CSS selectors to target elements.",
-                        "input_schema": map[string]interface{}{
+                        "InputSchema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -594,12 +594,12 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                         },
                                         "action": map[string]interface{}{
                                                 "type":        "string",
-                                                "enum":        []string{"click", "double_click", "hover", "right_click", "type", "scroll", "drag"},
+                                                "enum":        []string{"click", "DoubleClick", "hover", "RightClick", "type", "scroll", "drag"},
                                                 "description": "The interaction action to perform.",
                                         },
                                         "selector": map[string]interface{}{
                                                 "type":        "string",
-                                                "description": "CSS selector for the target element. Required for click, double_click, hover, right_click, drag. Example: 'button.submit', '#login-btn'.",
+                                                "description": "CSS selector for the target element. Required for click, DoubleClick, hover, RightClick, drag. Example: 'button.submit', '#login-btn'.",
                                         },
                                         "text": map[string]interface{}{
                                                 "type":        "string",
@@ -625,9 +625,9 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 },
                 // --- browser_extract: 内容提取 ---
                 {
-                        "name": "browser_extract",
+                        "name": "BrowserExtract",
                         "description": "Extract content from a web page. Supports screenshot capture, JavaScript execution, link/image extraction, element scraping, and PDF generation.",
-                        "input_schema": map[string]interface{}{
+                        "InputSchema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
@@ -636,24 +636,24 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                         },
                                         "mode": map[string]interface{}{
                                                 "type":        "string",
-                                                "enum":        []string{"screenshot", "execute_js", "extract_links", "extract_images", "extract_elements", "snapshot", "pdf"},
+                                                "enum":        []string{"screenshot", "ExecuteJs", "ExtractLinks", "ExtractImages", "ExtractElements", "snapshot", "pdf"},
                                                 "description": "The extraction mode.",
                                         },
                                         "selector": map[string]interface{}{
                                                 "type":        "string",
-                                                "description": "CSS selector for 'extract_elements' mode. Example: '.article', 'div.content p'.",
+                                                "description": "CSS selector for 'ExtractElements' mode. Example: '.article', 'div.content p'.",
                                         },
                                         "script": map[string]interface{}{
                                                 "type":        "string",
-                                                "description": "JavaScript code for 'execute_js' mode. Must be a function expression.",
+                                                "description": "JavaScript code for 'ExecuteJs' mode. Must be a function expression.",
                                         },
-                                        "full_page": map[string]interface{}{
+                                        "FullPage": map[string]interface{}{
                                                 "type":        "boolean",
                                                 "description": "Capture full page screenshot (for 'screenshot' mode). Default: false.",
                                         },
-                                        "include_html": map[string]interface{}{
+                                        "IncludeHtml": map[string]interface{}{
                                                 "type":        "boolean",
-                                                "description": "Include HTML content (for 'extract_elements' mode). Default: false.",
+                                                "description": "Include HTML content (for 'ExtractElements' mode). Default: false.",
                                         },
                                 },
                                 "required":             []string{"url", "mode"},
@@ -662,41 +662,41 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                 },
                 // --- browser_form_fill: 表单填写 ---
                 {
-                        "name": "browser_form_fill",
+                        "name": "BrowserFormFill",
                         "description": "Fill out and submit web forms. Supports multi-field input, file uploads, select options, and key press simulation.",
-                        "input_schema": map[string]interface{}{
+                        "InputSchema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "url": map[string]interface{}{
                                                 "type":        "string",
                                                 "description": "The URL to navigate to.",
                                         },
-                                        "form_data": map[string]interface{}{
+                                        "FormData": map[string]interface{}{
                                                 "type":        "object",
                                                 "description": "Form field values as key-value pairs. Keys match input 'name' or 'id' attributes. Example: {\"username\": \"admin\", \"password\": \"123456\"}",
                                         },
-                                        "submit_selector": map[string]interface{}{
+                                        "SubmitSelector": map[string]interface{}{
                                                 "type":        "string",
                                                 "description": "CSS selector for submit button. If empty, presses Enter to submit.",
                                         },
-                                        "file_path": map[string]interface{}{
+                                        "FilePath": map[string]interface{}{
                                                 "type":        "string",
                                                 "description": "Path to file for file upload fields.",
                                         },
-                                        "select_value": map[string]interface{}{
+                                        "SelectValue": map[string]interface{}{
                                                 "type":        "string",
                                                 "description": "Value to select for dropdown menus.",
                                         },
                                 },
-                                "required":             []string{"url", "form_data"},
+                                "required":             []string{"url", "FormData"},
                                 "additionalProperties": false,
                         },
                 },
-                // --- browser_search: 搜索引擎 ---
+                // --- BrowserSearch: 搜索引擎 ---
                 {
-                        "name": "browser_search",
+                        "name": "BrowserSearch",
                         "description": "Search for a keyword using a search engine. Returns search results with titles and links.",
-                        "input_schema": map[string]interface{}{
+                        "InputSchema": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
                                         "keyword": map[string]interface{}{
@@ -912,7 +912,7 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
                 // menu 不在 toolRegistry 中（獨立定義於 tool_menu.go），
                 // 但它是系統最核心的工具入口，必須受預算保護。
                 // 與 getTools.go applyToolDistributionFilter 中的 coreTools 保持一致。
-                coreNames["menu"] = true
+                coreNames["Menu"] = true
                 // 計算核心工具的 token 數
                 var coreTokens int
                 for _, t := range filtered {

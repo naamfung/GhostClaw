@@ -149,7 +149,7 @@ type CronConfig struct {
         MaxConcurrent int `toon:"MaxConcurrent" json:"MaxConcurrent"`
 }
 
-// SmartShellConfig smart_shell 工具配置
+// SmartShellConfig SmartShell 工具配置
 type SmartShellConfig struct {
         Enabled           *bool `toon:"Enabled,omitempty" json:"Enabled,omitempty"`
         SyncTimeout       int   `toon:"SyncTimeout" json:"SyncTimeout"`                   // 快速命令超时（秒），默认60
@@ -163,7 +163,7 @@ type ShellToolConfig struct {
         Enabled bool `toon:"Enabled" json:"Enabled"`
 }
 
-// ShellDelayedConfig shell_delayed 工具配置
+// ShellDelayedConfig ShellDelayed 工具配置
 type ShellDelayedConfig struct {
         Enabled bool `toon:"Enabled" json:"Enabled"`
 }

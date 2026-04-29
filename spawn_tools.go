@@ -41,7 +41,7 @@ func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel
     }
 
     maxIterations := 15
-    if mi, ok := argsMap["max_iterations"].(float64); ok {
+    if mi, ok := argsMap["MaxIterations"].(float64); ok {
         maxIterations = int(mi)
     }
 
@@ -83,7 +83,7 @@ func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel
     if credentialOverride != "" {
         result += fmt.Sprintf("\n- 凭据覆盖: %s", credentialOverride)
     }
-    result += "\n\n子代理将在后台执行任务。使用 spawn_check 检查进度，spawn_list 查看所有任务。"
+    result += "\n\n子代理将在后台执行任务。使用 SpawnCheck 检查进度，SpawnList 查看所有任务。"
 
     return result, nil
 }
@@ -112,7 +112,7 @@ func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Ch
     }
 
     maxIterations := 15
-    if mi, ok := argsMap["max_iterations"].(float64); ok {
+    if mi, ok := argsMap["MaxIterations"].(float64); ok {
         maxIterations = int(mi)
     }
 
@@ -149,14 +149,14 @@ func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Ch
         result += fmt.Sprintf("%d. 任务ID: %s\n   任务: %s\n   最大迭代: %d\n   深度: %d\n\n",
             i+1, t.ID, TruncateString(t.Task, 60), maxIterations, t.Depth)
     }
-    result += "所有子代理将在后台并行执行。使用 spawn_check 检查各任务进度，spawn_list 查看所有任务。"
+    result += "所有子代理将在后台并行执行。使用 SpawnCheck 检查各任务进度，SpawnList 查看所有任务。"
 
     return result, nil
 }
 
-// handleSpawnCheck 处理 spawn_check 工具调用
+// handleSpawnCheck 处理 SpawnCheck 工具调用
 func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
-    taskID, ok := argsMap["task_id"].(string)
+    taskID, ok := argsMap["TaskId"].(string)
     if !ok || taskID == "" {
         return "Error: 缺少任务ID (task_id)", nil
     }
@@ -171,7 +171,7 @@ func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Ch
     }
 
     result := fmt.Sprintf("子代理任务状态:\n- 任务ID: %s\n- 状态: %s\n- 迭代次数: %d/%d\n- 深度: %d\n- 运行时间: %.1f 秒",
-        info["task_id"], info["status"], info["iterations"], info["max_iterations"], info["depth"], info["runtime_seconds"])
+        info["TaskId"], info["status"], info["iterations"], info["MaxIterations"], info["depth"], info["runtime_seconds"])
 
     if info["model_override"] != nil {
         result += fmt.Sprintf("\n- 模型覆盖: %s", info["model_override"])
@@ -187,7 +187,7 @@ func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Ch
     return result, nil
 }
 
-// handleSpawnList 处理 spawn_list 工具调用
+// handleSpawnList 处理 SpawnList 工具调用
 func handleSpawnList(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
     if globalSubagentManager == nil {
         return "当前没有子代理任务", nil
@@ -211,7 +211,7 @@ func handleSpawnList(ctx context.Context, argsMap map[string]interface{}, ch Cha
 
 // handleSpawnCancel 处理 spawn_cancel 工具调用
 func handleSpawnCancel(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
-    taskID, ok := argsMap["task_id"].(string)
+    taskID, ok := argsMap["TaskId"].(string)
     if !ok || taskID == "" {
         return "Error: 缺少任务ID (task_id)", nil
     }

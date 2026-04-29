@@ -86,11 +86,9 @@ func TestLevenshteinDistance(t *testing.T) {
 		{"hello世界", "hello世界!", 1},
 		// 长度差异大 (快速路径)
 		{"a", "abcdefghij", 9},
-		// shell 相关
-		{"shell", "smart_shell", 6},
-		{"smart_shell", "shell", 6},
-		// read 相关 (byte-level)
-		{"read_file", "read_all_lines", 7},
+		// shell 相关 (PascalCase)
+		{"Shell", "SmartShell", 5},
+		{"SmartShell", "Shell", 5},
 	}
 	for _, tt := range tests {
 		got := levenshteinDistance(tt.s1, tt.s2)
@@ -106,38 +104,38 @@ func TestLevenshteinDistance(t *testing.T) {
 
 func TestFindSimilarTool(t *testing.T) {
 	t.Run("精确匹配自身", func(t *testing.T) {
-		result := FindSimilarTool("shell")
+		result := FindSimilarTool("Shell")
 		// 精确匹配应返回自身（编辑距离 0，满足 threshold）
-		if result != "shell" {
+		if result != "Shell" {
 			t.Errorf("expected 'shell', got %q", result)
 		}
 	})
 
 	t.Run("小笔误", func(t *testing.T) {
 		result := FindSimilarTool("shel")
-		// 编辑距离 1，接近 "shell"
-		if result != "shell" {
+		// 编辑距离 1，接近 "Shell"
+		if result != "Shell" {
 			t.Errorf("expected 'shell', got %q", result)
 		}
 	})
 
 	t.Run("常见拼写错误", func(t *testing.T) {
 		result := FindSimilarTool("smart_shel")
-		if result != "smart_shell" {
-			t.Errorf("expected 'smart_shell', got %q", result)
+		if result != "SmartShell" {
+			t.Errorf("expected 'SmartShell', got %q", result)
 		}
 	})
 
 	t.Run("带空格输入", func(t *testing.T) {
 		result := FindSimilarTool("  shell  ")
-		if result != "shell" {
+		if result != "Shell" {
 			t.Errorf("expected 'shell', got %q", result)
 		}
 	})
 
 	t.Run("大小写不敏感", func(t *testing.T) {
 		result := FindSimilarTool("SHELL")
-		if result != "shell" {
+		if result != "Shell" {
 			t.Errorf("expected 'shell', got %q", result)
 		}
 	})
@@ -159,16 +157,16 @@ func TestFindSimilarTool(t *testing.T) {
 	})
 
 	t.Run("read 相关", func(t *testing.T) {
-		result := FindSimilarTool("read_file")
-		if result != "read_file_line" {
-			t.Errorf("expected 'read_file_line', got %q", result)
+		result := FindSimilarTool("ReadFile")
+		if result != "ReadFileLine" {
+			t.Errorf("expected 'ReadFileLine', got %q", result)
 		}
 	})
 
 	t.Run("text_grep 变体", func(t *testing.T) {
-		// "grep" is not in the tool list; "text_grep" is
+		// "grep" is not in the tool list; "TextGrep" is
 		result := FindSimilarTool("text_grepp")
-		if result != "text_grep" {
+		if result != "TextGrep" {
 			t.Errorf("expected 'text_grep', got %q", result)
 		}
 	})
@@ -181,7 +179,7 @@ func TestFindSimilarTool(t *testing.T) {
 func TestGetUnknownToolErrorMessage(t *testing.T) {
 	t.Run("已知近似工具会建议", func(t *testing.T) {
 		msg := GetUnknownToolErrorMessage("shel")
-		if !strings.Contains(msg, "shell") {
+		if !strings.Contains(msg, "Shell") {
 			t.Errorf("expected suggestion for 'shell', got: %s", msg)
 		}
 		if !strings.Contains(msg, "shel") {
@@ -207,9 +205,9 @@ func TestGetUnknownToolErrorMessage(t *testing.T) {
 
 func TestIsWriteTool(t *testing.T) {
 	writeTools := []string{
-		"write_file_line", "write_all_lines", "append_to_file",
-		"write_file_range", "text_replace", "text_transform",
-		"memory_save", "memory_forget",
+		"WriteFileLine", "WriteAllLines", "AppendToFile",
+		"WriteFileRange", "TextReplace", "TextTransform",
+		"MemorySave", "MemoryForget",
 	}
 	for _, name := range writeTools {
 		if !isWriteTool(name) {
@@ -218,9 +216,9 @@ func TestIsWriteTool(t *testing.T) {
 	}
 
 	readTools := []string{
-		"read_file_line", "read_all_lines", "text_search",
-		"shell", "smart_shell", "spawn", "mcp_call",
-		"enter_plan_mode", "menu",
+		"ReadFileLine", "ReadAllLines", "TextSearch",
+		"Shell", "SmartShell", "Spawn", "mcp_call",
+		"EnterPlanMode", "Menu",
 	}
 	for _, name := range readTools {
 		if isWriteTool(name) {
@@ -234,8 +232,8 @@ func TestIsWriteTool(t *testing.T) {
 // ============================================================================
 
 func TestExtractFilePathFromArgs(t *testing.T) {
-	t.Run("file_path", func(t *testing.T) {
-		args := map[string]interface{}{"file_path": "/tmp/test.txt"}
+	t.Run("FilePath", func(t *testing.T) {
+		args := map[string]interface{}{"FilePath": "/tmp/test.txt"}
 		got := extractFilePathFromArgs(args)
 		if got != "/tmp/test.txt" {
 			t.Errorf("expected '/tmp/test.txt', got %q", got)
@@ -283,7 +281,7 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 	})
 
 	t.Run("空值", func(t *testing.T) {
-		args := map[string]interface{}{"file_path": ""}
+		args := map[string]interface{}{"FilePath": ""}
 		got := extractFilePathFromArgs(args)
 		if got != "" {
 			t.Errorf("expected empty, got %q", got)
@@ -291,7 +289,7 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 	})
 
 	t.Run("非字符串跳过", func(t *testing.T) {
-		args := map[string]interface{}{"file_path": 123}
+		args := map[string]interface{}{"FilePath": 123}
 		got := extractFilePathFromArgs(args)
 		if got != "" {
 			t.Errorf("expected empty, got %q", got)
@@ -300,7 +298,7 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 
 	t.Run("优先级: file_path > filePath", func(t *testing.T) {
 		args := map[string]interface{}{
-			"file_path": "/first/path.txt",
+			"FilePath": "/first/path.txt",
 			"filePath":  "/second/path.txt",
 		}
 		got := extractFilePathFromArgs(args)
@@ -316,10 +314,10 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 
 func TestIsReadOnlyTool(t *testing.T) {
 	roTools := []string{
-		"read_file_line", "read_all_lines", "text_search", "text_grep",
-		"memory_recall", "memory_list", "plan_read", "plugin_list",
-		"skill_list", "skill_get", "cron_list", "cron_status",
-		"spawn_list", "ssh_list", "profile_check",
+		"ReadFileLine", "ReadAllLines", "TextSearch", "TextGrep",
+		"MemoryRecall", "MemoryList", "PlanRead", "PluginList",
+		"SkillList", "SkillGet", "CronList", "CronStatus",
+		"SpawnList", "SshList", "ProfileCheck",
 	}
 	for _, name := range roTools {
 		if !IsReadOnlyTool(name) {
@@ -327,7 +325,7 @@ func TestIsReadOnlyTool(t *testing.T) {
 		}
 	}
 
-	if IsReadOnlyTool("shell") {
+	if IsReadOnlyTool("Shell") {
 		t.Error("shell should NOT be read-only")
 	}
 	if IsReadOnlyTool("unknown_tool_xyz") {
@@ -551,7 +549,7 @@ func TestNormalizeFilePath_WithDotDot(t *testing.T) {
 // ============================================================================
 
 func TestCheckWritePermission_NewFile(t *testing.T) {
-	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "write_all_lines")
+	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "WriteAllLines")
 	if err != nil {
 		t.Errorf("CheckWritePermission for new file should allow, got error: %v", err)
 	}
@@ -569,7 +567,7 @@ func TestCheckWritePermission_ExistingFileNotRead(t *testing.T) {
 	globalReadWriteTracker = newReadWriteTracker()
 	defer func() { globalReadWriteTracker = oldTracker }()
 
-	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
 	if err == nil {
 		t.Error("CheckWritePermission should block write on unread existing file")
 	}
@@ -588,7 +586,7 @@ func TestCheckWritePermission_ExistingFileFullyRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFileFullyRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
 	if err != nil {
 		t.Errorf("CheckWritePermission should allow write on fully read file, got error: %v", err)
 	}
@@ -607,7 +605,7 @@ func TestCheckWritePermission_ExistingFilePartialRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFilePartialRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "write_all_lines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
 	if err == nil {
 		t.Error("CheckWritePermission should block write on partial-read file (need full read)")
 	}
@@ -723,8 +721,8 @@ func TestRepeatedErrorEscalator_WriteWithoutReadMessage(t *testing.T) {
 	e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 2")
 	_, userMsg := e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 3")
 
-	if !strings.Contains(userMsg, "read_all_lines") {
-		t.Error("WriteWithoutRead escalation should mention read_all_lines")
+	if !strings.Contains(userMsg, "ReadAllLines") {
+		t.Error("WriteWithoutRead escalation should mention ReadAllLines")
 	}
 }
 

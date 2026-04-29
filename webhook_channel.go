@@ -63,7 +63,7 @@ type WebhookResponse struct {
 
 // WebhookCallback 回调请求体
 type WebhookCallback struct {
-        TaskID    string `json:"task_id"`
+        TaskID    string `json:"TaskId"`
         Status    string `json:"status"` // "completed", "failed", "cancelled"
         Result    string `json:"result,omitempty"`
         Error     string `json:"error,omitempty"`
@@ -325,7 +325,7 @@ func (wc *WebhookChannel) handleWebhook(w http.ResponseWriter, r *http.Request) 
                                 // 异步模式：发送回调
                                 go wc.sendCallback(callbackURL, &WebhookCallback{
                                         TaskID:    fmt.Sprintf("cmd_%d", time.Now().UnixNano()),
-                                        Status:    "completed",
+                                        Status:    "Completed",
                                         Result:    resp,
                                         Timestamp: time.Now().Unix(),
                                 })
@@ -507,7 +507,7 @@ func (wc *WebhookChannel) processWebhookMessage(session *GlobalSession, taskID, 
         } else {
                 result = &WebhookResult{
                         TaskID:    taskID,
-                        Status:    "completed",
+                        Status:    "Completed",
                         Result:    outputBuf.String(),
                         Timestamp: time.Now(),
                 }

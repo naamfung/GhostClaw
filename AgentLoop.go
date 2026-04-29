@@ -488,7 +488,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 "在開始執行前，請先向用戶確認任務的具體需求、範圍和期望結果。\n\n" +
                 "根據用戶提供的詳細資訊，自行判斷任務複雜度並選擇合適的工作方式：\n" +
                 "- 簡單/明確任務（1-3 步驟）→ 使用 todos 工具規劃並執行\n" +
-                "- 複雜任務（涉及多檔案、多步驟、需要審慎規劃）→ 使用 enter_plan_mode 進入結構化規劃\n\n" +
+                "- 複雜任務（涉及多檔案、多步驟、需要審慎規劃）→ 使用 EnterPlanMode 進入結構化規劃\n\n" +
                 "不要基於模糊的單句請求就做重大技術決策。"
             for i := len(messages) - 1; i >= 0; i-- {
                 if messages[i].Role == "system" {
@@ -572,7 +572,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             // 注入到消息歷史中（僅模型可見），而非 ch.WriteChunk（前端可見）
             messages = append([]Message{{
                 Role:    "system",
-                Content: "[系统提示] 当前任务已进行多轮工具调用。如果任务复杂、涉及多文件修改或需要仔细规划，建议使用 enter_plan_mode 工具进入结构化任务分解模式，先探索再执行。",
+                Content: "[系统提示] 当前任务已进行多轮工具调用。如果任务复杂、涉及多文件修改或需要仔细规划，建议使用 EnterPlanMode 工具进入结构化任务分解模式，先探索再执行。",
             }}, messages...)
         }
 
@@ -596,7 +596,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
 
 		// ========== 即时唤醒通知注入 ==========
-		// 当模型忙碌时，延迟任务（shell_delayed/spawn）的完成/失败通知
+		// 当模型忙碌时，延迟任务（ShellDelayed/spawn）的完成/失败通知
 		// 通常只能等到模型空闲才发送。此处检查 InputMessages 队列，
 		// 若有待处理的唤醒通知，立即注入为 user 消息，使模型在下一次
 		// API 调用时即可看到，无需等待当前 AgentLoop 完全结束。
@@ -996,7 +996,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         if stopReason != "tool_use" && stopReason != "function_call" && stopReason != "tool_calls" {
             // ========== XML 工具調用偵測 ==========
             // 當模型嘗試使用不可用的工具時，可能輸出 XML 格式的工具調用作為文本
-            // 例如：<invoke name="smart_shell">... 或 <INVOKE NAME="SMART_SHELL">...
+            // 例如：<invoke name="SmartShell">... 或 <INVOKE NAME="SMART_SHELL">...
             // 此時應重新提示模型使用可用工具，而非直接退出循環
             contentStr, _ := respContent.(string)
             if contentStr != "" && detectXMLToolInvocation(contentStr) {
@@ -1099,7 +1099,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                         // 這確保 FeedbackCollector 的 WakeNotification 檢測和隱式反饋採集
                         // 能正確跳過系統消息，找到真正的觸發用戶消息
                         resumePrompt := fmt.Sprintf(
-                            "[SYSTEM_RESUME] 你的任務尚未完成。以下待辦事項仍需處理：\n%s\n\n請繼續執行未完成的任務。如果某個任務已通過 smart_shell（異步模式）或 cron_add 提交為後台操作，請使用 todos 工具將其狀態更新為 waiting，然後等待系統通知結果，切勿重複調用同步模式。",
+                            "[SYSTEM_RESUME] 你的任務尚未完成。以下待辦事項仍需處理：\n%s\n\n請繼續執行未完成的任務。如果某個任務已通過 SmartShell（異步模式）或 CronAdd 提交為後台操作，請使用 todos 工具將其狀態更新為 waiting，然後等待系統通知結果，切勿重複調用同步模式。",
                             unfinished,
                         )
                         messages = append(messages, Message{
@@ -1118,7 +1118,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
 
             // ========== 子代理運行守衛 ==========
-            // 如果有子代理仍在後台運行，模型不應停止——必須繼續 spawn_check 或等待結果。
+            // 如果有子代理仍在後台運行，模型不應停止——必須繼續 SpawnCheck 或等待結果。
             // 防止模型在子代理執行期間回覆無意義的文字（如 "I see your message appears empty"）
             // 然後直接退出循環，導致用戶看到異常的系統級回覆。
             // 使用獨立的 subagentResumeCount，避免與工作模式守衛互相消耗配額。
@@ -1135,7 +1135,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                     subagentResumeCount++
                     resumePrompt := fmt.Sprintf(
                         "[SYSTEM_RESUME] 你有 %d 個子代理仍在後台運行（%s）。\n"+
-                            "請繼續使用 spawn_check 檢查它們的進度，直到所有子代理完成。\n"+
+                            "請繼續使用 SpawnCheck 檢查它們的進度，直到所有子代理完成。\n"+
                             "不要回覆文字給用戶，繼續執行工具調用。",
                         len(runningSubagentIDs), strings.Join(runningSubagentIDs, ", "))
                     messages = append(messages, Message{
@@ -1444,7 +1444,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
 // detectXMLToolInvocation 检測模型文本回覆中是否包含 XML 格式的工具調用
 // 當模型嘗試使用不可用的工具時，可能輸出類似以下格式：
-//   <invoke name="smart_shell"><parameter name="command">...</parameter></invoke>
+//   <invoke name="SmartShell"><parameter name="command">...</parameter></invoke>
 //   <INVOKE NAME="SMART_SHELL"><PARAMETER NAME="COMMAND">...</PARAMETER></INVOKE>
 //   <function_call>{"name": "tool_name", ...}</function_call>
 //
@@ -1463,18 +1463,19 @@ func detectXMLToolInvocation(content string) bool {
 
     // 已知 GhostClaw 工具名稱（用於 <invoke name="..."> 驗證）
     knownToolNames := []string{
-        "smart_shell", "shell", "shell_delayed", "read_all_lines", "read_file_line", "read_file_range",
-        "write_file", "write_file_line", "write_all_lines", "search_files",
-        "enter_plan_mode", "spawn", "spawn_check", "spawn_list", "spawn_batch",
-        "menu", "todo", "todos", "grep", "list_directory", "web_search",
-        "browser_navigate", "browser_click", "browser_type", "browser_snapshot",
+        "SmartShell", "Shell", "ShellDelayed", "ReadAllLines", "ReadFileLine", "ReadFileRange",
+        "write_file", "WriteFileLine", "WriteAllLines", "search_files",
+        "EnterPlanMode", "Spawn", "SpawnCheck", "SpawnList", "SpawnBatch",
+        "Menu", "todo", "Todos", "grep", "list_directory", "web_search",
+        "BrowserNavigate", "BrowserClick", "BrowserType", "BrowserSnapshot",
         "mcp_call", "replace", "batch_replace", "file_exists",
     }
 
     // 檢測 <invoke name="..."> — 必須引用已知工具名稱
     if strings.Contains(lower, "<invoke") && strings.Contains(lower, "name=") {
         for _, toolName := range knownToolNames {
-            if strings.Contains(lower, "name=\""+toolName+"\"") || strings.Contains(lower, "name='"+toolName+"'") {
+            lt := strings.ToLower(toolName)
+            if strings.Contains(lower, "name=\""+lt+"\"") || strings.Contains(lower, "name='"+lt+"'") {
                 return true
             }
         }
@@ -1483,7 +1484,8 @@ func detectXMLToolInvocation(content string) bool {
     // 檢測 <tool_call name="..."> — 同樣必須引用已知工具名稱
     if strings.Contains(lower, "<tool_call") && strings.Contains(lower, "name=") {
         for _, toolName := range knownToolNames {
-            if strings.Contains(lower, "name=\""+toolName+"\"") || strings.Contains(lower, "name='"+toolName+"'") {
+            lt := strings.ToLower(toolName)
+            if strings.Contains(lower, "name=\""+lt+"\"") || strings.Contains(lower, "name='"+lt+"'") {
                 return true
             }
         }

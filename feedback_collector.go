@@ -24,12 +24,12 @@ const (
 // FeedbackRecord 反馈记录
 type FeedbackRecord struct {
         ID           string                 `json:"id"`
-        SessionID    string                 `json:"session_id"`
+        SessionID    string                 `json:"SessionId"`
         MessageID    string                 `json:"message_id"`
         FeedbackType FeedbackType           `json:"feedback_type"`
         Rating       int                    `json:"rating"`        // 1-5 评分
         Category     string                 `json:"category"`      // 反馈类别：helpfulness, accuracy, relevance, etc.
-        UserMessage  string                 `json:"user_message"`  // 用户的原始消息
+        UserMessage  string                 `json:"UserMessage"`  // 用户的原始消息
         BotResponse  string                 `json:"bot_response"`  // 助手的回复
         Context      string                 `json:"context"`       // 上下文摘要
         Improvement  string                 `json:"improvement"`   // 改进建议

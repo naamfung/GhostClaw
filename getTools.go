@@ -70,7 +70,7 @@ func getToolName(tool map[string]interface{}) string {
                         return name
                 }
         }
-        // Anthropic 格式: {"name": "xxx", "input_schema": {...}}
+        // Anthropic 格式: {"name": "xxx", "InputSchema": {...}}
         if name, ok := tool["name"].(string); ok {
                 return name
         }
@@ -92,7 +92,7 @@ func convertOpenAIToolToAnthropic(tool map[string]interface{}) map[string]interf
         anthropicTool := map[string]interface{}{
                 "name":         name,
                 "description":  description,
-                "input_schema": parameters,
+                "InputSchema": parameters,
         }
 
         return anthropicTool
@@ -176,24 +176,24 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
         // 需要过滤的工具名称
         disabledTools := make(map[string]bool)
 
-        // 检查 smart_shell 是否启用
+        // 检查 SmartShell 是否启用
         if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
-                disabledTools["smart_shell"] = true
+                disabledTools["SmartShell"] = true
         }
 
         // 检查 shell 是否启用
         if !globalToolsConfig.Shell.Enabled {
-                disabledTools["shell"] = true
+                disabledTools["Shell"] = true
         }
 
-        // 检查 shell_delayed 及相关工具是否启用
+        // 检查 ShellDelayed 及相关工具是否启用
         if !globalToolsConfig.ShellDelayed.Enabled {
-                disabledTools["shell_delayed"] = true
-                disabledTools["shell_delayed_check"] = true
-                disabledTools["shell_delayed_wait"] = true
-                disabledTools["shell_delayed_terminate"] = true
-                disabledTools["shell_delayed_list"] = true
-                disabledTools["shell_delayed_remove"] = true
+                disabledTools["ShellDelayed"] = true
+                disabledTools["ShellDelayedCheck"] = true
+                disabledTools["ShellDelayedWait"] = true
+                disabledTools["ShellDelayedTerminate"] = true
+                disabledTools["ShellDelayedList"] = true
+                disabledTools["ShellDelayedRemove"] = true
         }
 
         // 预先计算 opencli 状态（isOpenCLIAvailable 已有 sync.Once 缓存，但此处短路避免重复调用）
@@ -218,7 +218,7 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
         for _, tool := range toolList {
                 name := getToolName(tool)
                 // 检查是否需要禁用（短路求值：先检查 disabledTools map，O(1)）
-                shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_") && name != "browser_search")
+                shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_") && name != "BrowserSearch")
                 if !shouldDisable {
                         filtered = append(filtered, tool)
                 }
@@ -314,8 +314,8 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
                 }
         }
 
-        // 至少保留核心工具（shell, smart_shell），避免工具集為空
-        coreTools := []string{"smart_shell", "shell", "menu"}
+        // 至少保留核心工具（shell, SmartShell），避免工具集為空
+        coreTools := []string{"SmartShell", "Shell", "Menu"}
         hasCore := false
         for _, name := range coreTools {
                 if allowed[name] {
@@ -345,70 +345,70 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 // getBlockedToolsForPlanPhase 返回 Plan Mode 指定 Phase 中應從靜態工具列表物理移除的工具集合
 // 核心設計：模型看不到被禁止的工具就不會嘗試調用，從根源消除誤調用
 //
-// 保留的工具：read_file_line, read_file_range, read_all_lines, text_search, text_grep,
+// 保留的工具：ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep,
 //
-//      memory_recall, memory_list, 以及各 Phase 的動態工具
-//      exit_plan_mode 由 IsToolAllowedInPlanMode 顯式放行
+//      MemoryRecall, MemoryList, 以及各 Phase 的動態工具
+//      ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行
 func getBlockedToolsForPlanPhase(phase PlanPhase) map[string]bool {
         blocked := make(map[string]bool)
 
         // ── 所有 Phase 禁止 ──
 
         // 已在 Plan Mode 中，無需重複進入
-        blocked["enter_plan_mode"] = true
+        blocked["EnterPlanMode"] = true
 
         // Shell 類工具（Plan Mode 中使用 spawn 執行只讀探索任務）
-        blocked["smart_shell"] = true
-        blocked["shell"] = true
-        blocked["shell_delayed"] = true
-        blocked["shell_delayed_check"] = true
-        blocked["shell_delayed_wait"] = true
-        blocked["shell_delayed_terminate"] = true
-        blocked["shell_delayed_list"] = true
-        blocked["shell_delayed_remove"] = true
+        blocked["SmartShell"] = true
+        blocked["Shell"] = true
+        blocked["ShellDelayed"] = true
+        blocked["ShellDelayedCheck"] = true
+        blocked["ShellDelayedWait"] = true
+        blocked["ShellDelayedTerminate"] = true
+        blocked["ShellDelayedList"] = true
+        blocked["ShellDelayedRemove"] = true
 
-        // 文件寫入工具（Plan Mode 僅允許通過 plan_write 寫計劃文件）
-        blocked["write_file_line"] = true
-        blocked["write_all_lines"] = true
-        blocked["append_to_file"] = true
-        blocked["write_file_range"] = true
-        blocked["text_replace"] = true
-        blocked["text_transform"] = true
+        // 文件寫入工具（Plan Mode 僅允許通過 PlanWrite 寫計劃文件）
+        blocked["WriteFileLine"] = true
+        blocked["WriteAllLines"] = true
+        blocked["AppendToFile"] = true
+        blocked["WriteFileRange"] = true
+        blocked["TextReplace"] = true
+        blocked["TextTransform"] = true
 
         // 記憶寫入工具
-        blocked["memory_save"] = true
-        blocked["memory_forget"] = true
+        blocked["MemorySave"] = true
+        blocked["MemoryForget"] = true
 
-        // 插件寫入工具（保留 plugin_list / plugin_detail / plugin_apis 等只讀工具）
-        blocked["plugin_create"] = true
-        blocked["plugin_load"] = true
-        blocked["plugin_call"] = true
-        blocked["plugin_unload"] = true
-        blocked["plugin_reload"] = true
-        blocked["plugin_compile"] = true
-        blocked["plugin_delete"] = true
+        // 插件寫入工具（保留 PluginList / plugin_detail / plugin_apis 等只讀工具）
+        blocked["PluginCreate"] = true
+        blocked["PluginLoad"] = true
+        blocked["PluginCall"] = true
+        blocked["PluginUnload"] = true
+        blocked["PluginReload"] = true
+        blocked["PluginCompile"] = true
+        blocked["PluginDelete"] = true
 
-        // 技能寫入工具（保留 skill_list / skill_get / skill_stats 等只讀工具）
-        blocked["skill_create"] = true
-        blocked["skill_delete"] = true
-        blocked["skill_load"] = true
-        blocked["skill_reload"] = true
-        blocked["skill_update"] = true
-        blocked["skill_evaluate"] = true
+        // 技能寫入工具（保留 SkillList / SkillGet / skill_stats 等只讀工具）
+        blocked["SkillCreate"] = true
+        blocked["SkillDelete"] = true
+        blocked["SkillLoad"] = true
+        blocked["SkillReload"] = true
+        blocked["SkillUpdate"] = true
+        blocked["SkillEvaluate"] = true
 
-        // SSH 寫入工具（保留 ssh_list）
-        blocked["ssh_connect"] = true
-        blocked["ssh_exec"] = true
-        blocked["ssh_close"] = true
+        // SSH 寫入工具（保留 SshList）
+        blocked["SshConnect"] = true
+        blocked["SshExec"] = true
+        blocked["SshClose"] = true
 
-        // Cron 寫入工具（保留 cron_list / cron_status）
-        blocked["cron_add"] = true
-        blocked["cron_remove"] = true
+        // Cron 寫入工具（保留 CronList / cron_status）
+        blocked["CronAdd"] = true
+        blocked["CronRemove"] = true
 
         // 其他有副作用的工具
-        blocked["consolidate_memory"] = true
-        blocked["opencli"] = true
-        blocked["spawn_cancel"] = true
+        blocked["ConsolidateMemory"] = true
+        blocked["Opencli"] = true
+        blocked["SpawnCancel"] = true
 
         return blocked
 }

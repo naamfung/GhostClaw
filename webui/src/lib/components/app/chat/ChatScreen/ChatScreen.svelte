@@ -44,6 +44,7 @@
 
         let disableAutoScroll = $derived(Boolean(config().disableAutoScroll));
         let chatScrollContainer: HTMLDivElement | undefined = $state();
+        let navOpen = $state(false);
         let dragCounter = $state(0);
         let isDragOver = $state(false);
         let showFileErrorDialog = $state(false);
@@ -346,9 +347,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<ChatScreenHeader />
+<ChatScreenHeader {navOpen} />
 
-<ChatMessageNav scrollContainer={chatScrollContainer} />
+<ChatMessageNav open={navOpen} onOpenChange={(v) => (navOpen = v)} scrollContainer={chatScrollContainer} />
 
 {#if !isEmpty}
         <div

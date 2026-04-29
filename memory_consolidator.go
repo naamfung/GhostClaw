@@ -582,7 +582,7 @@ func GetConsolidationTools() []map[string]interface{} {
         {
             "type": "function",
             "function": map[string]interface{}{
-                "name":        "consolidate_memory",
+                "name":        "ConsolidateMemory",
                 "description": "将当前对话中的关键信息整合到长期记忆系统中。当对话内容较长或包含重要信息时，使用此工具进行记忆整合。",
                 "parameters": map[string]interface{}{
                     "type": "object",

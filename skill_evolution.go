@@ -390,7 +390,7 @@ func extractKeywords(text string) []string {
 		"api", "web", "database", "sql", "http", "json", "xml",
 		"python", "go", "javascript", "java", "cpp", "rust",
 		"docker", "kubernetes", "aws", "azure", "gcp",
-		"linux", "windows", "macos", "bash", "shell",
+		"linux", "windows", "macos", "bash", "Shell",
 		"git", "github", "ci/cd", "devops", "testing",
 		"frontend", "backend", "fullstack", "mobile", "desktop",
 	}

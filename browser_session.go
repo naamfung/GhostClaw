@@ -293,7 +293,7 @@ type PageInfo struct {
 // BrowserSessionCreateResult 创建会话结果
 type BrowserSessionCreateResult struct {
         Success   bool   `json:"success"`
-        SessionID string `json:"session_id"`
+        SessionID string `json:"SessionId"`
         Message   string `json:"message"`
 }
 

@@ -142,7 +142,7 @@ func (mc *MemoryBoundaryConfig) ShouldSaveMemory(category string) bool {
                 return mc.SaveExternalRefs
         case "code_pattern":
                 return !mc.SkipCodePatterns
-        case "file_path":
+        case "FilePath":
                 return !mc.SkipFilePaths
         case "git_history":
                 return !mc.SkipGitHistory

@@ -388,7 +388,7 @@ func TestToolHandlers(t *testing.T) {
         addArgs := map[string]interface{}{
                 "name":         "tool_test_job",
                 "schedule":     "0 0 0 * * *", // 6 字段
-                "user_message": "test message",
+                "UserMessage": "test message",
                 "channel":      map[string]interface{}{"type": "log"},
                 "timeout_sec":  60,
         }

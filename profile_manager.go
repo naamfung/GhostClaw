@@ -17,7 +17,7 @@ import (
 
 // ProfileModelSettings holds model parameters scoped to a single profile.
 type ProfileModelSettings struct {
-        ModelID     string  `json:"model_id"`
+        ModelID     string  `json:"ModelId"`
         APIType     string  `json:"api_type"`
         BaseURL     string  `json:"base_url"`
         APIKey      string  `json:"api_key"`
@@ -194,7 +194,7 @@ func (pm *ProfileManager) UpdateProfile(id string, updates map[string]interface{
         }
 
         if v, ok := updates["model_config"].(map[string]interface{}); ok {
-                if val, ok := v["model_id"].(string); ok {
+                if val, ok := v["ModelId"].(string); ok {
                         p.Model.ModelID = val
                 }
                 if val, ok := v["api_type"].(string); ok {

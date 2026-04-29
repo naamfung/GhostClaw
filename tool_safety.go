@@ -35,8 +35,8 @@ type readLevel int
 
 const (
         readLevelNone    readLevel = iota // 未讀取
-        readLevelPartial                  // 部分讀取（read_file_line, text_grep）
-        readLevelFull                     // 完整讀取（read_all_lines）
+        readLevelPartial                  // 部分讀取（ReadFileLine, TextGrep）
+        readLevelFull                     // 完整讀取（ReadAllLines）
 )
 
 // escalatePrefix 通用錯誤升級 sentinel prefix。
@@ -47,7 +47,7 @@ const (
 const escalatePrefix = "__ESCALATE__:"
 
 // readWriteTracker 追踪已讀取的文件及其讀取級別，強制先讀後寫
-// 核心設計：只有完整讀取（read_all_lines）才能滿足全量寫入工具的先讀要求，
+// 核心設計：只有完整讀取（ReadAllLines）才能滿足全量寫入工具的先讀要求，
 // 防止模型只讀一行就用幻覺重寫整個文件
 type readWriteTracker struct {
         mu               sync.RWMutex
@@ -62,7 +62,7 @@ var globalReadWriteTracker = &readWriteTracker{
         maxEntries:       200,
 }
 
-// MarkFileFullyRead 標記文件已被完整讀取（僅由 read_all_lines 調用）
+// MarkFileFullyRead 標記文件已被完整讀取（僅由 ReadAllLines 調用）
 // 完整讀取是滿足任何寫入操作的最高級別要求
 func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
         t.mu.Lock()
@@ -78,9 +78,9 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
         globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
 }
 
-// MarkFilePartialRead 標記文件已被部分讀取（由 read_file_line, text_grep 調用）
+// MarkFilePartialRead 標記文件已被部分讀取（由 ReadFileLine, TextGrep 調用）
 // 部分讀取不滿足任何寫入操作的先讀要求，僅作內部追蹤用途；
-// 所有寫入操作統一要求完整讀取（read_all_lines）
+// 所有寫入操作統一要求完整讀取（ReadAllLines）
 func (t *readWriteTracker) MarkFilePartialRead(filePath string) {
         t.mu.Lock()
         defer t.mu.Unlock()
@@ -156,9 +156,9 @@ func normalizeFilePath(path string) string {
 // 新建文件（目標路徑不存在）無需先讀，直接允許寫入
 //
 // 安全策略：
-//   - 所有寫入工具（write_file_line, write_all_lines, append_to_file,
-//     write_file_range, text_replace, text_transform）統一要求完整讀取（read_all_lines）
-//   - read_file_line 或 text_grep 僅讀取部分內容，不被視為已讀過文件
+//   - 所有寫入工具（WriteFileLine, WriteAllLines, AppendToFile,
+//     WriteFileRange, TextReplace, TextTransform）統一要求完整讀取（ReadAllLines）
+//   - ReadFileLine 或 TextGrep 僅讀取部分內容，不被視為已讀過文件
 //   - 防止模型只讀一行就用幻覺寫入/修改文件
 func CheckWritePermission(filePath string, toolName string) error {
         // 歸一化路徑，確保 os.Stat 和 GetFileReadLevel 使用相同的路徑表示
@@ -172,7 +172,7 @@ func CheckWritePermission(filePath string, toolName string) error {
 
         // 所有寫入工具統一要求完整讀取
         if readLvl != readLevelFull {
-                return fmt.Errorf("安全檢查失敗：你必須先使用 read_all_lines 完整讀取 %s 才能進行寫入/編輯操作（read_file_line / read_file_range 或 text_grep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
+                return fmt.Errorf("安全檢查失敗：你必須先使用 ReadAllLines 完整讀取 %s 才能進行寫入/編輯操作（ReadFileLine / ReadFileRange 或 TextGrep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
         }
         return nil
 }
@@ -257,7 +257,7 @@ func (e *RepeatedErrorEscalator) buildEscalationMessage(t *escalationTracker) st
 		for i, msg := range t.messages {
 			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
 		}
-		sb.WriteString("你必須使用 read_all_lines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
+		sb.WriteString("你必須使用 ReadAllLines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
 
 	case EscalateRepeatedFailure:
 		sb.WriteString("以下是你連續多次重複相同失敗操作的記錄：\n\n")
@@ -303,52 +303,52 @@ func (e *RepeatedErrorEscalator) ResetKey(category EscalationCategory, errorKey 
 // 用于在模型调用不存在的工具时提供模糊匹配建议
 var allKnownToolNames = []string{
         // 命令执行
-        "smart_shell", "shell",
-        "shell_delayed", "shell_delayed_check", "shell_delayed_terminate",
-        "shell_delayed_list", "shell_delayed_wait", "shell_delayed_remove",
-        "spawn", "spawn_check", "spawn_list", "spawn_cancel",
+        "SmartShell", "Shell",
+        "ShellDelayed", "ShellDelayedCheck", "ShellDelayedTerminate",
+        "ShellDelayedList", "ShellDelayedWait", "ShellDelayedRemove",
+        "Spawn", "SpawnCheck", "SpawnList", "SpawnCancel",
         // 文件操作
-        "read_file_line", "read_file_range", "write_file_line", "read_all_lines", "write_all_lines",
-        "append_to_file", "write_file_range",
+        "ReadFileLine", "ReadFileRange", "WriteFileLine", "ReadAllLines", "WriteAllLines",
+        "AppendToFile", "WriteFileRange",
         // 文本处理
-        "text_search", "text_grep", "text_replace", "text_transform",
+        "TextSearch", "TextGrep", "TextReplace", "TextTransform",
         // 浏览器
-        "browser_visit", "browser_search", "browser_download", "browser_click",
-        "browser_type", "browser_scroll", "browser_screenshot", "browser_execute_js",
-        "browser_fill_form", "browser_hover", "browser_double_click", "browser_navigate",
-        "browser_wait_element", "browser_wait_smart",
-        "browser_extract_links", "browser_extract_images", "browser_extract_elements",
-        "browser_right_click", "browser_drag",
-        "browser_get_cookies", "browser_cookie_save", "browser_cookie_load",
-        "browser_snapshot", "browser_upload_file", "browser_select_option",
-        "browser_key_press", "browser_element_screenshot",
-        "browser_pdf", "browser_pdf_from_file",
-        "browser_set_headers", "browser_set_user_agent", "browser_emulate_device",
-        "browser_interact", "browser_extract", "browser_form_fill",
+        "BrowserVisit", "BrowserSearch", "BrowserDownload", "BrowserClick",
+        "BrowserType", "BrowserScroll", "BrowserScreenshot", "BrowserExecuteJs",
+        "BrowserFillForm", "BrowserHover", "BrowserDoubleClick", "BrowserNavigate",
+        "BrowserWaitElement", "BrowserWaitSmart",
+        "BrowserExtractLinks", "BrowserExtractImages", "BrowserExtractElements",
+        "BrowserRightClick", "BrowserDrag",
+        "BrowserGetCookies", "BrowserCookieSave", "BrowserCookieLoad",
+        "BrowserSnapshot", "BrowserUploadFile", "BrowserSelectOption",
+        "BrowserKeyPress", "BrowserElementScreenshot",
+        "BrowserPdf", "BrowserPdfFromFile",
+        "BrowserSetHeaders", "BrowserSetUserAgent", "BrowserEmulateDevice",
+        "BrowserInteract", "BrowserExtract", "BrowserFormFill",
         // 记忆
-        "memory_save", "memory_recall", "memory_forget", "memory_list",
+        "MemorySave", "MemoryRecall", "MemoryForget", "MemoryList",
         // 插件
-        "plugin_list", "plugin_create", "plugin_load", "plugin_call",
-        "plugin_unload", "plugin_reload", "plugin_compile", "plugin_delete",
-        "plugin_apis", "plugin_detail",
+        "PluginList", "PluginCreate", "PluginLoad", "PluginCall",
+        "PluginUnload", "PluginReload", "PluginCompile", "PluginDelete",
+        "PluginApis", "PluginDetail",
         // Cron
-        "cron_add", "cron_list", "cron_remove", "cron_status", "todos",
+        "CronAdd", "CronList", "CronRemove", "CronStatus", "Todos",
         // SSH
-        "ssh_connect", "ssh_exec", "ssh_list", "ssh_close",
+        "SshConnect", "SshExec", "SshList", "SshClose",
         // 技能
-        "skill_list", "skill_create", "skill_delete", "skill_get",
-        "skill_load", "skill_reload", "skill_update", "skill_suggest", "skill_stats",
-        "skill_evaluate",
+        "SkillList", "SkillCreate", "SkillDelete", "SkillGet",
+        "SkillLoad", "SkillReload", "SkillUpdate", "SkillSuggest", "SkillStats",
+        "SkillEvaluate",
         // 配置
-        "profile_check", "profile_reload", "actor_identity_set", "actor_identity_clear",
+        "ProfileCheck", "ProfileReload", "ActorIdentitySet", "ActorIdentityClear",
         // Plan Mode
-        "plan_write", "plan_read", "enter_plan_mode", "exit_plan_mode", "next_phase",
+        "PlanWrite", "PlanRead", "EnterPlanMode", "ExitPlanMode", "NextPhase",
         // 记忆整合
-        "consolidate_memory",
+        "ConsolidateMemory",
         // 其他
-        "scheme_eval", "opencli",
+        "SchemeEval", "Opencli",
         // 工具菜单
-        "menu",
+        "Menu",
 }
 
 // FindSimilarTool 找到与输入最相似的工具名称
@@ -492,21 +492,21 @@ func ShouldForceStop(iteration int) bool {
 
 // ReadOnlyTools 只读工具列表，这些工具可以并行执行
 var ReadOnlyTools = map[string]bool{
-        "read_file_line": true,
-        "read_all_lines":  true,
-        "text_search":     true,
-        "text_grep":       true,
-        "memory_recall":   true,
-        "memory_list":     true,
-        "plan_read":       true,
-        "plugin_list":     true,
-        "skill_list":      true,
-        "skill_get":       true,
-        "cron_list":       true,
-        "cron_status":     true,
-        "spawn_list":      true,
-        "ssh_list":        true,
-        "profile_check":   true,
+        "ReadFileLine": true,
+        "ReadAllLines":  true,
+        "TextSearch":     true,
+        "TextGrep":       true,
+        "MemoryRecall":   true,
+        "MemoryList":     true,
+        "PlanRead":       true,
+        "PluginList":     true,
+        "SkillList":      true,
+        "SkillGet":       true,
+        "CronList":       true,
+        "CronStatus":     true,
+        "SpawnList":      true,
+        "SshList":        true,
+        "ProfileCheck":   true,
 }
 
 // IsReadOnlyTool 检查工具是否为只读工具
@@ -542,14 +542,14 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 var content string
                 // 針對模型常見誤操作給出明確指引，防止死循環
                 switch toolName {
-                case "enter_plan_mode":
-                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 enter_plan_mode。\n\n當前可用操作：\n- 使用只讀工具（read_file_line, read_file_range, read_all_lines, text_search, text_grep）探索專案文件\n- 使用 spawn 創建並行子代理\n- 完成當前階段後調用 next_phase 推進\n- 如需退出 Plan Mode，使用 exit_plan_mode", currentPhase)
-                case "smart_shell", "shell":
-                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/smart_shell。此階段僅允許只讀工具。\n\n請改用：\n- read_file_line / read_file_range / read_all_lines 讀取文件\n- text_search / text_grep 搜索內容\n- spawn 創建只讀子代理\n\n完成當前階段後調用 next_phase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
-                case "write_file_line", "write_all_lines", "append_to_file", "write_file_range", "text_replace":
-                        content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行寫入操作。\n\n當前階段請使用只讀工具。完成後調用 next_phase。", currentPhase, toolName)
+                case "EnterPlanMode":
+                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 EnterPlanMode。\n\n當前可用操作：\n- 使用只讀工具（ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep）探索專案文件\n- 使用 Spawn 創建並行子代理\n- 完成當前階段後調用 NextPhase 推進\n- 如需退出 Plan Mode，使用 ExitPlanMode", currentPhase)
+                case "SmartShell", "Shell":
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/SmartShell。此階段僅允許只讀工具。\n\n請改用：\n- ReadFileLine / ReadFileRange / ReadAllLines 讀取文件\n- TextSearch / TextGrep 搜索內容\n- Spawn 創建只讀子代理\n\n完成當前階段後調用 NextPhase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
+                case "WriteFileLine", "WriteAllLines", "AppendToFile", "WriteFileRange", "TextReplace":
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行寫入操作。\n\n當前階段請使用只讀工具。完成後調用 NextPhase。", currentPhase, toolName)
                 default:
-                        content = fmt.Sprintf("Plan Mode %s 中不允許使用工具 '%s'。當前階段可用工具有限。完成後請調用 next_phase 推進到下一階段。", currentPhase, toolName)
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用工具 '%s'。當前階段可用工具有限。完成後請調用 NextPhase 推進到下一階段。", currentPhase, toolName)
                 }
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
                 return EnrichedMessage{
@@ -560,22 +560,22 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
 
         // Plan Mode 专用工具处理
         switch toolName {
-        case "plan_write":
+        case "PlanWrite":
                 content := handlePlanWrite(argsMap)
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
-        case "plan_read":
+        case "PlanRead":
                 content := handlePlanRead(argsMap)
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
-        case "enter_plan_mode":
-                // enter_plan_mode 仍然作為靜態 Core 工具存在。
+        case "EnterPlanMode":
+                // EnterPlanMode 仍然作為靜態 Core 工具存在。
                 // 當 Plan Mode 已激活時，權限閘（line 540）已攔截並返回友好提示，
                 // 此處僅在 Plan Mode 未激活時才會到達。
                 taskDesc, _ := argsMap["task"].(string)
@@ -588,14 +588,14 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
-                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。使用只讀工具探索專案文件，善用 spawn 並行探索。完成后調用 next_phase。"
+                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。使用只讀工具探索專案文件，善用 Spawn 並行探索。完成后調用 NextPhase。"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
-        case "exit_plan_mode":
-                // exit_plan_mode 由 IsToolAllowedInPlanMode 顯式放行（plan_mode.go），
+        case "ExitPlanMode":
+                // ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行（plan_mode.go），
                 // 因此 Plan Mode 激活時仍可到達此 handler。
                 if !globalPlanMode.IsActive() {
                         content := "Plan Mode 當前未激活。"
@@ -690,14 +690,14 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
 // isWriteTool 检查工具是否为写入类工具
 func isWriteTool(toolName string) bool {
         writeTools := map[string]bool{
-                "write_file_line": true,
-                "write_all_lines": true,
-                "append_to_file":  true,
-                "write_file_range": true,
-                "text_replace":    true,
-                "text_transform":  true,
-                "memory_save":     true,
-                "memory_forget":   true,
+                "WriteFileLine": true,
+                "WriteAllLines": true,
+                "AppendToFile":  true,
+                "WriteFileRange": true,
+                "TextReplace":    true,
+                "TextTransform":  true,
+                "MemorySave":     true,
+                "MemoryForget":   true,
         }
         return writeTools[toolName]
 }
@@ -705,7 +705,7 @@ func isWriteTool(toolName string) bool {
 // extractFilePathFromArgs 从工具参数中提取文件路径
 func extractFilePathFromArgs(args map[string]interface{}) string {
         // 尝试常见的文件路径参数名
-        for _, key := range []string{"file_path", "filePath", "path", "filename", "file"} {
+        for _, key := range []string{"FilePath", "filePath", "path", "filename", "file"} {
                 if val, ok := args[key]; ok {
                         if str, ok := val.(string); ok && str != "" {
                                 return str
@@ -719,7 +719,7 @@ func extractFilePathFromArgs(args map[string]interface{}) string {
 // MarkFileFullyRead / MarkFilePartialRead 已集成到以下工具中：
 //   - executeTool.go: execReadAllLines -> MarkFileFullyRead
 //   - executeTool.go: execReadFileLine -> MarkFilePartialRead
-//   - text_replace_tools.go: handleTextSearch (text_grep) -> MarkFilePartialRead
+//   - TextReplace_tools.go: handleTextSearch (TextGrep) -> MarkFilePartialRead
 func init() {
         log.Printf("[ToolSafety] 工具安全网已初始化: MaxIterations=%d, ReadOnlyTools=%d",
                 MaxAgentLoopIterations, len(ReadOnlyTools))

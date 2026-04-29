@@ -355,7 +355,7 @@ func (cm *CronManager) executeJob(job *CronJob) {
 
     // 如果是心跳任务，发布心跳事件
     if job.Category == "heartbeat" {
-        status := "completed"
+        status := "Completed"
         output := "任务执行完成"
         if err != nil {
             status = "failed"

@@ -2563,7 +2563,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 		// 同一工具連續失敗 2 次
 		for i := 0; i < 2; i++ {
 			shouldStop, _ := e.RecordEscalation(
-				EscalateRepeatedFailure, "write_file_line",
+				EscalateRepeatedFailure, "WriteFileLine",
 				"Error: permission denied",
 			)
 			if shouldStop {
@@ -2573,7 +2573,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 
 		// 第 3 次升級
 		shouldStop, userMsg := e.RecordEscalation(
-			EscalateRepeatedFailure, "write_file_line",
+			EscalateRepeatedFailure, "WriteFileLine",
 			"Error: permission denied",
 		)
 		if !shouldStop {
@@ -2595,7 +2595,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 		}
 		// repeated_tool_failure: 累積 2 次（不同 key）
 		for i := 0; i < 2; i++ {
-			e.RecordEscalation(EscalateRepeatedFailure, "smart_shell", "err2")
+			e.RecordEscalation(EscalateRepeatedFailure, "SmartShell", "err2")
 		}
 
 		// write_without_read 第 3 次觸發升級
@@ -2605,7 +2605,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 		}
 
 		// repeated_tool_failure 計數不受影響
-		shouldStop, _ = e.RecordEscalation(EscalateRepeatedFailure, "smart_shell", "err2")
+		shouldStop, _ = e.RecordEscalation(EscalateRepeatedFailure, "SmartShell", "err2")
 		if !shouldStop {
 			t.Error("repeated_tool_failure should also escalate on 3rd (independent)")
 		}
@@ -2663,12 +2663,12 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 
 		// 觸發升級
 		for i := 0; i < 3; i++ {
-			e.RecordEscalation(EscalateRepeatedFailure, "browser_visit", "timeout")
+			e.RecordEscalation(EscalateRepeatedFailure, "BrowserVisit", "timeout")
 		}
 
 		// 升級後，同一 key 的追蹤器應被清除
 		// 下一次失敗從 1 開始
-		shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "browser_visit", "timeout")
+		shouldStop, _ := e.RecordEscalation(EscalateRepeatedFailure, "BrowserVisit", "timeout")
 		if shouldStop {
 			t.Error("after escalation, counter should reset — 1st new violation should not escalate")
 		}

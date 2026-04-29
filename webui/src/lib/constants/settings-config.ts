@@ -32,7 +32,7 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         browserDisableDevTools: false,
         browserNoSandbox: true,
         browserDisableTools: false,
-        // smart_shell settings
+        // SmartShell settings
         smartShellSyncTimeout: 60,
         smartShellUnknownTimeout: 120,
         smartShellDefaultWakeMins: 5,
@@ -82,7 +82,7 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         timeoutHttp: 'HTTP 请求的超时时间（秒）。包括 API 调用和网络请求。',
         timeoutPlugin: '插件内 HTTP 请求的超时时间（秒）。插件调用网络接口时的等待上限。',
         timeoutBrowser: '浏览器每次操作的超时时间（秒）。每次页面访问/搜索/下载的等待上限。',
-        // smart_shell settings
+        // SmartShell settings
         smartShellSyncTimeout: 'SmartShell 快速命令（已知命令）的超时时间（秒）。',
         smartShellUnknownTimeout: 'SmartShell 未知命令的超时时间（秒）。未知命令可能需要更长的等待时间。',
         smartShellDefaultWakeMins: 'ShellDelayed 延迟任务的默认唤醒间隔（分钟）。',

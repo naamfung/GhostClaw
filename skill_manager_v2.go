@@ -19,10 +19,10 @@ import (
 type SkillMeta struct {
 	ID           uint      `gorm:"primaryKey" json:"-"`
 	Name         string    `gorm:"uniqueIndex;not null" json:"name"`
-	DisplayName  string    `json:"display_name"`
+	DisplayName  string    `json:"DisplayName"`
 	Description  string    `json:"description"` // 摘要，非完整内容
 	Tags         string    `json:"tags"`        // JSON array as string
-	TriggerWords string    `json:"trigger_words"` // JSON array as string
+	TriggerWords string    `json:"TriggerWords"` // JSON array as string
 	FilePath     string    `json:"-"`
 	FileSize     int64     `json:"file_size"`
 	ModTime      int64     `json:"mod_time"`      // Unix timestamp
@@ -38,7 +38,7 @@ type SkillMeta struct {
 type SkillUsageEvent struct {
 	ID           uint    `gorm:"primaryKey" json:"-"`
 	SkillName    string  `gorm:"index" json:"skill_name"`
-	SessionID    string  `json:"session_id"`
+	SessionID    string  `json:"SessionId"`
 	Timestamp    int64   `gorm:"index" json:"timestamp"` // Unix timestamp
 	ContextMatch float64 `json:"context_match"`
 	UserFeedback int     `json:"user_feedback"` // 1-5星
@@ -49,21 +49,21 @@ type SkillUsageEvent struct {
 // SkillListRequest 技能列表查询请求
 type SkillListRequest struct {
 	Page        int      `json:"page"`        // 页码，从1开始
-	PageSize    int      `json:"page_size"`   // 每页数量，默认20，最大100
+	PageSize    int      `json:"PageSize"`   // 每页数量，默认20，最大100
 	Tags        []string `json:"tags"`        // 标签过滤
 	Triggers    []string `json:"triggers"`    // 触发词过滤
 	Search      string   `json:"search"`      // 全文搜索
-	SortBy      string   `json:"sort_by"`     // 排序字段：name, usage, quality, last_used
-	SortOrder   string   `json:"sort_order"`  // 排序方向：asc, desc
+	SortBy      string   `json:"SortBy"`     // 排序字段：name, usage, quality, last_used
+	SortOrder   string   `json:"SortOrder"`  // 排序方向：asc, desc
 	Context     string   `json:"context"`     // 当前上下文，用于智能排序
-	SuggestOnly bool     `json:"suggest_only"` // 只返回推荐技能
+	SuggestOnly bool     `json:"SuggestOnly"` // 只返回推荐技能
 }
 
 // SkillListResponse 技能列表响应
 type SkillListResponse struct {
 	Total       int         `json:"total"`
 	Page        int         `json:"page"`
-	PageSize    int         `json:"page_size"`
+	PageSize    int         `json:"PageSize"`
 	TotalPages  int         `json:"total_pages"`
 	Skills      []SkillMeta `json:"skills"`
 	Suggestions []string    `json:"suggestions,omitempty"`
@@ -456,19 +456,19 @@ func (sm *SkillManagerV2) UpdateSkill(name string, updates map[string]interface{
 	}
 
 	// 应用更新
-	if displayName, ok := updates["display_name"].(string); ok {
+	if displayName, ok := updates["DisplayName"].(string); ok {
 		skill.DisplayName = displayName
 	}
 	if description, ok := updates["description"].(string); ok {
 		skill.Description = description
 	}
-	if systemPrompt, ok := updates["system_prompt"].(string); ok {
+	if systemPrompt, ok := updates["SystemPrompt"].(string); ok {
 		skill.SystemPrompt = systemPrompt
 	}
 	if tags, ok := updates["tags"].([]string); ok {
 		skill.Tags = tags
 	}
-	if triggers, ok := updates["trigger_words"].([]string); ok {
+	if triggers, ok := updates["TriggerWords"].([]string); ok {
 		skill.TriggerWords = triggers
 	}
 

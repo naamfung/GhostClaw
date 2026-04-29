@@ -145,14 +145,14 @@ func TestEnterPlanMode_InitializesTodos(t *testing.T) {
 		t.Fatalf("expected 3 plan todos, got %d", len(items))
 	}
 
-	if items[0].Status != "in_progress" {
-		t.Errorf("Phase 1 should be in_progress, got %s", items[0].Status)
+	if items[0].Status != "InProgress" {
+		t.Errorf("Phase 1 should be InProgress, got %s", items[0].Status)
 	}
-	if items[1].Status != "pending" {
-		t.Errorf("Phase 2 should be pending, got %s", items[1].Status)
+	if items[1].Status != "Pending" {
+		t.Errorf("Phase 2 should be Pending, got %s", items[1].Status)
 	}
-	if items[2].Status != "pending" {
-		t.Errorf("Phase 3 should be pending, got %s", items[2].Status)
+	if items[2].Status != "Pending" {
+		t.Errorf("Phase 3 should be Pending, got %s", items[2].Status)
 	}
 }
 
@@ -185,11 +185,11 @@ func TestAdvancePhase_ExploreToDesign(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("expected 3 plan todos after advance, got %d", len(items))
 	}
-	if items[0].Status != "completed" {
-		t.Errorf("Phase 1 should be completed, got %s", items[0].Status)
+	if items[0].Status != "Completed" {
+		t.Errorf("Phase 1 should be Completed, got %s", items[0].Status)
 	}
-	if items[1].Status != "in_progress" {
-		t.Errorf("Phase 2 should be in_progress, got %s", items[1].Status)
+	if items[1].Status != "InProgress" {
+		t.Errorf("Phase 2 should be InProgress, got %s", items[1].Status)
 	}
 }
 
@@ -520,10 +520,10 @@ func TestIsToolAllowedInPlanMode_Inactive(t *testing.T) {
 	defer resetGlobalPlanMode()
 
 	// When inactive, all tools are allowed
-	if !globalPlanMode.IsToolAllowedInPlanMode("smart_shell") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("SmartShell") {
 		t.Error("smart_shell should be allowed when Plan Mode is inactive")
 	}
-	if !globalPlanMode.IsToolAllowedInPlanMode("write_all_lines") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("WriteAllLines") {
 		t.Error("write_all_lines should be allowed when Plan Mode is inactive")
 	}
 }
@@ -534,7 +534,7 @@ func TestIsToolAllowedInPlanMode_NextPhaseAlwaysAllowed(t *testing.T) {
 
 	EnterPlanMode("test")
 
-	if !globalPlanMode.IsToolAllowedInPlanMode("next_phase") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("NextPhase") {
 		t.Error("next_phase should always be allowed")
 	}
 }
@@ -546,14 +546,14 @@ func TestIsToolAllowedInPlanMode_PrevPhaseOnlyInDesign(t *testing.T) {
 	EnterPlanMode("test")
 
 	// Phase 1: prev_phase should NOT be allowed
-	if globalPlanMode.IsToolAllowedInPlanMode("prev_phase") {
+	if globalPlanMode.IsToolAllowedInPlanMode("PrevPhase") {
 		t.Error("prev_phase should NOT be allowed in Phase 1")
 	}
 
 	AdvancePhase() // 1 → 2
 
 	// Phase 2: prev_phase should be allowed
-	if !globalPlanMode.IsToolAllowedInPlanMode("prev_phase") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("PrevPhase") {
 		t.Error("prev_phase should be allowed in Phase 2")
 	}
 }
@@ -564,8 +564,8 @@ func TestIsToolAllowedInPlanMode_ShellBlocked(t *testing.T) {
 
 	EnterPlanMode("test")
 
-	blockedTools := []string{"smart_shell", "shell", "write_all_lines", "write_file_line",
-		"append_to_file", "text_replace", "text_transform", "memory_save", "memory_forget"}
+	blockedTools := []string{"SmartShell", "Shell", "WriteAllLines", "WriteFileLine",
+		"AppendToFile", "TextReplace", "TextTransform", "MemorySave", "MemoryForget"}
 
 	for _, tool := range blockedTools {
 		if globalPlanMode.IsToolAllowedInPlanMode(tool) {
@@ -580,8 +580,8 @@ func TestIsToolAllowedInPlanMode_ReadToolsAllowed(t *testing.T) {
 
 	EnterPlanMode("test")
 
-	allowedTools := []string{"read_file_line", "read_all_lines", "text_search",
-		"text_grep", "memory_recall", "memory_list"}
+	allowedTools := []string{"ReadFileLine", "ReadAllLines", "TextSearch",
+		"TextGrep", "MemoryRecall", "MemoryList"}
 
 	for _, tool := range allowedTools {
 		if !globalPlanMode.IsToolAllowedInPlanMode(tool) {
@@ -600,14 +600,14 @@ func TestIsToolAllowedInPlanMode_PlanWriteOnlyInPhase2(t *testing.T) {
 	EnterPlanMode("test")
 
 	// Phase 1: plan_write NOT allowed
-	if globalPlanMode.IsToolAllowedInPlanMode("plan_write") {
+	if globalPlanMode.IsToolAllowedInPlanMode("PlanWrite") {
 		t.Error("plan_write should NOT be allowed in Phase 1")
 	}
 
 	AdvancePhase() // 1 → 2
 
 	// Phase 2: plan_write allowed
-	if !globalPlanMode.IsToolAllowedInPlanMode("plan_write") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("PlanWrite") {
 		t.Error("plan_write should be allowed in Phase 2")
 	}
 }
@@ -744,7 +744,7 @@ func TestGetToolsForCurrentPhase_Phase1(t *testing.T) {
 	}
 
 	// Phase 1 必須有 next_phase, spawn 系列, todos
-	required := []string{"next_phase", "spawn", "spawn_check", "spawn_list", "todos"}
+	required := []string{"NextPhase", "Spawn", "SpawnCheck", "SpawnList", "Todos"}
 	for _, r := range required {
 		if !toolNames[r] {
 			t.Errorf("Phase 1 should have '%s' tool", r)
@@ -752,7 +752,7 @@ func TestGetToolsForCurrentPhase_Phase1(t *testing.T) {
 	}
 
 	// Phase 1 不應該有 plan_write, plan_read, prev_phase
-	forbidden := []string{"plan_write", "plan_read", "prev_phase"}
+	forbidden := []string{"PlanWrite", "PlanRead", "PrevPhase"}
 	for _, f := range forbidden {
 		if toolNames[f] {
 			t.Errorf("Phase 1 should NOT have '%s' tool", f)
@@ -779,7 +779,7 @@ func TestGetToolsForCurrentPhase_Phase2(t *testing.T) {
 	}
 
 	// Phase 2 必須有 next_phase, prev_phase, plan_write, plan_read
-	required := []string{"next_phase", "prev_phase", "plan_write", "plan_read", "todos"}
+	required := []string{"NextPhase", "PrevPhase", "PlanWrite", "PlanRead", "Todos"}
 	for _, r := range required {
 		if !toolNames[r] {
 			t.Errorf("Phase 2 should have '%s' tool", r)
@@ -842,14 +842,14 @@ func TestPrevPhase_TodoStatusAfterBacktrack(t *testing.T) {
 	// Phase 1 → 2
 	AdvancePhase()
 	items := TODO.GetItems("plan")
-	if items[0].Status != "completed" || items[1].Status != "in_progress" {
+	if items[0].Status != "Completed" || items[1].Status != "InProgress" {
 		t.Error("todos should reflect Phase 2 active before backtrack")
 	}
 
 	// Backtrack: Phase 2 → 1
 	PrevPhase()
 	items = TODO.GetItems("plan")
-	if items[0].Status != "in_progress" || items[1].Status != "pending" {
+	if items[0].Status != "InProgress" || items[1].Status != "Pending" {
 		t.Errorf("todos should reflect Phase 1 active after backtrack: item0=%s, item1=%s",
 			items[0].Status, items[1].Status)
 	}
@@ -971,8 +971,8 @@ func TestPlanModeConcurrentAccess(t *testing.T) {
 	// Goroutine 2: Read tool permissions
 	go func() {
 		for i := 0; i < 100; i++ {
-			globalPlanMode.IsToolAllowedInPlanMode("read_all_lines")
-			globalPlanMode.IsToolAllowedInPlanMode("smart_shell")
+			globalPlanMode.IsToolAllowedInPlanMode("ReadAllLines")
+			globalPlanMode.IsToolAllowedInPlanMode("SmartShell")
 		}
 		done <- true
 	}()
@@ -1008,7 +1008,7 @@ func TestGetPlanOnlyTools(t *testing.T) {
 	// 應該包含只讀工具
 	hasReadFile := false
 	for _, t := range tools {
-		if t == "read_all_lines" {
+		if t == "ReadAllLines" {
 			hasReadFile = true
 			break
 		}
@@ -1073,7 +1073,7 @@ func TestNextPhaseToolDef(t *testing.T) {
 		t.Fatal("tool def should have 'function' key")
 	}
 	name, _ := fn["name"].(string)
-	if name != "next_phase" {
+	if name != "NextPhase" {
 		t.Errorf("expected 'next_phase', got '%s'", name)
 	}
 }
@@ -1089,7 +1089,7 @@ func TestPrevPhaseToolDef(t *testing.T) {
 		t.Fatal("tool def should have 'function' key")
 	}
 	name, _ := fn["name"].(string)
-	if name != "prev_phase" {
+	if name != "PrevPhase" {
 		t.Errorf("expected 'prev_phase', got '%s'", name)
 	}
 	desc, _ := fn["description"].(string)
@@ -1123,14 +1123,14 @@ func TestUpdatePlanTodos(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(items))
 	}
-	if items[0].Status != "completed" {
-		t.Errorf("phase 1 should be completed, got %s", items[0].Status)
+	if items[0].Status != "Completed" {
+		t.Errorf("phase 1 should be Completed, got %s", items[0].Status)
 	}
-	if items[1].Status != "in_progress" {
-		t.Errorf("phase 2 should be in_progress, got %s", items[1].Status)
+	if items[1].Status != "InProgress" {
+		t.Errorf("phase 2 should be InProgress, got %s", items[1].Status)
 	}
-	if items[2].Status != "pending" {
-		t.Errorf("phase 3 should be pending, got %s", items[2].Status)
+	if items[2].Status != "Pending" {
+		t.Errorf("phase 3 should be Pending, got %s", items[2].Status)
 	}
 }
 
@@ -1181,14 +1181,14 @@ func TestIsToolAllowedInPlanMode_ExitPlanMode(t *testing.T) {
 	EnterPlanMode("test")
 
 	// Phase 1: exit_plan_mode 應該被顯式放行
-	if !globalPlanMode.IsToolAllowedInPlanMode("exit_plan_mode") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("ExitPlanMode") {
 		t.Error("exit_plan_mode should be allowed in Phase 1")
 	}
 
 	AdvancePhase() // 1 → 2
 
 	// Phase 2: exit_plan_mode 應該仍然被放行
-	if !globalPlanMode.IsToolAllowedInPlanMode("exit_plan_mode") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("ExitPlanMode") {
 		t.Error("exit_plan_mode should be allowed in Phase 2")
 	}
 }
@@ -1207,11 +1207,11 @@ func TestExitPlanMode_CleanupPhaseTodos(t *testing.T) {
 
 	// 模擬 LLM 在 Phase 1 同 Phase 2 中使用 todos 創建子任務
 	TODO.Update([]TodoItem{
-		{ID: "1", Text: "Explore file X", Status: "completed"},
+		{ID: "1", Text: "Explore file X", Status: "Completed"},
 	}, "phase1")
 
 	TODO.Update([]TodoItem{
-		{ID: "1", Text: "Design change for Y", Status: "in_progress"},
+		{ID: "1", Text: "Design change for Y", Status: "InProgress"},
 	}, "phase2")
 
 	// 確認 lists 存在
@@ -1303,7 +1303,7 @@ func TestEnterPlanMode_RepeatCallBlocked(t *testing.T) {
 	EnterPlanMode("test")
 
 	// 當 Plan Mode 已激活時，enter_plan_mode 應該被 IsToolAllowedInPlanMode 拒絕
-	if globalPlanMode.IsToolAllowedInPlanMode("enter_plan_mode") {
+	if globalPlanMode.IsToolAllowedInPlanMode("EnterPlanMode") {
 		t.Error("enter_plan_mode should NOT be allowed when Plan Mode is active")
 	}
 }
@@ -1313,7 +1313,7 @@ func TestEnterPlanMode_AllowedWhenInactive(t *testing.T) {
 
 	// 當 Plan Mode 未激活時，enter_plan_mode 應該可以調用
 	// IsToolAllowedInPlanMode 返回 true（PlanPhaseInactive branch）
-	if !globalPlanMode.IsToolAllowedInPlanMode("enter_plan_mode") {
+	if !globalPlanMode.IsToolAllowedInPlanMode("EnterPlanMode") {
 		t.Error("enter_plan_mode should be allowed when Plan Mode is inactive")
 	}
 }

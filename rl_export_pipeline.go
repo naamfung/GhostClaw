@@ -228,7 +228,7 @@ func ExportTrajectoryStatsToFile(tm *TrajectoryManager, filepath string) error {
 
 	combined := map[string]interface{}{
 		"turn_stats":       turnStats,
-		"trajectory_stats": trajStats,
+		"TrajectoryStats": trajStats,
 		"generated_at":     fmt.Sprintf("%s", tm.lastSaveTime),
 	}
 

@@ -209,7 +209,7 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
         // 更新工具配置（SmartShell + MaxAgentIterations）
         if _, exists := rawMap["Tools"]; exists && newConfig.Tools != nil {
                 if err := globalConfigManager.UpdateSmartShellConfig(newConfig.Tools.SmartShell); err != nil {
-                        log.Printf("Warning: failed to update smart_shell config: %v", err)
+                        log.Printf("Warning: failed to update SmartShell config: %v", err)
                 }
                 if err := globalConfigManager.UpdateMaxAgentIterations(newConfig.Tools.MaxAgentIterations); err != nil {
                         log.Printf("Warning: failed to update max agent iterations: %v", err)

@@ -52,7 +52,7 @@ func handlePluginCreate(ctx context.Context, argsMap map[string]interface{}, ch 
         }
         template += `
 -- This is a template for a GhostClaw Lua plugin.
--- You can define any number of functions, and call them via plugin_call.
+-- You can define any number of functions, and call them via PluginCall.
 -- Use ghostclaw.log(level, msg) to log messages.
 -- Use ghostclaw.call_tool(tool_name, args_table) to invoke GhostClaw tools.
 
@@ -73,7 +73,7 @@ end
                 return fmt.Sprintf("Error creating plugin: %v\nPlease check the plugin name and try again.", err), false
         }
 
-        return fmt.Sprintf("Plugin '%s' created successfully and loaded. You can now call its functions via plugin_call.\nFile location: %s\nExample: plugin_call(plugin=\"%s\", function=\"hello\", args=[\"World\"])",
+        return fmt.Sprintf("Plugin '%s' created successfully and loaded. You can now call its functions via PluginCall.\nFile location: %s\nExample: PluginCall(plugin=\"%s\", function=\"hello\", args=[\"World\"])",
                 name, filepath.Join(globalPluginManager.pluginsDir, name, name+".lua"), name), false
 }
 
@@ -133,7 +133,7 @@ func handlePluginCall(ctx context.Context, argsMap map[string]interface{}, ch Ch
         }
         name, ok := argsMap["plugin"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'plugin' parameter. Example: plugin_call(plugin=\"my_plugin\", function=\"hello\", args=[\"World\"])", false
+                return "Error: missing or invalid 'plugin' parameter. Example: PluginCall(plugin=\"my_plugin\", function=\"hello\", args=[\"World\"])", false
         }
         funcName, ok := argsMap["function"].(string)
         if !ok || funcName == "" {
@@ -252,17 +252,17 @@ return {
     add = add
 }`,
                 },
-                "plugin_calls": map[string]interface{}{
-                        "plugin_list": "List all available plugins.",
-                        "plugin_create": "Create a new plugin with the given name and code.",
-                        "plugin_load": "Load or reload a plugin from code.",
-                        "plugin_unload": "Unload a plugin from memory.",
-                        "plugin_reload": "Reload a plugin from its file.",
-                        "plugin_call": "Call a function in a plugin with arguments.",
-                        "plugin_compile": "Compile a plugin for syntax checking.",
-                        "plugin_delete": "Delete a plugin and its files.",
-                        "plugin_apis": "Show this API documentation.",
-                        "plugin_detail": "Get detailed information about a specific plugin.",
+                "PluginCalls": map[string]interface{}{
+                        "PluginList": "List all available plugins.",
+                        "PluginCreate": "Create a new plugin with the given name and code.",
+                        "PluginLoad": "Load or reload a plugin from code.",
+                        "PluginUnload": "Unload a plugin from memory.",
+                        "PluginReload": "Reload a plugin from its file.",
+                        "PluginCall": "Call a function in a plugin with arguments.",
+                        "PluginCompile": "Compile a plugin for syntax checking.",
+                        "PluginDelete": "Delete a plugin and its files.",
+                        "PluginApis": "Show this API documentation.",
+                        "PluginDetail": "Get detailed information about a specific plugin.",
                 },
         }
         
@@ -281,7 +281,7 @@ func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch 
         if !ok || name == "" {
                 return "Error: missing or invalid 'name' parameter. Example: plugin_detail(name=\"temp_uploader\")", false
         }
-        includeSource, _ := argsMap["include_source"].(bool)
+        includeSource, _ := argsMap["IncludeSource"].(bool)
 
         if globalPluginManager == nil {
                 return "Error: plugin manager not initialized. Please restart the application.", false
@@ -298,7 +298,7 @@ func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch 
         }
 
         if targetPlugin == nil {
-                return fmt.Sprintf("Error: plugin '%s' not found. Use plugin_list to see available plugins.", name), false
+                return fmt.Sprintf("Error: plugin '%s' not found. Use PluginList to see available plugins.", name), false
         }
 
         // 构建插件详情

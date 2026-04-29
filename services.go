@@ -83,7 +83,7 @@ func init() {
 }
 
 // isOpenCLIAvailable 检测 opencli 是否可用（结果缓存，进程生命周期内只执行一次子进程）
-// 原实现每次调用都 exec.Command("opencli", "doctor", "--no-live")（~350ms/次），
+// 原实现每次调用都 exec.Command("Opencli", "doctor", "--no-live")（~350ms/次），
 // filterToolsByConfig 中每个请求调用 ~21 次，导致 prepareRequestData 耗时 7 秒。
 var (
         opencliAvailableResult bool
@@ -103,7 +103,7 @@ func isOpenCLIAvailable() bool {
                         Everything looks good!
                         root@~/GhostClaw <master>#
                 */
-                cmd := exec.Command("opencli", "doctor", "--no-live")
+                cmd := exec.Command("Opencli", "doctor", "--no-live")
                 output, err := cmd.CombinedOutput()
                 if err != nil {
                         opencliAvailableResult = false
@@ -879,7 +879,7 @@ func Visit(sessionID, url string) (result *VisitResult, err error) {
                         hash := md5.Sum([]byte(url))
                         urlHash := fmt.Sprintf("%x", hash)[:8]
                         timestamp := time.Now().Format("20060102_150405")
-                        fileName := fmt.Sprintf("browser_visit_%s_%s.txt", timestamp, urlHash)
+                        fileName := fmt.Sprintf("BrowserVisit_%s_%s.txt", timestamp, urlHash)
                         filePath := filepath.Join(downloadDir, fileName)
 
                         contentToSave := fmt.Sprintf("URL: %s\nTitle: %s\nLength: %d\nDate: %s\n\n%s",

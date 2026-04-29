@@ -148,7 +148,7 @@ func initMCPTools(server *MCPServer) {
 
     // 记忆操作 - 适配 UnifiedMemory
     server.RegisterTool(MCPTool{
-        Name:        "memory_save",
+        Name:        "MemorySave",
         Description: "Save information to long-term memory",
         InputSchema: map[string]interface{}{
             "type": "object",
@@ -176,7 +176,7 @@ func initMCPTools(server *MCPServer) {
     }, mcpHandleMemorySave)
 
     server.RegisterTool(MCPTool{
-        Name:        "memory_recall",
+        Name:        "MemoryRecall",
         Description: "Recall information from memory",
         InputSchema: map[string]interface{}{
             "type": "object",
@@ -199,7 +199,7 @@ func initMCPTools(server *MCPServer) {
     }, mcpHandleMemoryRecall)
 
     server.RegisterTool(MCPTool{
-        Name:        "memory_list",
+        Name:        "MemoryList",
         Description: "List all memories",
         InputSchema: map[string]interface{}{
             "type": "object",
@@ -213,7 +213,7 @@ func initMCPTools(server *MCPServer) {
     }, mcpHandleMemoryList)
 
     server.RegisterTool(MCPTool{
-        Name:        "memory_forget",
+        Name:        "MemoryForget",
         Description: "Delete a memory",
         InputSchema: map[string]interface{}{
             "type": "object",

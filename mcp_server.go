@@ -429,7 +429,7 @@ func (s *MCPServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 
 // HandleSSEMessage 处理 SSE 消息
 func (s *MCPServer) HandleSSEMessage(w http.ResponseWriter, r *http.Request) {
-        sessionID := r.URL.Query().Get("session_id")
+        sessionID := r.URL.Query().Get("SessionId")
         if sessionID == "" {
                 http.Error(w, "Missing session_id", http.StatusBadRequest)
                 return
@@ -578,7 +578,7 @@ func getMCPTools() []MCPTool {
                         },
                 },
                 {
-                        Name:        "memory_save",
+                        Name:        "MemorySave",
                         Description: "Save a memory for later recall",
                         InputSchema: map[string]interface{}{
                                 "type": "object",
@@ -600,7 +600,7 @@ func getMCPTools() []MCPTool {
                         },
                 },
                 {
-                        Name:        "memory_recall",
+                        Name:        "MemoryRecall",
                         Description: "Recall memories matching a query",
                         InputSchema: map[string]interface{}{
                                 "type": "object",

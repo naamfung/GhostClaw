@@ -28,7 +28,7 @@ type MatrixConfig struct {
         DeviceID      string   `toon:"device_id" json:"DeviceID"`           // 设备 ID，默认 "GARCLAW"
         Rooms         []string `toon:"rooms" json:"Rooms"`                  // 自动加入的房间 ID（如 !roomid:matrix.org）
         GroupPolicy   string   `toon:"group_policy" json:"GroupPolicy"`     // 群聊策略：silent / active
-        DisplayName   string   `toon:"display_name" json:"DisplayName"`     // Bot 显示名称
+        DisplayName   string   `toon:"DisplayName" json:"DisplayName"`     // Bot 显示名称
 }
 
 // MatrixChannel 实现 Channel 接口

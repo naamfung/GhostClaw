@@ -35,8 +35,8 @@ var toolCategoryPrefixes = []struct {
 	prefix   string
 	threshold int
 }{
-	{"shell", ShellToolThreshold},
-	{"smart_shell", ShellToolThreshold},
+	{"Shell", ShellToolThreshold},
+	{"SmartShell", ShellToolThreshold},
 	{"ssh", ShellToolThreshold},
 	{"browser", BrowserToolThreshold},
 	{"read_file", FileToolThreshold},

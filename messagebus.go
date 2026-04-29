@@ -323,7 +323,7 @@ func (mb *MessageBus) NotifySubagent(taskID, status, result string, userID strin
                 Topic:   status,
                 UserID:  userID,
                 Payload: map[string]interface{}{
-                        "task_id": taskID,
+                        "TaskId": taskID,
                         "status":  status,
                         "result":  result,
                 },
@@ -350,11 +350,11 @@ func (mb *MessageBus) NotifyDelayedTask(taskID, command, status, output string, 
                 Topic:   status,
                 UserID:  sessionID,
                 Payload: map[string]interface{}{
-                        "task_id":    taskID,
+                        "TaskId":    taskID,
                         "command":    command,
                         "status":     status,
                         "output":     output,
-                        "session_id": sessionID,
+                        "SessionId": sessionID,
                 },
         })
 }

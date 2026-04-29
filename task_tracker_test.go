@@ -62,7 +62,7 @@ func TestTaskTracker_RecordSuccess(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read file.go", "content...")
+	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read file.go", "content...")
 
 	report := tt.GetProgressReport()
 	if !strings.Contains(report, "1 completed") {
@@ -77,9 +77,9 @@ func TestTaskTracker_RecordFailure(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("smart_shell", TaskStatusFailed, "run command", "error")
-	tt.RecordToolCall("smart_shell", TaskStatusFailed, "run command", "error")
-	tt.RecordToolCall("smart_shell", TaskStatusFailed, "run command", "error")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "run command", "error")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "run command", "error")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "run command", "error")
 
 	if tt.GetConsecutiveFails() != 3 {
 		t.Errorf("expected 3 consecutive fails, got %d", tt.GetConsecutiveFails())
@@ -91,9 +91,9 @@ func TestTaskTracker_StuckAfterConsecutiveFails(t *testing.T) {
 	tt.StartNewTask("test", IntentTask)
 
 	// 3 consecutive failures → stuck
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
 	stuck, reason := tt.ShouldPromptTodo()
 	if !stuck {
@@ -108,9 +108,9 @@ func TestTaskTracker_StuckRecoversOnSuccess(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
 	// Verify stuck
 	stuck, _ := tt.ShouldPromptTodo()
@@ -119,7 +119,7 @@ func TestTaskTracker_StuckRecoversOnSuccess(t *testing.T) {
 	}
 
 	// Success resets
-	tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 
 	if tt.GetConsecutiveFails() != 0 {
 		t.Error("consecutive fails should reset after success")
@@ -131,9 +131,9 @@ func TestTaskTracker_MultipleStuckReasons(t *testing.T) {
 	tt.StartNewTask("test", IntentTask)
 
 	// Trigger condition 1: consecutive failures
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
 	// Manually set condition 4: too many steps
 	tt.mu.Lock()
@@ -170,7 +170,7 @@ func TestTaskTracker_StuckHighFailureRateOverTime(t *testing.T) {
 	tt.mu.Unlock()
 
 	// Trigger detectStuckState via RecordToolCall
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
 	stuck, reason := tt.ShouldPromptTodo()
 	if !stuck {
@@ -191,7 +191,7 @@ func TestTaskTracker_PromptAt8Steps(t *testing.T) {
 
 	// Record 7 successful calls (won't prompt)
 	for i := 0; i < 7; i++ {
-		tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 	}
 	_, reason := tt.ShouldPromptTodo()
 	if reason != "" {
@@ -199,7 +199,7 @@ func TestTaskTracker_PromptAt8Steps(t *testing.T) {
 	}
 
 	// 8th call should prompt
-	tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 	prompt, _ := tt.ShouldPromptTodo()
 	if !prompt {
 		t.Error("should prompt at step 8")
@@ -216,7 +216,7 @@ func TestTaskTracker_NoPromptForSimpleTask(t *testing.T) {
 	tt.mu.Unlock()
 
 	for i := 0; i < 10; i++ {
-		tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 	}
 
 	prompt, _ := tt.ShouldPromptTodo()
@@ -284,8 +284,8 @@ func TestTaskTracker_GetStatusSummary_WithFailures(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
 	summary := tt.GetStatusSummary()
 	if !strings.Contains(summary, "Failed attempts") {
@@ -297,8 +297,8 @@ func TestTaskTracker_GetStatusSummary_WithCancelled(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("shell", TaskStatusCancelled, "cmd", "cancelled")
-	tt.RecordToolCall("shell", TaskStatusCancelled, "cmd", "cancelled")
+	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "cancelled")
+	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "cancelled")
 
 	summary := tt.GetStatusSummary()
 	if !strings.Contains(summary, "User cancelled") {
@@ -336,7 +336,7 @@ func TestTaskTracker_RecentToolCallsCapped(t *testing.T) {
 
 	// Record 25 calls (cap is 20)
 	for i := 0; i < 25; i++ {
-		tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 	}
 
 	tt.mu.RLock()
@@ -364,7 +364,7 @@ func TestTaskTracker_ConcurrentReadWrite(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+				tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 			}
 		}()
 	}
@@ -397,7 +397,7 @@ func TestTaskTracker_RecordToolCall_NilTask(t *testing.T) {
 	tt := NewTaskTracker()
 
 	// Should not panic
-	tt.RecordToolCall("read_all_lines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
 }
 
 func TestTaskTracker_GetConsecutiveFails_Nil(t *testing.T) {
@@ -418,8 +418,8 @@ func TestTaskTracker_CancelledDoesNotIncrementFails(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("shell", TaskStatusCancelled, "cmd", "user cancelled")
-	tt.RecordToolCall("shell", TaskStatusCancelled, "cmd", "user cancelled")
+	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "user cancelled")
+	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "user cancelled")
 
 	if tt.GetConsecutiveFails() != 0 {
 		t.Error("cancelled should not increment consecutive fails")

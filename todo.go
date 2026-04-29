@@ -64,7 +64,10 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
 
         for i, item := range items {
                 text := strings.TrimSpace(item.Text)
-                status := strings.ToLower(item.Status)
+                status := item.Status
+                if status == "" {
+                        status = "Pending"
+                }
                 itemID := item.ID
                 if itemID == "" {
                         itemID = strconv.Itoa(i + 1)
@@ -74,11 +77,11 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
                         return "", fmt.Errorf("item %s: text required", itemID)
                 }
 
-                if status != "pending" && status != "in_progress" && status != "completed" && status != "waiting" {
+                if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
                         return "", fmt.Errorf("item %s: invalid status '%s'", itemID, status)
                 }
 
-                if status == "in_progress" {
+                if status == "InProgress" {
                         inProgressCount++
                 }
 
@@ -90,7 +93,7 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
         }
 
         if inProgressCount > 1 {
-                return "", fmt.Errorf("only one task can be in_progress at a time")
+                return "", fmt.Errorf("only one task can be InProgress at a time")
         }
 
         tm.lists[id] = &TodoList{ID: id, Items: validated}
@@ -147,13 +150,13 @@ func (tm *TodoManager) renderListLocked(id string) string {
         for _, item := range list.Items {
                 var marker string
                 switch item.Status {
-                case "pending":
+                case "Pending":
                         marker = "[ ]"
-                case "in_progress":
+                case "InProgress":
                         marker = "[>"
-                case "waiting":
+                case "Waiting":
                         marker = "[~]"
-                case "completed":
+                case "Completed":
                         marker = "[x]"
                         done++
                 default:
@@ -190,7 +193,7 @@ var planRelatedListIDs = map[string]bool{
         "phase2": true,
 }
 
-// HasUnfinishedItems 檢查是否有未完成的非計劃項目（pending 或 in_progress）
+// HasUnfinishedItems 檢查是否有未完成的非計劃項目（Pending 或 InProgress）
 // 用於 AgentLoop 退出守衛：如果有未完成項目，程序不允許模型停止
 func (tm *TodoManager) HasUnfinishedItems() bool {
         tm.mu.RLock()
@@ -201,7 +204,7 @@ func (tm *TodoManager) HasUnfinishedItems() bool {
                         continue
                 }
                 for _, item := range list.Items {
-                        if item.Status == "pending" || item.Status == "in_progress" {
+                        if item.Status == "Pending" || item.Status == "InProgress" {
                                 return true
                         }
                 }
@@ -210,7 +213,7 @@ func (tm *TodoManager) HasUnfinishedItems() bool {
 }
 
 // AllUnfinishedAreWaiting 檢查所有未完成的非計劃項目是否都處於 waiting 狀態
-// 如果是，說明所有剩餘任務已提交為異步操作（如 cron_add），允許退出
+// 如果是，說明所有剩餘任務已提交為異步操作（如 CronAdd），允許退出
 func (tm *TodoManager) AllUnfinishedAreWaiting() bool {
         tm.mu.RLock()
         defer tm.mu.RUnlock()
@@ -220,7 +223,7 @@ func (tm *TodoManager) AllUnfinishedAreWaiting() bool {
                         continue
                 }
                 for _, item := range list.Items {
-                        if item.Status == "pending" || item.Status == "in_progress" {
+                        if item.Status == "Pending" || item.Status == "InProgress" {
                                 return false
                         }
                 }
@@ -239,7 +242,7 @@ func (tm *TodoManager) GetUnfinishedSummary() string {
                         continue
                 }
                 for _, item := range list.Items {
-                        if item.Status == "pending" || item.Status == "in_progress" {
+                        if item.Status == "Pending" || item.Status == "InProgress" {
                                 unfinished = append(unfinished, fmt.Sprintf("  - #%s: %s [%s]", item.ID, item.Text, item.Status))
                         }
                 }

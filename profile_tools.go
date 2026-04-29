@@ -36,9 +36,9 @@ func handleProfileCheck(ctx context.Context, argsMap map[string]interface{}, ch 
 
 // handleActorIdentitySet writes content to profiles/actors/<actor_name>/IDENTITY.md.
 func handleActorIdentitySet(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
-        actorName, ok := argsMap["actor_name"].(string)
+        actorName, ok := argsMap["ActorName"].(string)
         if !ok || actorName == "" {
-                return "Error: missing or invalid 'actor_name' parameter. Example: actor_identity_set(actor_name=\"hero\", content=\"...\")", false
+                return "Error: missing or invalid 'ActorName' parameter. Example: actor_identity_set(actor_name=\"hero\", content=\"...\")", false
         }
 
         content, ok := argsMap["content"].(string)
@@ -66,9 +66,9 @@ func handleActorIdentitySet(ctx context.Context, argsMap map[string]interface{},
 
 // handleActorIdentityClear deletes profiles/actors/<actor_name>/IDENTITY.md.
 func handleActorIdentityClear(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
-        actorName, ok := argsMap["actor_name"].(string)
+        actorName, ok := argsMap["ActorName"].(string)
         if !ok || actorName == "" {
-                return "Error: missing or invalid 'actor_name' parameter. Example: actor_identity_clear(actor_name=\"hero\")", false
+                return "Error: missing or invalid 'ActorName' parameter. Example: actor_identity_clear(actor_name=\"hero\")", false
         }
 
         identityPath := filepath.Join(globalDataDir, "profiles", "actors", actorName, "IDENTITY.md")

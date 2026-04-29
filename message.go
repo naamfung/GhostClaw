@@ -10,7 +10,7 @@ import (
 type TaskStatus string
 
 const (
-        TaskStatusPending   TaskStatus = "pending"   // 等待执行
+        TaskStatusPending   TaskStatus = "Pending"   // 等待执行
         TaskStatusRunning   TaskStatus = "running"   // 执行中
         TaskStatusSuccess   TaskStatus = "success"   // 成功完成
         TaskStatusCancelled TaskStatus = "cancelled" // 被取消

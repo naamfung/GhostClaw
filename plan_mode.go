@@ -25,7 +25,7 @@ import (
 //
 // Phase 工具映射：
 //   Phase 1 (探索): 只讀 + spawn + todos + next_phase
-//   Phase 2 (設計): Phase 1 全部 + plan_write + plan_read + prev_phase
+//   Phase 2 (設計): Phase 1 全部 + PlanWrite + PlanRead + prev_phase
 //   Phase 3 (執行): 僅 next_phase（自動退出）
 // ============================================================================
 
@@ -79,17 +79,17 @@ var phaseMetadata = map[PlanPhase]phaseInfo{
                 Name:        "Phase 1: 探索",
                 Description: "使用只讀工具探索專案文件，建立整體認識。善用 spawn 並行探索不同模塊。如發現需要更多探索，Phase 2 可使用 prev_phase 回溯。",
                 ExtraTools: []string{
-                        "spawn", "spawn_check", "spawn_list",
-                        "todos", // 管理 Phase 1 子任務
+                        "Spawn", "SpawnCheck", "SpawnList",
+                        "Todos", // 管理 Phase 1 子任務
                 },
         },
         PlanPhaseDesign: {
                 Name:        "Phase 2: 設計",
-                Description: "設計實現方案、草擬計劃、審查可行性、編寫最終計劃。可使用 plan_write/plan_read，必要時用 prev_phase 回溯探索。",
+                Description: "設計實現方案、草擬計劃、審查可行性、編寫最終計劃。可使用 PlanWrite/PlanRead，必要時用 prev_phase 回溯探索。",
                 ExtraTools: []string{
-                        "plan_write", "plan_read",
-                        "spawn", "spawn_check", "spawn_list",
-                        "todos",
+                        "PlanWrite", "PlanRead",
+                        "Spawn", "SpawnCheck", "SpawnList",
+                        "Todos",
                 },
         },
         PlanPhaseExecute: {
@@ -101,13 +101,13 @@ var phaseMetadata = map[PlanPhase]phaseInfo{
 
 // PhaseReadTools 在 Plan Mode 所有 Phase 中始終可用的只讀基礎工具
 var PhaseReadTools = []string{
-        "read_file_line",
-        "read_file_range",
-        "read_all_lines",
-        "text_search",
-        "text_grep",
-        "memory_recall",
-        "memory_list",
+        "ReadFileLine",
+        "ReadFileRange",
+        "ReadAllLines",
+        "TextSearch",
+        "TextGrep",
+        "MemoryRecall",
+        "MemoryList",
 }
 
 // ============================================================================
@@ -161,9 +161,9 @@ func EnterPlanMode(taskDesc string) string {
 
         // 初始化整體 Plan todos（作為 list_id="plan"）
         _, _ = TODO.Update([]TodoItem{
-                {ID: "1", Text: "Phase 1: 探索", Status: "in_progress"},
-                {ID: "2", Text: "Phase 2: 設計", Status: "pending"},
-                {ID: "3", Text: "Phase 3: 執行", Status: "pending"},
+                {ID: "1", Text: "Phase 1: 探索", Status: "InProgress"},
+                {ID: "2", Text: "Phase 2: 設計", Status: "Pending"},
+                {ID: "3", Text: "Phase 3: 執行", Status: "Pending"},
         }, "plan")
 
         log.Printf("[PlanMode] 進入 Plan Mode, Phase=1(探索), 任務: %.80s", taskDesc)
@@ -308,11 +308,11 @@ func PrevPhase() (string, string, error) {
 func updatePlanTodos(completedPhase int) {
         items := make([]TodoItem, 3)
         for i := 1; i <= 3; i++ {
-                status := "pending"
+                status := "Pending"
                 if i < completedPhase {
-                        status = "completed"
+                        status = "Completed"
                 } else if i == completedPhase {
-                        status = "in_progress"
+                        status = "InProgress"
                 }
                 phaseName := getPhaseTodoText(i)
                 items[i-1] = TodoItem{ID: fmt.Sprintf("%d", i), Text: phaseName, Status: status}
@@ -346,17 +346,17 @@ func (pm *PlanMode) IsToolAllowedInPlanMode(toolName string) bool {
         }
 
         // next_phase 始終可用（用於推進階段）
-        if toolName == "next_phase" {
+        if toolName == "NextPhase" {
                 return true
         }
 
-        // exit_plan_mode 始終可用（用於手動退出 Plan Mode）
-        if toolName == "exit_plan_mode" {
+        // ExitPlanMode 始終可用（用於手動退出 Plan Mode）
+        if toolName == "ExitPlanMode" {
                 return true
         }
 
         // prev_phase 僅在 Phase 2 可用
-        if toolName == "prev_phase" && pm.Phase == PlanPhaseDesign {
+        if toolName == "PrevPhase" && pm.Phase == PlanPhaseDesign {
                 return true
         }
 
@@ -408,7 +408,7 @@ func GetToolsForCurrentPhase() []map[string]interface{} {
                 tools = append(tools, spawnToolDefs()...)
                 tools = append(tools, todosToolDef("phase1", "管理 Phase 1 探索子任務"))
         case PlanPhaseDesign:
-                // Phase 2: next_phase + prev_phase + plan_write/read + spawn + todos
+                // Phase 2: next_phase + prev_phase + PlanWrite/read + spawn + todos
                 tools = append(tools, prevPhaseToolDef())
                 tools = append(tools, planWriteToolDef(), planReadToolDef())
                 tools = append(tools, spawnToolDefs()...)
@@ -502,8 +502,8 @@ func explorePhasePrompt() string {
 目標：充分理解任務涉及的文件結構和依賴關係，並掌握可用的工具資源。
 
 操作指引：
-1. 使用 text_search / text_grep 搜索關鍵詞，定位相關文件
-2. 使用 read_file_line / read_file_range / read_all_lines 閱讀相關文件
+1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
+2. 使用 ReadFileLine / ReadFileRange / ReadAllLines 閱讀相關文件
 3. 對於複雜任務，使用 spawn 創建最多 3 個並行子代理探索不同方面
 4. 使用 todos 工具管理探索子任務
 
@@ -534,8 +534,8 @@ func designPhasePrompt() string {
 
 操作指引：
 1. 綜合探索發現，設計實現方案
-2. 使用 plan_write 草擬計劃 — 可多次修改迭代
-3. 使用 plan_read 查看已寫的計劃
+2. 使用 PlanWrite 草擬計劃 — 可多次修改迭代
+3. 使用 PlanRead 查看已寫的計劃
 4. 重新審查關鍵文件，驗證方案可行性
 5. 確認無誤後，編寫最終計劃（覆蓋草稿）
 6. 使用 todos 工具管理設計子任務
@@ -631,7 +631,7 @@ func handlePlanWrite(args map[string]interface{}) string {
                 return "錯誤：Plan Mode 未激活。"
         }
         if phase != PlanPhaseDesign {
-                return "錯誤：plan_write 僅在 Phase 2（設計）可用。當前階段不能寫入計劃文件。"
+                return "錯誤：PlanWrite 僅在 Phase 2（設計）可用。當前階段不能寫入計劃文件。"
         }
 
         if planPath == "" {
@@ -667,7 +667,7 @@ func handlePlanRead(args map[string]interface{}) string {
         data, err := os.ReadFile(planPath)
         if err != nil {
                 if os.IsNotExist(err) {
-                        return "計劃文件尚未創建。在 Phase 2 使用 plan_write 編寫計劃。"
+                        return "計劃文件尚未創建。在 Phase 2 使用 PlanWrite 編寫計劃。"
                 }
                 return fmt.Sprintf("錯誤：無法讀取計劃文件: %v", err)
         }
@@ -683,7 +683,7 @@ func nextPhaseToolDef() map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
-                        "name":        "next_phase",
+                        "name":        "NextPhase",
                         "description": "推進到 Plan Mode 的下一階段。完成當前階段的所有工作後調用此工具。",
                         "parameters": map[string]interface{}{
                                 "type":                "object",
@@ -699,7 +699,7 @@ func prevPhaseToolDef() map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
-                        "name":        "prev_phase",
+                        "name":        "PrevPhase",
                         "description": "回溯到上一階段（僅 Phase 2→Phase 1）。當設計過程中發現需要更多探索時使用。最多回溯 2 次。",
                         "parameters": map[string]interface{}{
                                 "type":                "object",
@@ -715,7 +715,7 @@ func planWriteToolDef() map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
-                        "name":        "plan_write",
+                        "name":        "PlanWrite",
                         "description": "將計劃內容寫入計劃文件。僅在 Phase 2（設計）可用。",
                         "parameters": map[string]interface{}{
                                 "type": "object",
@@ -736,7 +736,7 @@ func planReadToolDef() map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
-                        "name":        "plan_read",
+                        "name":        "PlanRead",
                         "description": "讀取當前計劃文件內容。",
                         "parameters": map[string]interface{}{
                                 "type":                 "object",
@@ -753,7 +753,7 @@ func spawnToolDefs() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name":        "spawn",
+                                "name":        "Spawn",
                                 "description": "創建後台子代理執行獨立的只讀探索任務。",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
@@ -762,7 +762,7 @@ func spawnToolDefs() []map[string]interface{} {
                                                         "type":       "string",
                                                         "description": "探索任務描述，如「分析 XXX 模塊的文件結構和關鍵函數」",
                                                 },
-                                                "max_iterations": map[string]interface{}{
+                                                "MaxIterations": map[string]interface{}{
                                                         "type":       "integer",
                                                         "description": "最大迭代次數（預設 10）",
                                                 },
@@ -775,17 +775,17 @@ func spawnToolDefs() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name":        "spawn_check",
+                                "name":        "SpawnCheck",
                                 "description": "檢查子代理任務的執行狀態與結果。",
                                 "parameters": map[string]interface{}{
                                         "type": "object",
                                         "properties": map[string]interface{}{
-                                                "task_id": map[string]interface{}{
+                                                "TaskId": map[string]interface{}{
                                                         "type":       "string",
                                                         "description": "子代理任務 ID",
                                                 },
                                         },
-                                        "required":             []string{"task_id"},
+                                        "required":             []string{"TaskId"},
                                         "additionalProperties": false,
                                 },
                         },
@@ -793,7 +793,7 @@ func spawnToolDefs() []map[string]interface{} {
                 {
                         "type": "function",
                         "function": map[string]interface{}{
-                                "name":        "spawn_list",
+                                "name":        "SpawnList",
                                 "description": "列出所有子代理任務。",
                                 "parameters": map[string]interface{}{
                                         "type":                 "object",
@@ -810,12 +810,12 @@ func todosToolDef(listID, desc string) map[string]interface{} {
         return map[string]interface{}{
                 "type": "function",
                 "function": map[string]interface{}{
-                        "name":        "todos",
+                        "name":        "Todos",
                         "description":  fmt.Sprintf("管理當前階段的子任務列表。列表 ID: \"%s\"。%s", listID, desc),
                         "parameters": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
-                                        "todos": map[string]interface{}{
+                                        "Todos": map[string]interface{}{
                                                 "type": "array",
                                                 "items": map[string]interface{}{
                                                         "type": "object",
@@ -830,7 +830,7 @@ func todosToolDef(listID, desc string) map[string]interface{} {
                                                                 },
                                                                 "status": map[string]interface{}{
                                                                         "type":       "string",
-                                                                        "enum":        []string{"pending", "in_progress", "completed", "waiting"},
+                                                                        "enum":        []string{"pending", "InProgress", "completed", "Waiting"},
                                                                         "description": "任務狀態：pending / in_progress / completed / waiting（異步等待中）",
                                                                 },
                                                         },
@@ -839,7 +839,7 @@ func todosToolDef(listID, desc string) map[string]interface{} {
                                                 "description": fmt.Sprintf("待辦事項列表（list_id=%s）", listID),
                                         },
                                 },
-                                "required":             []string{"todos"},
+                                "required":             []string{"Todos"},
                                 "additionalProperties": false,
                         },
                 },

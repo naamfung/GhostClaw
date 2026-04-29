@@ -15,7 +15,7 @@ type MatrixConfig struct {
 	DeviceID      string   `toon:"device_id" json:"DeviceID"`
 	Rooms         []string `toon:"rooms" json:"Rooms"`
 	GroupPolicy   string   `toon:"group_policy" json:"GroupPolicy"`
-	DisplayName   string   `toon:"display_name" json:"DisplayName"`
+	DisplayName   string   `toon:"DisplayName" json:"DisplayName"`
 }
 
 // MatrixChannel Matrix 渠道（存根）

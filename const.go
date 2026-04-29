@@ -279,7 +279,7 @@ func BuildToolSectionForRole(role *Role) string {
                 {"skill", "技能管理"},
                 {"profile", "配置管理"},
                 {"plan", "规划模式"},
-                {"spawn", "子代理"},
+                {"Spawn", "子代理"},
                 {"misc", "其他工具"},
         }
 

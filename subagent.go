@@ -17,7 +17,7 @@ type SubagentStatus string
 
 const (
     SubagentRunning   SubagentStatus = "running"
-    SubagentCompleted SubagentStatus = "completed"
+    SubagentCompleted SubagentStatus = "Completed"
     SubagentFailed    SubagentStatus = "failed"
     SubagentCancelled SubagentStatus = "cancelled"
 )
@@ -26,13 +26,13 @@ const (
 type SubagentTask struct {
     ID            string          `json:"id"`
     Task          string          `json:"task"`
-    SessionID     string          `json:"session_id"`
+    SessionID     string          `json:"SessionId"`
     Role          *Role           `json:"-"` // 关联的角色（用于权限控制）
-    StartTime     time.Time       `json:"start_time"`
+    StartTime     time.Time       `json:"StartTime"`
     Status        SubagentStatus  `json:"status"`
     Result        string          `json:"result,omitempty"`
     Iterations    int             `json:"iterations"`
-    MaxIterations int             `json:"max_iterations"`
+    MaxIterations int             `json:"MaxIterations"`
     Depth         int             `json:"depth"`                // 当前嵌套深度（0=顶层，1=子代理的子代理，等）
     CredentialOverride string     `json:"credential_override"` // 如果设置，使用此特定 API key 而非全局
     ModelOverride      string     `json:"model_override"`      // 如果设置，使用此特定模型而非全局
@@ -63,12 +63,12 @@ type SubagentResultHandler func(task *SubagentTask)
 
 // 子代理工具黑名单
 var subagentToolBlacklist = map[string]bool{
-    "spawn":        true,
-    "spawn_batch":   true,
+    "Spawn":        true,
+    "SpawnBatch":   true,
     "message":      true,
-    "spawn_check":  true,
-    "spawn_cancel": true,
-    "spawn_list":   true,
+    "SpawnCheck":  true,
+    "SpawnCancel": true,
+    "SpawnList":   true,
 }
 
 // nilChannel 是一个空的 Channel 实现，用于子代理工具调用时避免 nil pointer panic
@@ -704,14 +704,14 @@ func (sm *SubagentManager) GetTaskInfo(taskID string) (map[string]interface{}, e
     defer task.mu.RUnlock()
 
     info := map[string]interface{}{
-        "task_id":         task.ID,
+        "TaskId":         task.ID,
         "task":            task.Task,
-        "session_id":      task.SessionID,
+        "SessionId":      task.SessionID,
         "status":          string(task.Status),
         "iterations":      task.Iterations,
-        "max_iterations":  task.MaxIterations,
+        "MaxIterations":  task.MaxIterations,
         "depth":           task.Depth,
-        "start_time":      task.StartTime.Format(time.RFC3339),
+        "StartTime":      task.StartTime.Format(time.RFC3339),
         "runtime_seconds": time.Since(task.StartTime).Seconds(),
     }
     if task.CredentialOverride != "" {

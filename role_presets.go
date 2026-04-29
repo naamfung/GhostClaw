@@ -81,7 +81,7 @@ func GetPresetRoles() []*Role {
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"memory_save", "memory_recall", "memory_list"},
+                                AllowedTools: []string{"MemorySave", "MemoryRecall", "MemoryList"},
                         },
                         Examples: []RoleExample{
                                 {
@@ -128,7 +128,7 @@ func GetPresetRoles() []*Role {
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"memory_save", "memory_recall", "memory_list"},
+                                AllowedTools: []string{"MemorySave", "MemoryRecall", "MemoryList"},
                         },
                         Tags:     []string{"creative", "character", "antagonist"},
                         IsPreset: true,
@@ -228,7 +228,7 @@ def quicksort(arr):
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"search", "visit", "memory_save", "memory_recall", "memory_list", "todo"},
+                                AllowedTools: []string{"search", "visit", "MemorySave", "MemoryRecall", "MemoryList", "todo"},
                         },
                         // 角色专属技能绑定
                         Skills: []string{"creative_writing"},
@@ -284,7 +284,7 @@ def quicksort(arr):
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"search", "visit", "memory_save", "memory_recall", "memory_list", "todo"},
+                                AllowedTools: []string{"search", "visit", "MemorySave", "MemoryRecall", "MemoryList", "todo"},
                         },
                         Examples: []RoleExample{
                                 {
@@ -355,7 +355,7 @@ VOICE (O.S.)
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"search", "visit", "memory_save", "memory_recall", "memory_list"},
+                                AllowedTools: []string{"search", "visit", "MemorySave", "MemoryRecall", "MemoryList"},
                         },
                         Tags:     []string{"creative", "film", "directing"},
                         IsPreset: true,
@@ -392,7 +392,7 @@ VOICE (O.S.)
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"search", "visit", "memory_save", "memory_recall", "memory_list"},
+                                AllowedTools: []string{"search", "visit", "MemorySave", "MemoryRecall", "MemoryList"},
                         },
                         // 角色专属技能绑定
                         Skills: []string{"translation"},
@@ -453,7 +453,7 @@ Bowing, in homesickness I'm drowned.
                         },
                         ToolPermission: ToolPermission{
                                 Mode:         ToolPermissionAllowlist,
-                                AllowedTools: []string{"search", "visit", "memory_save", "memory_recall", "memory_list", "todo"},
+                                AllowedTools: []string{"search", "visit", "MemorySave", "MemoryRecall", "MemoryList", "todo"},
                         },
                         // 角色专属技能绑定
                         Skills: []string{"explanation", "learning_coach"},

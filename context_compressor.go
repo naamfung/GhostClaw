@@ -1042,7 +1042,7 @@ func isStopWord(word string) bool {
 }
 
 // parseToolNameFromSummary extracts the tool name from a tool summary string
-// e.g., "shell (called 3 times): ..." -> "shell"
+// e.g., "shell (called 3 times): ..." -> "Shell"
 func parseToolNameFromSummary(summary string) string {
         summary = strings.TrimSpace(summary)
         parenIdx := strings.Index(summary, " (")

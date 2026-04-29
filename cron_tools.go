@@ -7,9 +7,9 @@ import (
 	"github.com/toon-format/toon-go"
 )
 
-// cronAddUsage 返回 cron_add 的正確使用格式（出錯時附帶）
+// cronAddUsage 返回 CronAdd 的正確使用格式（出錯時附帶）
 const cronAddUsage = `
-=== cron_add 正確使用格式 ===
+=== CronAdd 正確使用格式 ===
 參數：
   name (string, 必填):  任務名稱，如 "每日AI論文速遞"
   schedule (string, 必填): cron 表達式（6 字段：秒 分 時 日 月 週）
@@ -24,7 +24,7 @@ const cronAddUsage = `
     {"type": "log"}  或  {"type": "email", "recipients": ["a@b.com"]}
 
 調用示例：
-  cron_add(name="每日AI論文速遞", schedule="0 0 17 * * *", content="去arXiv查看最新AI論文並匯總")
+  CronAdd(name="每日AI論文速遞", schedule="0 0 17 * * *", content="去arXiv查看最新AI論文並匯總")
 === 格式結束 ===`
 
 // handleCronAdd 添加定时任务
@@ -46,7 +46,7 @@ func handleCronAdd(ctx context.Context, argsMap map[string]interface{}, ch Chann
 	// 兼容舊參數名 user_message 和新參數名 content
 	userMsg, ok := argsMap["content"].(string)
 	if !ok || userMsg == "" {
-		userMsg, ok = argsMap["user_message"].(string)
+		userMsg, ok = argsMap["UserMessage"].(string)
 	}
 	if !ok || userMsg == "" {
 		return fmt.Sprintf("Error: missing 'content' — 任務「%s」需要指定執行指令%s", name, cronAddUsage), false
@@ -110,7 +110,7 @@ func handleCronRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
 === cron_remove 正確使用格式 ===
 參數：
   name (string, 必填): 要刪除的任務名稱
-提示：先用 cron_list 查看所有任務名稱
+提示：先用 CronList 查看所有任務名稱
 示例：cron_remove(name="每日AI論文速遞")
 === 格式結束 ===`, false
 	}
@@ -128,7 +128,7 @@ func handleCronRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
 		return fmt.Sprintf(`Error: 未找到任務「%s」
 
 === 當前任務列表 ===
-先用 cron_list 查看所有任務
+先用 CronList 查看所有任務
 === 提示結束 ===`, name), false
 	}
 
@@ -155,8 +155,8 @@ func handleCronList(ctx context.Context, argsMap map[string]interface{}, ch Chan
 		return `📭 當前沒有定時任務
 
 === 添加任務 ===
-使用 cron_add 創建新任務：
-  cron_add(name="任務名", schedule="0 0 9 * * *", content="要執行的指令")
+使用 CronAdd 創建新任務：
+  CronAdd(name="任務名", schedule="0 0 9 * * *", content="要執行的指令")
 === 提示結束 ===`, false
 	}
 	data, err := toon.Marshal(jobs)
@@ -186,7 +186,7 @@ func handleCronStatus(ctx context.Context, argsMap map[string]interface{}, ch Ch
 		return fmt.Sprintf(`Error: %v
 
 === 提示 ===
-先用 cron_list 確認任務名稱是否正確
+先用 CronList 確認任務名稱是否正確
 === 提示結束 ===`, err), false
 	}
 	data, err := toon.Marshal(status)

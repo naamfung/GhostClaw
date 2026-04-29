@@ -24,7 +24,7 @@ type BackgroundTaskStatus string
 
 const (
         BgTaskRunning    BackgroundTaskStatus = "running"
-        BgTaskCompleted  BackgroundTaskStatus = "completed"
+        BgTaskCompleted  BackgroundTaskStatus = "Completed"
         BgTaskFailed     BackgroundTaskStatus = "failed"
         BgTaskTerminated BackgroundTaskStatus = "terminated"
 )
@@ -35,7 +35,7 @@ type BackgroundTask struct {
         Command     string               `json:"command"`
         Description string               `json:"description,omitempty"`
         PID         int                  `json:"pid"`
-        StartTime   time.Time            `json:"start_time"`
+        StartTime   time.Time            `json:"StartTime"`
         Status      BackgroundTaskStatus `json:"status"`
         ExitCode    int                  `json:"exit_code,omitempty"`
         Stdout      *safeBuffer          `json:"-"`
@@ -364,14 +364,14 @@ func (tm *TaskManager) GetTaskInfo(taskID string) (map[string]interface{}, error
         defer task.mu.RUnlock()
 
         info := map[string]interface{}{
-                "task_id":         task.ID,
+                "TaskId":         task.ID,
                 "command":         task.Command,
                 "description":     task.Description,
                 "pid":             task.PID,
                 "status":          string(task.Status),
-                "exit_code":       task.ExitCode,
-                "start_time":      task.StartTime.Format(time.RFC3339),
-                "runtime_minutes": time.Since(task.StartTime).Minutes(),
+                "ExitCode":       task.ExitCode,
+                "StartTime":      task.StartTime.Format(time.RFC3339),
+                "RuntimeMinutes": time.Since(task.StartTime).Minutes(),
                 "stdout":          truncateTaskOutput(task.Stdout.String()),
                 "stderr":          truncateTaskOutput(task.Stderr.String()),
         }
@@ -864,10 +864,10 @@ func (lec *LoopEventCollector) GetEvents() []LoopDetectionEvent {
 
 // 需要循环检测的工具黑名单列表（只在列表中的工具方进行检测）
 var monitoredTools = map[string]bool{
-        "shell":         true,
-        "smart_shell":   true,
-        "shell_delayed": true,
-        "ssh_exec":      true,
+        "Shell":         true,
+        "SmartShell":   true,
+        "ShellDelayed": true,
+        "SshExec":      true,
 }
 
 // LoopDetector 循环检测器
@@ -983,31 +983,31 @@ func NewLoopDetectorWithConfig(config *LoopDetectionConfig) *LoopDetector {
 // generateFingerprint 生成工具调用的指纹（用于快速比较）
 func generateFingerprint(toolName string, args map[string]interface{}) string {
         // 对于shell命令，使用命令内容作为指纹
-        if toolName == "shell" || toolName == "smart_shell" || toolName == "shell_delayed" {
+        if toolName == "Shell" || toolName == "SmartShell" || toolName == "ShellDelayed" {
                 if cmd, ok := args["command"].(string); ok {
                         return toolName + ":" + cmd
                 }
         }
 
-        // 对于 ssh_exec，使用命令内容作为指纹
-        if toolName == "ssh_exec" {
+        // 对于 SshExec，使用命令内容作为指纹
+        if toolName == "SshExec" {
                 if cmd, ok := args["command"].(string); ok {
                         return toolName + ":" + cmd
                 }
-                if sessionID, ok := args["session_id"].(string); ok {
+                if sessionID, ok := args["SessionId"].(string); ok {
                         return toolName + ":" + sessionID
                 }
         }
 
         // 对于文件操作，使用文件名作为指纹的一部分
-        if toolName == "read_file_line" || toolName == "read_file_range" || toolName == "read_all_lines" {
+        if toolName == "ReadFileLine" || toolName == "ReadFileRange" || toolName == "ReadAllLines" {
                 if filename, ok := args["filename"].(string); ok {
                         return toolName + ":" + filename
                 }
         }
 
         // 对于写文件操作，使用文件名 + 行号/内容摘要作为指纹
-        if toolName == "write_file_line" {
+        if toolName == "WriteFileLine" {
                 if filename, ok := args["filename"].(string); ok {
                         if lineNum, ok := args["line_number"].(float64); ok {
                                 return toolName + ":" + filename + ":" + fmt.Sprintf("%d", int(lineNum))
@@ -1015,7 +1015,7 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
                         return toolName + ":" + filename
                 }
         }
-        if toolName == "write_all_lines" {
+        if toolName == "WriteAllLines" {
                 if filename, ok := args["filename"].(string); ok {
                         return toolName + ":" + filename
                 }
@@ -1028,8 +1028,8 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
                 }
         }
 
-        // 对于 memory_recall，使用查询内容作为指纹（避免误报）
-        if toolName == "memory_recall" {
+        // 对于 MemoryRecall，使用查询内容作为指纹（避免误报）
+        if toolName == "MemoryRecall" {
                 if query, ok := args["query"].(string); ok && query != "" {
                         return toolName + ":" + query
                 }

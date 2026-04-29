@@ -161,9 +161,9 @@ func execSSHClose(ec *ToolExecContext) (string, TaskStatus) {
 
 func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
-        lineNumFloat, ok2 := ec.ArgsMap["line_num"].(float64)
+        lineNumFloat, ok2 := ec.ArgsMap["LineNum"].(float64)
         if !ok1 || !ok2 || filename == "" || lineNumFloat < 1 {
-                return "Error: Invalid arguments for read_file_line", TaskStatusFailed
+                return "Error: Invalid arguments for ReadFileLine", TaskStatusFailed
         }
 
         // 二進制文件檢測
@@ -215,10 +215,10 @@ func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
 
 func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
-        lineNumFloat, ok2 := ec.ArgsMap["line_num"].(float64)
+        lineNumFloat, ok2 := ec.ArgsMap["LineNum"].(float64)
         text, ok3 := ec.ArgsMap["content"].(string)
         if !ok1 || !ok2 || !ok3 || filename == "" {
-                return "Error: Invalid arguments for write_file_line", TaskStatusFailed
+                return "Error: Invalid arguments for WriteFileLine", TaskStatusFailed
         }
 
         lineNum := int(lineNumFloat)
@@ -256,7 +256,7 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
 func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok := ec.ArgsMap["filename"].(string)
         if !ok || filename == "" {
-                return "Error: Invalid arguments for read_all_lines", TaskStatusFailed
+                return "Error: Invalid arguments for ReadAllLines", TaskStatusFailed
         }
 
         // 二進制文件檢測
@@ -327,9 +327,9 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
 
 func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
-        startLineFloat, ok2 := ec.ArgsMap["start_line"].(float64)
+        startLineFloat, ok2 := ec.ArgsMap["StartLine"].(float64)
         if !ok1 || !ok2 || filename == "" || startLineFloat < 1 {
-                return "Error: Invalid arguments for read_file_range", TaskStatusFailed
+                return "Error: Invalid arguments for ReadFileRange", TaskStatusFailed
         }
 
         // 二進制文件檢測
@@ -339,7 +339,7 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
 
         startLine := int(startLineFloat)
         endLine := startLine
-        if endLineFloat, ok := ec.ArgsMap["end_line"].(float64); ok && endLineFloat >= float64(startLine) {
+        if endLineFloat, ok := ec.ArgsMap["EndLine"].(float64); ok && endLineFloat >= float64(startLine) {
                 endLine = int(endLineFloat)
         }
 
@@ -377,8 +377,8 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 result := map[string]interface{}{
                         "lines":       linedContent,
                         "total_lines": len(lines),
-                        "start_line":  startLine,
-                        "end_line":    endLine,
+                        "StartLine":  startLine,
+                        "EndLine":    endLine,
                         "filename":    filename,
                         "encoding":    "utf-8",
                 }
@@ -531,7 +531,7 @@ func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
         linesInterface, ok2 := ec.ArgsMap["lines"].([]interface{})
         if !ok1 || !ok2 || filename == "" {
-                return "Error: Invalid arguments for write_all_lines", TaskStatusFailed
+                return "Error: Invalid arguments for WriteAllLines", TaskStatusFailed
         }
 
         lines := make([]string, len(linesInterface))
@@ -574,11 +574,11 @@ func execAppendToFile(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
         contentStr, ok2 := ec.ArgsMap["content"].(string)
         if !ok1 || !ok2 || filename == "" {
-                return "Error: Invalid arguments for append_to_file", TaskStatusFailed
+                return "Error: Invalid arguments for AppendToFile", TaskStatusFailed
         }
 
         lineBreak := true
-        if lineBreakVal, ok := ec.ArgsMap["line_break"].(bool); ok {
+        if lineBreakVal, ok := ec.ArgsMap["LineBreak"].(bool); ok {
                 lineBreak = lineBreakVal
         }
 
@@ -613,15 +613,15 @@ func execAppendToFile(ec *ToolExecContext) (string, TaskStatus) {
 
 func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
-        startLineFloat, ok2 := ec.ArgsMap["start_line"].(float64)
+        startLineFloat, ok2 := ec.ArgsMap["StartLine"].(float64)
         contentStr, ok3 := ec.ArgsMap["content"].(string)
         if !ok1 || !ok2 || !ok3 || filename == "" || startLineFloat < 1 {
-                return "Error: Invalid arguments for write_file_range", TaskStatusFailed
+                return "Error: Invalid arguments for WriteFileRange", TaskStatusFailed
         }
 
         startLine := int(startLineFloat)
         endLine := startLine
-        if endLineFloat, ok := ec.ArgsMap["end_line"].(float64); ok && endLineFloat >= float64(startLine) {
+        if endLineFloat, ok := ec.ArgsMap["EndLine"].(float64); ok && endLineFloat >= float64(startLine) {
                 endLine = int(endLineFloat)
         }
 
@@ -645,7 +645,7 @@ func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserSearch(ec *ToolExecContext) (string, TaskStatus) {
         keyword, ok := ec.ArgsMap["keyword"].(string)
         if !ok || keyword == "" {
-                return "Error: Empty keyword in browser_search tool call", TaskStatusFailed
+                return "Error: Empty keyword in BrowserSearch tool call", TaskStatusFailed
         }
 
         resultsList, err := Search(ec.Ch.GetSessionID(), keyword)
@@ -667,7 +667,7 @@ func execBrowserSearch(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserVisit(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_visit tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserVisit tool call", TaskStatusFailed
         }
 
         result, err := Visit(ec.Ch.GetSessionID(), url)
@@ -822,7 +822,7 @@ func execBrowserWaitElement(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserExtractLinks(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_extract_links tool call", TaskStatusFailed
+                return "Error: Empty url in browser_ExtractLinks tool call", TaskStatusFailed
         }
 
         timeout := 0
@@ -844,7 +844,7 @@ func execBrowserExtractLinks(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserExtractImages(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_extract_images tool call", TaskStatusFailed
+                return "Error: Empty url in browser_ExtractImages tool call", TaskStatusFailed
         }
 
         timeout := 0
@@ -866,15 +866,15 @@ func execBrowserExtractImages(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserExtractElements(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_extract_elements tool call", TaskStatusFailed
+                return "Error: Empty url in browser_ExtractElements tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_extract_elements tool call", TaskStatusFailed
+                return "Error: Empty selector in browser_ExtractElements tool call", TaskStatusFailed
         }
 
-        includeHTML, _ := ec.ArgsMap["include_html"].(bool)
+        includeHTML, _ := ec.ArgsMap["IncludeHtml"].(bool)
         timeout := 0
         if t, ok := ec.ArgsMap["timeout"].(float64); ok {
                 timeout = int(t)
@@ -897,7 +897,7 @@ func execBrowserScreenshot(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_screenshot tool call", TaskStatusFailed
         }
 
-        fullPage, _ := ec.ArgsMap["full_page"].(bool)
+        fullPage, _ := ec.ArgsMap["FullPage"].(bool)
         timeout := 0
         if t, ok := ec.ArgsMap["timeout"].(float64); ok {
                 timeout = int(t)
@@ -917,12 +917,12 @@ func execBrowserScreenshot(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserExecuteJS(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_execute_js tool call", TaskStatusFailed
+                return "Error: Empty url in browser_ExecuteJs tool call", TaskStatusFailed
         }
 
         script, ok := ec.ArgsMap["script"].(string)
         if !ok || script == "" {
-                return "Error: Empty script in browser_execute_js tool call", TaskStatusFailed
+                return "Error: Empty script in browser_ExecuteJs tool call", TaskStatusFailed
         }
 
         timeout := 0
@@ -947,7 +947,7 @@ func execBrowserFillForm(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_fill_form tool call", TaskStatusFailed
         }
 
-        formDataRaw, ok := ec.ArgsMap["form_data"].(map[string]interface{})
+        formDataRaw, ok := ec.ArgsMap["FormData"].(map[string]interface{})
         if !ok {
                 return "Error: Invalid form_data in browser_fill_form tool call", TaskStatusFailed
         }
@@ -959,7 +959,7 @@ func execBrowserFillForm(ec *ToolExecContext) (string, TaskStatus) {
                 }
         }
 
-        submitSelector, _ := ec.ArgsMap["submit_selector"].(string)
+        submitSelector, _ := ec.ArgsMap["SubmitSelector"].(string)
         timeout := 0
         if t, ok := ec.ArgsMap["timeout"].(float64); ok {
                 timeout = int(t)
@@ -1003,12 +1003,12 @@ func execBrowserHover(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserDoubleClick(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_double_click tool call", TaskStatusFailed
+                return "Error: Empty url in browser_DoubleClick tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_double_click tool call", TaskStatusFailed
+                return "Error: Empty selector in browser_DoubleClick tool call", TaskStatusFailed
         }
 
         // 修正：传递 sessionID
@@ -1025,12 +1025,12 @@ func execBrowserDoubleClick(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserRightClick(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_right_click tool call", TaskStatusFailed
+                return "Error: Empty url in browser_RightClick tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_right_click tool call", TaskStatusFailed
+                return "Error: Empty selector in browser_RightClick tool call", TaskStatusFailed
         }
 
         // 修正：传递 sessionID
@@ -1050,12 +1050,12 @@ func execBrowserDrag(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_drag tool call", TaskStatusFailed
         }
 
-        sourceSelector, ok := ec.ArgsMap["source_selector"].(string)
+        sourceSelector, ok := ec.ArgsMap["SourceSelector"].(string)
         if !ok || sourceSelector == "" {
                 return "Error: Empty source_selector in browser_drag tool call", TaskStatusFailed
         }
 
-        targetSelector, ok := ec.ArgsMap["target_selector"].(string)
+        targetSelector, ok := ec.ArgsMap["TargetSelector"].(string)
         if !ok || targetSelector == "" {
                 return "Error: Empty target_selector in browser_drag tool call", TaskStatusFailed
         }
@@ -1168,7 +1168,7 @@ func execBrowserCookieSave(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_cookie_save tool call", TaskStatusFailed
         }
 
-        filePath, _ := ec.ArgsMap["file_path"].(string)
+        filePath, _ := ec.ArgsMap["FilePath"].(string)
 
         // 修正：传递 sessionID
         result, err := BrowserCookieSave(ec.Ch.GetSessionID(), url, filePath)
@@ -1187,7 +1187,7 @@ func execBrowserCookieLoad(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_cookie_load tool call", TaskStatusFailed
         }
 
-        filePath, ok := ec.ArgsMap["file_path"].(string)
+        filePath, ok := ec.ArgsMap["FilePath"].(string)
         if !ok || filePath == "" {
                 return "Error: Empty file_path in browser_cookie_load tool call", TaskStatusFailed
         }
@@ -1210,7 +1210,7 @@ func execBrowserSnapshot(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         maxDepth := 5
-        if d, ok := ec.ArgsMap["max_depth"].(float64); ok {
+        if d, ok := ec.ArgsMap["MaxDepth"].(float64); ok {
                 maxDepth = int(d)
         }
 
@@ -1236,7 +1236,7 @@ func execBrowserUploadFile(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty selector in browser_upload_file tool call", TaskStatusFailed
         }
 
-        filePathsRaw, ok := ec.ArgsMap["file_paths"].([]interface{})
+        filePathsRaw, ok := ec.ArgsMap["FilePaths"].([]interface{})
         if !ok {
                 return "Error: Invalid file_paths in browser_upload_file tool call", TaskStatusFailed
         }
@@ -1325,12 +1325,12 @@ func execBrowserKeyPress(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserElementScreenshot(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_element_screenshot tool call", TaskStatusFailed
+                return "Error: Empty url in browser_ElementScreenshot tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_element_screenshot tool call", TaskStatusFailed
+                return "Error: Empty selector in browser_ElementScreenshot tool call", TaskStatusFailed
         }
 
         // 修正：传递 sessionID
@@ -1367,7 +1367,7 @@ func execBrowserPDF(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execBrowserPDFFromFile(ec *ToolExecContext) (string, TaskStatus) {
-        filePath, ok := ec.ArgsMap["file_path"].(string)
+        filePath, ok := ec.ArgsMap["FilePath"].(string)
         if !ok || filePath == "" {
                 return "Error: Empty file_path in browser_pdf_from_file tool call", TaskStatusFailed
         }
@@ -1418,7 +1418,7 @@ func execBrowserSetUserAgent(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Empty url in browser_set_user_agent tool call", TaskStatusFailed
         }
 
-        userAgent, ok := ec.ArgsMap["user_agent"].(string)
+        userAgent, ok := ec.ArgsMap["UserAgent"].(string)
         if !ok || userAgent == "" {
                 return "Error: Empty user_agent in browser_set_user_agent tool call", TaskStatusFailed
         }
@@ -1465,7 +1465,7 @@ func execBrowserEmulateDevice(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserInteract(ec *ToolExecContext) (string, TaskStatus) {
         action, ok := ec.ArgsMap["action"].(string)
         if !ok || action == "" {
-                return "Error: Missing 'action' parameter in browser_interact call. Valid actions: click, double_click, hover, right_click, type, scroll, drag", TaskStatusFailed
+                return "Error: Missing 'action' parameter in browser_interact call. Valid actions: Click, DoubleClick, Hover, RightClick, Type, Scroll, Drag", TaskStatusFailed
         }
 
         url, _ := ec.ArgsMap["url"].(string)
@@ -1489,11 +1489,11 @@ func execBrowserInteract(ec *ToolExecContext) (string, TaskStatus) {
         switch action {
         case "click":
                 result, err = BrowserClick(sessionID, url, selector, timeout)
-        case "double_click":
+        case "DoubleClick":
                 result, err = BrowserDoubleClick(sessionID, url, selector)
         case "hover":
                 result, err = BrowserHover(sessionID, url, selector)
-        case "right_click":
+        case "RightClick":
                 result, err = BrowserRightClick(sessionID, url, selector)
         case "type":
                 result, err = BrowserType(sessionID, url, selector, text, submit, timeout)
@@ -1501,13 +1501,13 @@ func execBrowserInteract(ec *ToolExecContext) (string, TaskStatus) {
                 result, err = BrowserScroll(sessionID, url, direction, amount, timeout)
         case "drag":
                 // drag 需要兩個 selector：source 和 target
-                targetSelector, _ := ec.ArgsMap["target_selector"].(string)
+                targetSelector, _ := ec.ArgsMap["TargetSelector"].(string)
                 if targetSelector == "" {
                         targetSelector = selector
                 }
                 result, err = BrowserDrag(sessionID, url, selector, targetSelector)
         default:
-                return "Error: Invalid action '" + action + "' in browser_interact. Valid: click, double_click, hover, right_click, type, scroll, drag", TaskStatusFailed
+                return "Error: Invalid action '" + action + "' in browser_interact. Valid: click, DoubleClick, hover, RightClick, type, scroll, drag", TaskStatusFailed
         }
 
         if err != nil {
@@ -1524,14 +1524,14 @@ func execBrowserInteract(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserExtract(ec *ToolExecContext) (string, TaskStatus) {
         mode, ok := ec.ArgsMap["mode"].(string)
         if !ok || mode == "" {
-                return "Error: Missing 'mode' parameter in browser_extract call. Valid modes: screenshot, execute_js, extract_links, extract_images, extract_elements, snapshot, pdf, element_screenshot", TaskStatusFailed
+                return "Error: Missing 'mode' parameter in browser_extract call. Valid modes: Screenshot, ExecuteJs, ExtractLinks, ExtractImages, ExtractElements, Snapshot, Pdf, ElementScreenshot", TaskStatusFailed
         }
 
         url, _ := ec.ArgsMap["url"].(string)
         selector, _ := ec.ArgsMap["selector"].(string)
         script, _ := ec.ArgsMap["script"].(string)
-        fullPage, _ := ec.ArgsMap["full_page"].(bool)
-        includeHTML, _ := ec.ArgsMap["include_html"].(bool)
+        fullPage, _ := ec.ArgsMap["FullPage"].(bool)
+        includeHTML, _ := ec.ArgsMap["IncludeHtml"].(bool)
         timeout := 0
         if t, ok := ec.ArgsMap["timeout"].(float64); ok {
                 timeout = int(t)
@@ -1544,26 +1544,26 @@ func execBrowserExtract(ec *ToolExecContext) (string, TaskStatus) {
         switch mode {
         case "screenshot":
                 result, err = BrowserScreenshot(sessionID, url, fullPage, timeout)
-        case "execute_js":
+        case "ExecuteJs":
                 result, err = BrowserExecuteJS(sessionID, url, script, timeout)
-        case "extract_links":
+        case "ExtractLinks":
                 result, err = BrowserExtractLinks(sessionID, url, timeout)
-        case "extract_images":
+        case "ExtractImages":
                 result, err = BrowserExtractImages(sessionID, url, timeout)
-        case "extract_elements":
+        case "ExtractElements":
                 result, err = BrowserExtractElements(sessionID, url, selector, includeHTML, timeout)
         case "snapshot":
                 maxDepth := 5
-                if d, ok := ec.ArgsMap["max_depth"].(float64); ok {
+                if d, ok := ec.ArgsMap["MaxDepth"].(float64); ok {
                         maxDepth = int(d)
                 }
                 result, err = BrowserSnapshot(sessionID, url, maxDepth)
         case "pdf":
                 result, err = BrowserPDF(sessionID, url, timeout)
-        case "element_screenshot":
+        case "ElementScreenshot":
                 result, err = BrowserElementScreenshot(sessionID, url, selector)
         default:
-                return "Error: Invalid mode '" + mode + "' in browser_extract. Valid: screenshot, execute_js, extract_links, extract_images, extract_elements, snapshot, pdf, element_screenshot", TaskStatusFailed
+                return "Error: Invalid mode '" + mode + "' in browser_extract. Valid: screenshot, ExecuteJs, ExtractLinks, ExtractImages, ExtractElements, snapshot, pdf, ElementScreenshot", TaskStatusFailed
         }
 
         if err != nil {
@@ -1584,20 +1584,20 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         sessionID := ec.Ch.GetSessionID()
-        submitSelector, _ := ec.ArgsMap["submit_selector"].(string)
+        submitSelector, _ := ec.ArgsMap["SubmitSelector"].(string)
         timeout := 0
         if t, ok := ec.ArgsMap["timeout"].(float64); ok {
                 timeout = int(t)
         }
 
         // 優先處理 file_path（文件上傳）
-        if filePath, ok := ec.ArgsMap["file_path"].(string); ok && filePath != "" {
-                fileSelector, _ := ec.ArgsMap["file_selector"].(string)
+        if filePath, ok := ec.ArgsMap["FilePath"].(string); ok && filePath != "" {
+                fileSelector, _ := ec.ArgsMap["FileSelector"].(string)
                 if fileSelector == "" {
                         fileSelector, _ = ec.ArgsMap["selector"].(string)
                 }
                 if fileSelector == "" {
-                        return "Error: Missing 'file_selector' or 'selector' for file upload in browser_form_fill", TaskStatusFailed
+                        return "Error: Missing 'FileSelector' or 'selector' for file upload in browser_form_fill", TaskStatusFailed
                 }
                 result, err := BrowserUploadFile(sessionID, url, fileSelector, []string{filePath})
                 if err != nil {
@@ -1609,7 +1609,7 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         // 處理 select_value（下拉選擇）
-        if selectValue, ok := ec.ArgsMap["select_value"].(string); ok && selectValue != "" {
+        if selectValue, ok := ec.ArgsMap["SelectValue"].(string); ok && selectValue != "" {
                 selector, _ := ec.ArgsMap["selector"].(string)
                 if selector == "" {
                         return "Error: Missing 'selector' for select option in browser_form_fill", TaskStatusFailed
@@ -1641,9 +1641,9 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         // 處理 form_data（標準表單填寫）
-        formDataRaw, ok := ec.ArgsMap["form_data"].(map[string]interface{})
+        formDataRaw, ok := ec.ArgsMap["FormData"].(map[string]interface{})
         if !ok || len(formDataRaw) == 0 {
-                return "Error: Missing 'form_data' parameter in browser_form_fill call", TaskStatusFailed
+                return "Error: Missing 'FormData' parameter in browser_form_fill call", TaskStatusFailed
         }
 
         formData := make(FormData)
@@ -1668,7 +1668,7 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execTodos(ec *ToolExecContext) (string, TaskStatus) {
-        itemsInterface, ok := ec.ArgsMap["todos"].([]interface{})
+        itemsInterface, ok := ec.ArgsMap["Todos"].([]interface{})
         if !ok {
                 return "Error: Invalid todos in todos tool call", TaskStatusFailed
         }
@@ -1708,7 +1708,7 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         // 支持 list_id 參數（Plan Mode 每階段使用不同列表）
-        listID, _ := ec.ArgsMap["list_id"].(string)
+        listID, _ := ec.ArgsMap["ListId"].(string)
         // Plan Mode 自動檢測：如果在 Plan Mode 中且未指定 list_id，自動使用當前 Phase 的列表
         if listID == "" && globalPlanMode != nil && globalPlanMode.IsActive() {
                 phase := globalPlanMode.CurrentPhase()
@@ -1736,12 +1736,18 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
 // --- Wrappers for existing handler functions ---
 
 func execCronAdd(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleCronAdd(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleCronAdd(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execCronRemove(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleCronRemove(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleCronRemove(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -1756,17 +1762,26 @@ func execCronStatus(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execMemorySave(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleMemorySave(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleMemorySave(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execMemoryRecall(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleMemoryRecall(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleMemoryRecall(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execMemoryForget(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleMemoryForget(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleMemoryForget(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -1806,16 +1821,16 @@ func execSkillList(ec *ToolExecContext) (string, TaskStatus) {
         if page, ok := ec.ArgsMap["page"].(float64); ok {
                 req.Page = int(page)
         }
-        if pageSize, ok := ec.ArgsMap["page_size"].(float64); ok {
+        if pageSize, ok := ec.ArgsMap["PageSize"].(float64); ok {
                 req.PageSize = int(pageSize)
         }
         if search, ok := ec.ArgsMap["search"].(string); ok {
                 req.Search = search
         }
-        if sortBy, ok := ec.ArgsMap["sort_by"].(string); ok {
+        if sortBy, ok := ec.ArgsMap["SortBy"].(string); ok {
                 req.SortBy = sortBy
         }
-        if sortOrder, ok := ec.ArgsMap["sort_order"].(string); ok {
+        if sortOrder, ok := ec.ArgsMap["SortOrder"].(string); ok {
                 req.SortOrder = sortOrder
         }
         if context, ok := ec.ArgsMap["context"].(string); ok {
@@ -1828,7 +1843,7 @@ func execSkillList(ec *ToolExecContext) (string, TaskStatus) {
                         }
                 }
         }
-        if suggestOnly, ok := ec.ArgsMap["suggest_only"].(bool); ok {
+        if suggestOnly, ok := ec.ArgsMap["SuggestOnly"].(bool); ok {
                 req.SuggestOnly = suggestOnly
         }
 
@@ -1860,7 +1875,7 @@ func execSkillCreate(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         name, ok1 := ec.ArgsMap["name"].(string)
-        systemPrompt, ok2 := ec.ArgsMap["system_prompt"].(string)
+        systemPrompt, ok2 := ec.ArgsMap["SystemPrompt"].(string)
         if !ok1 || !ok2 || name == "" || systemPrompt == "" {
                 return "Error: missing required parameters (name and system_prompt)", TaskStatusFailed
         }
@@ -1874,7 +1889,7 @@ func execSkillCreate(ec *ToolExecContext) (string, TaskStatus) {
         if description, ok := ec.ArgsMap["description"].(string); ok {
                 skill.Description = description
         }
-        if triggerWords, ok := ec.ArgsMap["trigger_words"].([]interface{}); ok {
+        if triggerWords, ok := ec.ArgsMap["TriggerWords"].([]interface{}); ok {
                 for _, tw := range triggerWords {
                         if twStr, ok := tw.(string); ok && twStr != "" {
                                 skill.TriggerWords = append(skill.TriggerWords, twStr)
@@ -1963,23 +1978,23 @@ func execSkillUpdate(ec *ToolExecContext) (string, TaskStatus) {
 
         updates := make(map[string]interface{})
 
-        if displayName, ok := ec.ArgsMap["display_name"].(string); ok && displayName != "" {
-                updates["display_name"] = displayName
+        if displayName, ok := ec.ArgsMap["DisplayName"].(string); ok && displayName != "" {
+                updates["DisplayName"] = displayName
         }
         if description, ok := ec.ArgsMap["description"].(string); ok && description != "" {
                 updates["description"] = description
         }
-        if systemPrompt, ok := ec.ArgsMap["system_prompt"].(string); ok && systemPrompt != "" {
-                updates["system_prompt"] = systemPrompt
+        if systemPrompt, ok := ec.ArgsMap["SystemPrompt"].(string); ok && systemPrompt != "" {
+                updates["SystemPrompt"] = systemPrompt
         }
-        if triggerWords, ok := ec.ArgsMap["trigger_words"].([]interface{}); ok && len(triggerWords) > 0 {
+        if triggerWords, ok := ec.ArgsMap["TriggerWords"].([]interface{}); ok && len(triggerWords) > 0 {
                 var triggers []string
                 for _, tw := range triggerWords {
                         if twStr, ok := tw.(string); ok && twStr != "" {
                                 triggers = append(triggers, twStr)
                         }
                 }
-                updates["trigger_words"] = triggers
+                updates["TriggerWords"] = triggers
         }
         if tags, ok := ec.ArgsMap["tags"].([]interface{}); ok && len(tags) > 0 {
                 var tagList []string
@@ -2014,7 +2029,7 @@ func execSkillSuggest(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         topK := 5
-        if k, ok := ec.ArgsMap["top_k"].(float64); ok {
+        if k, ok := ec.ArgsMap["TopK"].(float64); ok {
                 topK = int(k)
         }
 
@@ -2117,26 +2132,26 @@ func execSkillLoad(ec *ToolExecContext) (string, TaskStatus) {
 func execTextSearch(ec *ToolExecContext) (string, TaskStatus) {
         keyword, ok := ec.ArgsMap["keyword"].(string)
         if !ok || keyword == "" {
-                return "Error: Empty keyword in text_search tool call", TaskStatusFailed
+                return "Error: Empty keyword in TextSearch tool call", TaskStatusFailed
         }
 
         opts := TextSearchOptions{}
-        if rootDir, ok := ec.ArgsMap["root_dir"].(string); ok && rootDir != "" {
+        if rootDir, ok := ec.ArgsMap["RootDir"].(string); ok && rootDir != "" {
                 opts.RootDir = rootDir
         }
-        if filePattern, ok := ec.ArgsMap["file_pattern"].(string); ok {
+        if filePattern, ok := ec.ArgsMap["FilePattern"].(string); ok {
                 opts.FilePattern = filePattern
         }
-        if ignoreCase, ok := ec.ArgsMap["ignore_case"].(bool); ok {
+        if ignoreCase, ok := ec.ArgsMap["IgnoreCase"].(bool); ok {
                 opts.IgnoreCase = ignoreCase
         }
-        if useRegex, ok := ec.ArgsMap["use_regex"].(bool); ok {
+        if useRegex, ok := ec.ArgsMap["UseRegex"].(bool); ok {
                 opts.UseRegex = useRegex
         }
-        if maxDepth, ok := ec.ArgsMap["max_depth"].(float64); ok {
+        if maxDepth, ok := ec.ArgsMap["MaxDepth"].(float64); ok {
                 opts.MaxDepth = int(maxDepth)
         }
-        if maxResults, ok := ec.ArgsMap["max_results"].(float64); ok {
+        if maxResults, ok := ec.ArgsMap["MaxResults"].(float64); ok {
                 opts.MaxResults = int(maxResults)
         }
 
@@ -2157,24 +2172,36 @@ func execTextSearch(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execTextReplace(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTextReplace(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTextReplace(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execTextGrep(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTextSearch(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTextSearch(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execTextTransform(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTextTransform(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTextTransform(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 // --- Plugin tool handlers ---
 
 func execPluginCreate(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginCreate(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginCreate(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2212,12 +2239,18 @@ func execPluginCall(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execPluginCompile(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginCompile(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginCompile(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginDelete(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginDelete(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginDelete(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2234,17 +2267,26 @@ func execPluginDetail(ec *ToolExecContext) (string, TaskStatus) {
 // --- Shell delayed tool handlers ---
 
 func execShellDelayed(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleDelayedExec(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleDelayedExec(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execShellDelayedCheck(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTaskCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTaskCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execShellDelayedTerminate(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTaskTerminate(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTaskTerminate(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2254,16 +2296,23 @@ func execShellDelayedList(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execShellDelayedWait(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTaskWait(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTaskWait(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execShellDelayedRemove(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTaskRemove(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTaskRemove(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+        	return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 // --- Spawn tool handlers ---
+// handleSpawn* 使用 (string, error) 但 error 永遠為 nil（錯誤以 content 返回）
 
 func execSpawn(ec *ToolExecContext) (string, TaskStatus) {
         content, _ := handleSpawn(ec.Ctx, ec.ArgsMap, ec.Ch)
@@ -2311,33 +2360,245 @@ func execSchemeEval(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
-        command, ok := ec.ArgsMap["command"].(string)
-        if !ok || command == "" {
-                return "Error: Invalid or empty command", TaskStatusFailed
+        action, ok := ec.ArgsMap["action"].(string)
+        if !ok || action == "" {
+                return "Error: 必须指定 action 参数", TaskStatusFailed
         }
 
-        // 构建完整的 opencli 命令
-        fullCommand := "opencli " + command
-        result := runShellWithTimeout(ec.Ctx, fullCommand, false, false)
+        var opencliCmd string
+
+        switch action {
+        // === 数据获取 ===
+        case "WebRead":
+                url, _ := ec.ArgsMap["url"].(string)
+                if url == "" {
+                        return "Error: WebRead 需要 url 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli web read --url " + url
+                if v, _ := ec.ArgsMap["DownloadImages"].(bool); !v {
+                        opencliCmd += " --download-images false"
+                }
+                if v, ok := ec.ArgsMap["wait"].(float64); ok && v > 0 {
+                        opencliCmd += fmt.Sprintf(" --wait %.0f", v)
+                }
+                if v, _ := ec.ArgsMap["output"].(string); v != "" {
+                        opencliCmd += " --output " + v
+                }
+
+        case "Adapter":
+                site, _ := ec.ArgsMap["site"].(string)
+                cmd, _ := ec.ArgsMap["command"].(string)
+                if site == "" || cmd == "" {
+                        return "Error: Adapter 需要 site 和 command 参数", TaskStatusFailed
+                }
+                args, _ := ec.ArgsMap["args"].(string)
+                opencliCmd = "opencli " + site + " " + cmd
+                if args != "" {
+                        opencliCmd += " " + args
+                }
+
+        case "List":
+                format, _ := ec.ArgsMap["format"].(string)
+                if format != "" {
+                        opencliCmd = "opencli list --format " + format
+                } else {
+                        opencliCmd = "opencli list"
+                }
+
+        // === 适配器开发 ===
+        case "Explore":
+                url, _ := ec.ArgsMap["url"].(string)
+                if url == "" {
+                        return "Error: Explore 需要 url 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli explore " + url
+                if v, _ := ec.ArgsMap["goal"].(string); v != "" {
+                        opencliCmd += " --goal " + v
+                }
+                if v, _ := ec.ArgsMap["AutoFuzz"].(bool); v {
+                        opencliCmd += " --auto"
+                }
+
+        case "Synthesize":
+                site, _ := ec.ArgsMap["site"].(string)
+                if site == "" {
+                        return "Error: Synthesize 需要 site 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli synthesize " + site
+                if v, ok := ec.ArgsMap["top"].(float64); ok && v > 0 {
+                        opencliCmd += fmt.Sprintf(" --top %.0f", v)
+                }
+
+        case "Generate":
+                url, _ := ec.ArgsMap["url"].(string)
+                if url == "" {
+                        return "Error: Generate 需要 url 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli generate " + url
+                if v, _ := ec.ArgsMap["SiteName"].(string); v != "" {
+                        opencliCmd += " --site " + v
+                }
+                if v, _ := ec.ArgsMap["goal"].(string); v != "" {
+                        opencliCmd += " --goal " + v
+                }
+
+        case "Validate":
+                target, _ := ec.ArgsMap["target"].(string)
+                if target != "" {
+                        opencliCmd = "opencli validate " + target
+                } else {
+                        opencliCmd = "opencli validate"
+                }
+
+        case "Verify":
+                target, _ := ec.ArgsMap["target"].(string)
+                if target != "" {
+                        opencliCmd = "opencli verify " + target
+                } else {
+                        opencliCmd = "opencli verify"
+                }
+                if v, _ := ec.ArgsMap["smoke"].(bool); v {
+                        opencliCmd += " --smoke"
+                }
+
+        case "Record":
+                url, _ := ec.ArgsMap["url"].(string)
+                if url == "" {
+                        return "Error: Record 需要 url 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli record " + url
+                if v, _ := ec.ArgsMap["site"].(string); v != "" {
+                        opencliCmd += " --site " + v
+                }
+                if v, _ := ec.ArgsMap["output"].(string); v != "" {
+                        opencliCmd += " --out " + v
+                }
+                if v, ok := ec.ArgsMap["poll"].(float64); ok && v > 0 {
+                        opencliCmd += fmt.Sprintf(" --poll %.0f", v)
+                }
+                if v, ok := ec.ArgsMap["timeout"].(float64); ok && v > 0 {
+                        opencliCmd += fmt.Sprintf(" --timeout %.0f", v)
+                }
+
+        case "Cascade":
+                url, _ := ec.ArgsMap["url"].(string)
+                if url == "" {
+                        return "Error: Cascade 需要 url 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli cascade " + url
+                if v, _ := ec.ArgsMap["site"].(string); v != "" {
+                        opencliCmd += " --site " + v
+                }
+
+        // === 管理 ===
+        case "AdapterStatus":
+                opencliCmd = "opencli adapter status"
+
+        case "AdapterEject":
+                site, _ := ec.ArgsMap["site"].(string)
+                if site == "" {
+                        return "Error: AdapterEject 需要 site 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli adapter eject " + site
+
+        case "AdapterReset":
+                if v, _ := ec.ArgsMap["all"].(bool); v {
+                        opencliCmd = "opencli adapter reset --all"
+                } else if site, _ := ec.ArgsMap["site"].(string); site != "" {
+                        opencliCmd = "opencli adapter reset " + site
+                } else {
+                        return "Error: AdapterReset 需要 site 或 all=true 参数", TaskStatusFailed
+                }
+
+        case "Register":
+                name, _ := ec.ArgsMap["name"].(string)
+                if name == "" {
+                        return "Error: Register 需要 name 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli register " + name
+                if v, _ := ec.ArgsMap["binary"].(string); v != "" {
+                        opencliCmd += " --binary " + v
+                }
+                if v, _ := ec.ArgsMap["InstallCmd"].(string); v != "" {
+                        opencliCmd += " --install " + v
+                }
+                if v, _ := ec.ArgsMap["desc"].(string); v != "" {
+                        opencliCmd += " --desc " + v
+                }
+
+        case "Install":
+                name, _ := ec.ArgsMap["name"].(string)
+                if name == "" {
+                        return "Error: Install 需要 name 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli install " + name
+
+        case "PluginList":
+                format, _ := ec.ArgsMap["format"].(string)
+                if format != "" {
+                        opencliCmd = "opencli plugin list --format " + format
+                } else {
+                        opencliCmd = "opencli plugin list"
+                }
+
+        case "PluginInstall":
+                source, _ := ec.ArgsMap["source"].(string)
+                if source == "" {
+                        return "Error: PluginInstall 需要 source 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli plugin install " + source
+
+        case "PluginUninstall":
+                name, _ := ec.ArgsMap["name"].(string)
+                if name == "" {
+                        return "Error: PluginUninstall 需要 name 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli plugin uninstall " + name
+
+        case "PluginUpdate":
+                if v, _ := ec.ArgsMap["all"].(bool); v {
+                        opencliCmd = "opencli plugin update"
+                } else if name, _ := ec.ArgsMap["name"].(string); name != "" {
+                        opencliCmd = "opencli plugin update " + name
+                } else {
+                        opencliCmd = "opencli plugin update"
+                }
+
+        case "PluginCreate":
+                name, _ := ec.ArgsMap["name"].(string)
+                if name == "" {
+                        return "Error: PluginCreate 需要 name 参数", TaskStatusFailed
+                }
+                opencliCmd = "opencli plugin create " + name
+
+        case "Doctor":
+                opencliCmd = "opencli doctor"
+
+        case "DaemonStop":
+                opencliCmd = "opencli daemon stop"
+
+        default:
+                return fmt.Sprintf("Error: 未知的 action '%s'。可用：WebRead, Adapter, List, Explore, Synthesize, Generate, Validate, Verify, Record, Cascade, AdapterStatus, AdapterEject, AdapterReset, Register, Install, PluginList, PluginInstall, PluginUninstall, PluginUpdate, PluginCreate, Doctor, DaemonStop", action), TaskStatusFailed
+        }
+
+        // 执行 opencli 命令
+        result := runShellWithTimeout(ec.Ctx, opencliCmd, false, false)
 
         if result.ConfirmRequired {
                 var confirmResult strings.Builder
                 confirmResult.WriteString("⚠️ **确认请求**\n\n")
                 confirmResult.WriteString(result.ConfirmMessage)
                 confirmResult.WriteString("\n\n---\n")
-                confirmResult.WriteString("要强制执行此命令，请使用: `opencli(command=\"...\")`\n")
+                confirmResult.WriteString("要强制执行此命令，请使用 SmartShell 运行原始 opencli 命令。\n")
 
                 content := confirmResult.String()
                 fmt.Println(content)
                 return content, TaskStatusSuccess
         } else if result.Err != nil {
-                // 注意：取消检查由 executeTool 统一处理
                 content := fmt.Sprintf("Error: %v", result.Err)
                 if result.Stderr != "" {
                         content += "\n" + result.Stderr
-                        // 检查是否是未知命令错误
                         if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
-                                // 执行 opencli help 命令获取帮助信息
                                 helpResult := runShellWithTimeout(ec.Ctx, "opencli help", false, false)
                                 if helpResult.Err == nil {
                                         content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
@@ -2350,9 +2611,7 @@ func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
                 content := result.Stdout
                 if result.ExitCode != 0 && result.Stderr != "" {
                         content += "\n" + result.Stderr
-                        // 检查是否是未知命令错误
                         if strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
-                                // 执行 opencli help 命令获取帮助信息
                                 helpResult := runShellWithTimeout(ec.Ctx, "opencli help", false, false)
                                 if helpResult.Err == nil {
                                         content += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
@@ -2373,159 +2632,159 @@ var toolHandlerRegistry map[string]ToolHandler
 func init() {
         toolHandlerRegistry = map[string]ToolHandler{
                 // Menu & planning
-                "menu":        execMenuTool,
-                "next_phase":  execNextPhase,
-                "prev_phase":  execPrevPhase,
+                "Menu":        execMenuTool,
+                "NextPhase":  execNextPhase,
+                "PrevPhase":  execPrevPhase,
 
                 // Shell tools
-                "smart_shell": execSmartShellTool,
-                "shell":       execShellTool,
-                "opencli":     execOpenCLITool,
+                "SmartShell": execSmartShellTool,
+                "Shell":       execShellTool,
+                "Opencli":     execOpenCLITool,
 
                 // SSH tools
-                "ssh_connect": execSSHConnect,
-                "ssh_exec":    execSSHExec,
-                "ssh_list":    execSSHList,
-                "ssh_close":   execSSHClose,
+                "SshConnect": execSSHConnect,
+                "SshExec":    execSSHExec,
+                "SshList":    execSSHList,
+                "SshClose":   execSSHClose,
 
                 // File tools
-                "read_file_line":  execReadFileLine,
-                "write_file_line": execWriteFileLine,
-                "read_all_lines":  execReadAllLines,
-                "write_all_lines": execWriteAllLines,
-                "append_to_file":  execAppendToFile,
-                "write_file_range": execWriteFileRange,
-                "read_file_range":  execReadFileRange,
-                "file_info":       execFileInfo,
+                "ReadFileLine":  execReadFileLine,
+                "WriteFileLine": execWriteFileLine,
+                "ReadAllLines":  execReadAllLines,
+                "WriteAllLines": execWriteAllLines,
+                "AppendToFile":  execAppendToFile,
+                "WriteFileRange": execWriteFileRange,
+                "ReadFileRange":  execReadFileRange,
+                "FileInfo":       execFileInfo,
 
                 // Browser basic tools
-                "browser_search":    execBrowserSearch,
-                "browser_visit":     execBrowserVisit,
-                "browser_download":  execBrowserDownload,
+                "BrowserSearch":    execBrowserSearch,
+                "BrowserVisit":     execBrowserVisit,
+                "BrowserDownload":  execBrowserDownload,
 
                 // Browser enhanced tools
-                "browser_click":            execBrowserClick,
-                "browser_type":             execBrowserType,
-                "browser_scroll":           execBrowserScroll,
-                "browser_wait_element":     execBrowserWaitElement,
-                "browser_extract_links":    execBrowserExtractLinks,
-                "browser_extract_images":   execBrowserExtractImages,
-                "browser_extract_elements": execBrowserExtractElements,
-                "browser_screenshot":       execBrowserScreenshot,
-                "browser_execute_js":       execBrowserExecuteJS,
-                "browser_fill_form":        execBrowserFillForm,
+                "BrowserClick":            execBrowserClick,
+                "BrowserType":             execBrowserType,
+                "BrowserScroll":           execBrowserScroll,
+                "BrowserWaitElement":     execBrowserWaitElement,
+                "BrowserExtractLinks":    execBrowserExtractLinks,
+                "BrowserExtractImages":   execBrowserExtractImages,
+                "BrowserExtractElements": execBrowserExtractElements,
+                "BrowserScreenshot":       execBrowserScreenshot,
+                "BrowserExecuteJs":       execBrowserExecuteJS,
+                "BrowserFillForm":        execBrowserFillForm,
 
                 // Browser advanced tools
-                "browser_hover":              execBrowserHover,
-                "browser_double_click":       execBrowserDoubleClick,
-                "browser_right_click":        execBrowserRightClick,
-                "browser_drag":               execBrowserDrag,
-                "browser_wait_smart":         execBrowserWaitSmart,
-                "browser_navigate":           execBrowserNavigate,
-                "browser_get_cookies":        execBrowserGetCookies,
-                "browser_cookie_save":        execBrowserCookieSave,
-                "browser_cookie_load":        execBrowserCookieLoad,
-                "browser_snapshot":           execBrowserSnapshot,
-                "browser_upload_file":        execBrowserUploadFile,
-                "browser_select_option":      execBrowserSelectOption,
-                "browser_key_press":          execBrowserKeyPress,
-                "browser_element_screenshot": execBrowserElementScreenshot,
-                "browser_pdf":                execBrowserPDF,
-                "browser_pdf_from_file":      execBrowserPDFFromFile,
-                "browser_set_headers":        execBrowserSetHeaders,
-                "browser_set_user_agent":     execBrowserSetUserAgent,
-                "browser_emulate_device":     execBrowserEmulateDevice,
+                "BrowserHover":              execBrowserHover,
+                "BrowserDoubleClick":       execBrowserDoubleClick,
+                "BrowserRightClick":        execBrowserRightClick,
+                "BrowserDrag":               execBrowserDrag,
+                "BrowserWaitSmart":         execBrowserWaitSmart,
+                "BrowserNavigate":           execBrowserNavigate,
+                "BrowserGetCookies":        execBrowserGetCookies,
+                "BrowserCookieSave":        execBrowserCookieSave,
+                "BrowserCookieLoad":        execBrowserCookieLoad,
+                "BrowserSnapshot":           execBrowserSnapshot,
+                "BrowserUploadFile":        execBrowserUploadFile,
+                "BrowserSelectOption":      execBrowserSelectOption,
+                "BrowserKeyPress":          execBrowserKeyPress,
+                "BrowserElementScreenshot": execBrowserElementScreenshot,
+                "BrowserPdf":                execBrowserPDF,
+                "BrowserPdfFromFile":      execBrowserPDFFromFile,
+                "BrowserSetHeaders":        execBrowserSetHeaders,
+                "BrowserSetUserAgent":     execBrowserSetUserAgent,
+                "BrowserEmulateDevice":     execBrowserEmulateDevice,
 
                 // 合併瀏覽器工具（聚合分發，對應 GetConsolidatedBrowserTools）
-                "browser_interact":   execBrowserInteract,
-                "browser_extract":    execBrowserExtract,
-                "browser_form_fill":  execBrowserFormFill,
+                "BrowserInteract":   execBrowserInteract,
+                "BrowserExtract":    execBrowserExtract,
+                "BrowserFormFill":  execBrowserFormFill,
 
                 // Todo tools
-                "todos": execTodos,
+                "Todos": execTodos,
 
                 // Cron tools
-                "cron_add":    execCronAdd,
-                "cron_remove": execCronRemove,
-                "cron_list":   execCronList,
-                "cron_status": execCronStatus,
+                "CronAdd":    execCronAdd,
+                "CronRemove": execCronRemove,
+                "CronList":   execCronList,
+                "CronStatus": execCronStatus,
 
                 // Memory tools
-                "memory_save":   execMemorySave,
-                "memory_recall": execMemoryRecall,
-                "memory_forget": execMemoryForget,
-                "memory_list":   execMemoryList,
+                "MemorySave":   execMemorySave,
+                "MemoryRecall": execMemoryRecall,
+                "MemoryForget": execMemoryForget,
+                "MemoryList":   execMemoryList,
 
                 // Profile tools
-                "profile_check":        execProfileCheck,
-                "actor_identity_set":   execActorIdentitySet,
-                "actor_identity_clear": execActorIdentityClear,
-                "profile_reload":       execProfileReload,
+                "ProfileCheck":        execProfileCheck,
+                "ActorIdentitySet":   execActorIdentitySet,
+                "ActorIdentityClear": execActorIdentityClear,
+                "ProfileReload":       execProfileReload,
 
                 // Skill tools
-                "skill_list":     execSkillList,
-                "skill_create":   execSkillCreate,
-                "skill_delete":   execSkillDelete,
-                "skill_get":      execSkillGet,
-                "skill_reload":   execSkillReload,
-                "skill_update":   execSkillUpdate,
-                "skill_suggest":  execSkillSuggest,
-                "skill_stats":    execSkillStats,
-                "skill_evaluate": execSkillEvaluate,
-                "skill_load":     execSkillLoad,
+                "SkillList":     execSkillList,
+                "SkillCreate":   execSkillCreate,
+                "SkillDelete":   execSkillDelete,
+                "SkillGet":      execSkillGet,
+                "SkillReload":   execSkillReload,
+                "SkillUpdate":   execSkillUpdate,
+                "SkillSuggest":  execSkillSuggest,
+                "SkillStats":    execSkillStats,
+                "SkillEvaluate": execSkillEvaluate,
+                "SkillLoad":     execSkillLoad,
 
                 // Text tools
-                "text_search":    execTextSearch,
-                "text_replace":   execTextReplace,
-                "text_grep":      execTextGrep,
-                "text_transform": execTextTransform,
+                "TextSearch":    execTextSearch,
+                "TextReplace":   execTextReplace,
+                "TextGrep":      execTextGrep,
+                "TextTransform": execTextTransform,
 
                 // Plugin tools
-                "plugin_create":  execPluginCreate,
-                "plugin_list":    execPluginList,
-                "plugin_load":    execPluginLoad,
-                "plugin_unload":  execPluginUnload,
-                "plugin_reload":  execPluginReload,
-                "plugin_call":    execPluginCall,
-                "plugin_compile": execPluginCompile,
-                "plugin_delete":  execPluginDelete,
-                "plugin_apis":    execPluginAPIs,
-                "plugin_detail":  execPluginDetail,
+                "PluginCreate":  execPluginCreate,
+                "PluginList":    execPluginList,
+                "PluginLoad":    execPluginLoad,
+                "PluginUnload":  execPluginUnload,
+                "PluginReload":  execPluginReload,
+                "PluginCall":    execPluginCall,
+                "PluginCompile": execPluginCompile,
+                "PluginDelete":  execPluginDelete,
+                "PluginApis":    execPluginAPIs,
+                "PluginDetail":  execPluginDetail,
 
                 // Shell delayed tools
-                "shell_delayed":          execShellDelayed,
-                "shell_delayed_check":    execShellDelayedCheck,
-                "shell_delayed_terminate": execShellDelayedTerminate,
-                "shell_delayed_list":     execShellDelayedList,
-                "shell_delayed_wait":     execShellDelayedWait,
-                "shell_delayed_remove":   execShellDelayedRemove,
+                "ShellDelayed":          execShellDelayed,
+                "ShellDelayedCheck":    execShellDelayedCheck,
+                "ShellDelayedTerminate": execShellDelayedTerminate,
+                "ShellDelayedList":     execShellDelayedList,
+                "ShellDelayedWait":     execShellDelayedWait,
+                "ShellDelayedRemove":   execShellDelayedRemove,
 
                 // Spawn tools
-                "spawn":         execSpawn,
-                "spawn_check":   execSpawnCheck,
-                "spawn_list":    execSpawnList,
-                "spawn_cancel":  execSpawnCancel,
-                "spawn_batch":   execSpawnBatch,
+                "Spawn":         execSpawn,
+                "SpawnCheck":   execSpawnCheck,
+                "SpawnList":    execSpawnList,
+                "SpawnCancel":  execSpawnCancel,
+                "SpawnBatch":   execSpawnBatch,
 
                 // Other tools
-                "consolidate_memory": execConsolidateMemory,
-                "scheme_eval":        execSchemeEval,
+                "ConsolidateMemory": execConsolidateMemory,
+                "SchemeEval":        execSchemeEval,
 
                 // ── P3: RL 導出工具處理函數 ────────────────────────────
-                "export_sft_data":  execExportSFTData,
-                "export_rl_data":   execExportRLData,
-                "trajectory_stats": execTrajectoryStats,
+                "ExportSftData":  execExportSFTData,
+                "ExportRlData":   execExportRLData,
+                "TrajectoryStats": execTrajectoryStats,
 
                 // ── P4: 憑證池 & Profile 管理工具 ────────────────────────
-                "credential_add":  execCredentialAdd,
-                "credential_list": execCredentialList,
-                "profile_create":  execProfileCreate,
-                "profile_switch":  execProfileSwitch,
-                "profile_list":    execProfileList,
+                "CredentialAdd":  execCredentialAdd,
+                "CredentialList": execCredentialList,
+                "ProfileCreate":  execProfileCreate,
+                "ProfileSwitch":  execProfileSwitch,
+                "ProfileList":    execProfileList,
 
                 // ── 技能演化工具 ──────────────────────────────────────
-                "skill_cleanup_suggest": execSkillCleanupSuggest,
-                "skill_autotag":         execSkillAutoTag,
+                "SkillCleanupSuggest": execSkillCleanupSuggest,
+                "SkillAutotag":         execSkillAutoTag,
         }
 }
 
@@ -2603,7 +2862,7 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
 
 func execExportSFTData(ec *ToolExecContext) (string, TaskStatus) {
         outputPath := "data/trajectories/sft_export.jsonl"
-        if v, ok := ec.ArgsMap["output_path"].(string); ok && v != "" {
+        if v, ok := ec.ArgsMap["OutputPath"].(string); ok && v != "" {
                 outputPath = v
         }
         limit := 0
@@ -2623,7 +2882,7 @@ func execExportSFTData(ec *ToolExecContext) (string, TaskStatus) {
 
 func execExportRLData(ec *ToolExecContext) (string, TaskStatus) {
         outputPath := "data/trajectories/rl_export.jsonl"
-        if v, ok := ec.ArgsMap["output_path"].(string); ok && v != "" {
+        if v, ok := ec.ArgsMap["OutputPath"].(string); ok && v != "" {
                 outputPath = v
         }
         limit := 0
@@ -2648,7 +2907,7 @@ func execTrajectoryStats(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: Trajectory manager not initialized", TaskStatusFailed
         }
         outputPath := "data/trajectories/stats.json"
-        if v, ok := ec.ArgsMap["output_path"].(string); ok && v != "" {
+        if v, ok := ec.ArgsMap["OutputPath"].(string); ok && v != "" {
                 outputPath = v
         }
 
@@ -2719,7 +2978,7 @@ func execProfileCreate(ec *ToolExecContext) (string, TaskStatus) {
                 Name:        name,
                 Description: description,
         }
-        if modelID, ok := ec.ArgsMap["model_id"].(string); ok && modelID != "" {
+        if modelID, ok := ec.ArgsMap["ModelId"].(string); ok && modelID != "" {
                 profile.Model.ModelID = modelID
         }
         if err := globalProfileManager.CreateProfile(profile); err != nil {
@@ -2756,7 +3015,7 @@ func execProfileList(ec *ToolExecContext) (string, TaskStatus) {
                 activeID = ap.ID
         }
         if len(profiles) == 0 {
-                return "No profiles created. Use 'profile_create' to create one.", TaskStatusSuccess
+                return "No profiles created. Use 'ProfileCreate' to create one.", TaskStatusSuccess
         }
         var sb strings.Builder
         sb.WriteString(fmt.Sprintf("=== Profiles (%d) ===\n", len(profiles)))

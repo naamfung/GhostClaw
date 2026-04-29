@@ -7,12 +7,13 @@
 	import type { DatabaseMessage } from '$lib/types/database';
 
 	interface Props {
+		open?: boolean;
+		onOpenChange?: (open: boolean) => void;
 		scrollContainer: HTMLDivElement | undefined;
 	};
 
-	let { scrollContainer }: Props = $props();
+	let { open = false, onOpenChange, scrollContainer }: Props = $props();
 
-	let isOpen = $state(false);
 	let activeMessageId = $state<string | null>(null);
 
 	const userMessages = $derived(
@@ -21,20 +22,23 @@
 		)
 	);
 
+	function toggle() {
+		open = !open;
+		onOpenChange?.(open);
+	}
+
 	function scrollToMessage(messageId: string) {
 		const target = document.getElementById(`msg-${messageId}`);
 		if (!target || !scrollContainer) return;
 
 		activeMessageId = messageId;
 
-		// 計算目標相對滾動容器的偏移量
 		const containerRect = scrollContainer.getBoundingClientRect();
 		const targetRect = target.getBoundingClientRect();
 		const offset = targetRect.top - containerRect.top + scrollContainer.scrollTop - 80;
 
 		scrollContainer.scrollTo({ top: offset, behavior: 'smooth' });
 
-		// 短暫高亮效果
 		setTimeout(() => {
 			activeMessageId = null;
 		}, 2000);
@@ -45,31 +49,29 @@
 	}
 </script>
 
-<!-- Toggle button — 固定在右側 -->
-<button
-	class="fixed top-20 z-40 flex h-8 w-6 items-center justify-center rounded-l-md border border-border/40 border-r-0 bg-background/80 text-muted-foreground backdrop-blur-md transition-all hover:bg-accent hover:text-accent-foreground"
-	class:right-0={!isOpen}
-	style:right={isOpen ? 'var(--nav-width)' : '0'}
-	onclick={() => (isOpen = !isOpen)}
-	aria-label={isOpen ? '收起消息导航' : '展开消息导航'}
-	title={isOpen ? '收起消息导航' : '展开消息导航'}
+<!-- 整個導航欄容器：固定右側，用 translate 控制顯示/隱藏 -->
+<div
+	class="fixed top-0 z-40 flex h-full transition-transform duration-200 ease-linear"
+	style="right: 0; width: var(--nav-width);"
+	class:translate-x-0={open}
+	class:translate-x-full={!open}
 >
-	{#if isOpen}
-		<ChevronRight class="h-3.5 w-3.5" />
-	{:else}
-		<ChevronLeft class="h-3.5 w-3.5" />
-	{/if}
-</button>
-
-<!-- 右側導航面板 -->
-{#if isOpen}
-	<aside
-		class="fixed top-0 right-0 z-30 flex h-full flex-col border-l border-border/30 bg-background/95 shadow-lg backdrop-blur-md transition-all duration-200 ease-linear"
-		style="width: var(--nav-width);"
-		in:fly={{ x: 80, duration: 200 }}
-		out:fly={{ x: 80, duration: 200 }}
+	<!-- 切換按鈕：固定在面板左邊緣外側，跟住面板一齊郁 -->
+	<button
+		class="absolute -left-6 top-20 flex h-8 w-6 items-center justify-center rounded-l-md border border-border/40 border-r-0 bg-background/80 text-muted-foreground backdrop-blur-md hover:bg-accent hover:text-accent-foreground"
+		onclick={toggle}
+		aria-label={open ? '收起消息导航' : '展开消息导航'}
+		title={open ? '收起消息导航' : '展开消息导航'}
 	>
-		<!-- 標題列 -->
+		{#if open}
+			<ChevronRight class="h-3.5 w-3.5" />
+		{:else}
+			<ChevronLeft class="h-3.5 w-3.5" />
+		{/if}
+	</button>
+
+	<!-- 面板內容 -->
+	<aside class="flex h-full w-full flex-col border-l border-border/30 bg-background/95 shadow-lg backdrop-blur-md">
 		<div class="flex items-center justify-between border-b border-border/30 px-4 py-3">
 			<h3 class="text-sm font-semibold">消息导航</h3>
 			<span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -77,7 +79,6 @@
 			</span>
 		</div>
 
-		<!-- 消息列表 -->
 		<ScrollArea class="flex-1">
 			<nav class="flex flex-col py-1">
 				{#if userMessages.length === 0}
@@ -104,4 +105,4 @@
 			</nav>
 		</ScrollArea>
 	</aside>
-{/if}
+</div>

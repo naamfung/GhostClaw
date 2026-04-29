@@ -109,7 +109,7 @@ func parseSkillFile(path string) (*Skill, error) {
                                 if name, ok := skill.Frontmatter["name"].(string); ok && name != "" {
                                         skill.Name = name
                                 }
-                                if displayName, ok := skill.Frontmatter["display_name"].(string); ok && displayName != "" {
+                                if displayName, ok := skill.Frontmatter["DisplayName"].(string); ok && displayName != "" {
                                         skill.DisplayName = displayName
                                 } else if displayName, ok := skill.Frontmatter["displayName"].(string); ok && displayName != "" {
                                         skill.DisplayName = displayName

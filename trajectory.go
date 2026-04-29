@@ -16,7 +16,7 @@ import (
 // Trajectory 对话轨迹
 type Trajectory struct {
         ID            string    `json:"id"`
-        SessionID     string    `json:"session_id"`
+        SessionID     string    `json:"SessionId"`
         Messages      []Message `json:"messages"`
         Success       bool      `json:"success"`
         UserFeedback  int       `json:"user_feedback"`  // 1-5 星评分
@@ -251,7 +251,7 @@ func (tm *TrajectoryManager) trajectoryToSFTSample(traj Trajectory) (SFTSample, 
 
         metadata := map[string]interface{}{
                 "trajectory_id": traj.ID,
-                "session_id":    traj.SessionID,
+                "SessionId":    traj.SessionID,
                 "model_used":    traj.ModelUsed,
                 "duration":      traj.Duration,
                 "message_count": len(traj.Messages),

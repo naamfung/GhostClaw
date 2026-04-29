@@ -88,12 +88,12 @@ func TestGetAllowedToolsList(t *testing.T) {
 		role := &Role{
 			ToolPermission: ToolPermission{
 				Mode:         ToolPermissionAllowlist,
-				AllowedTools: []string{"shell", "read_file_line", "grep"},
+				AllowedTools: []string{"Shell", "ReadFileLine", "grep"},
 			},
 		}
 		got := getAllowedToolsList(role)
-		if got != "shell, read_file_line, grep" {
-			t.Errorf("expected 'shell, read_file_line, grep', got %q", got)
+		if got != "Shell, ReadFileLine, grep" {
+			t.Errorf("expected 'Shell, ReadFileLine, grep', got %q", got)
 		}
 	})
 
@@ -114,11 +114,11 @@ func TestGetAllowedToolsList(t *testing.T) {
 		role := &Role{
 			ToolPermission: ToolPermission{
 				Mode:        ToolPermissionDenylist,
-				DeniedTools: []string{"shell", "browser_visit"},
+				DeniedTools: []string{"Shell", "BrowserVisit"},
 			},
 		}
 		got := getAllowedToolsList(role)
-		if got != "除 shell, browser_visit 以外的工具" {
+		if got != "除 Shell, BrowserVisit 以外的工具" {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -134,7 +134,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "call_123",
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":      "shell",
+				"name":      "Shell",
 				"arguments": `{"command":"ls"}`,
 			},
 		}
@@ -145,7 +145,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 		if got.ID != "call_123" {
 			t.Errorf("ID mismatch: %q", got.ID)
 		}
-		if got.Name != "shell" {
+		if got.Name != "Shell" {
 			t.Errorf("Name mismatch: %q", got.Name)
 		}
 		if got.ArgsJSON != `{"command":"ls"}` {
@@ -157,7 +157,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 		toolUse := map[string]interface{}{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name": "shell",
+				"name": "Shell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -171,7 +171,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "",
 			"type": "function",
 			"function": map[string]interface{}{
-				"name": "shell",
+				"name": "Shell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -185,7 +185,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   42,
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":      "shell",
+				"name":      "Shell",
 				"arguments": `{}`,
 			},
 		}
@@ -203,7 +203,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "call_456",
 			"type": "unknown",
 			"function": map[string]interface{}{
-				"name": "shell",
+				"name": "Shell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -259,7 +259,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 				"id":   "call_1",
 				"type": "function",
 				"function": map[string]interface{}{
-					"name":      "shell",
+					"name":      "Shell",
 					"arguments": `{"command":"ls"}`,
 				},
 			},
@@ -268,7 +268,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 		if len(calls) != 1 {
 			t.Fatalf("expected 1 call, got %d", len(calls))
 		}
-		if calls[0].Name != "shell" {
+		if calls[0].Name != "Shell" {
 			t.Errorf("expected 'shell', got %q", calls[0].Name)
 		}
 	})
@@ -301,7 +301,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 				"id":   "call_valid",
 				"type": "function",
 				"function": map[string]interface{}{
-					"name":      "spawn",
+					"name":      "Spawn",
 					"arguments": `{}`,
 				},
 			},
@@ -310,7 +310,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 		if len(calls) != 1 {
 			t.Fatalf("expected 1 valid call, got %d", len(calls))
 		}
-		if calls[0].Name != "spawn" {
+		if calls[0].Name != "Spawn" {
 			t.Errorf("expected 'spawn', got %q", calls[0].Name)
 		}
 	})
@@ -358,7 +358,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    "toolu_001",
-				"name":  "shell",
+				"name":  "Shell",
 				"input": map[string]interface{}{"command": "ls"},
 			},
 		}
@@ -369,7 +369,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 		if calls[0].ID != "toolu_001" {
 			t.Errorf("ID mismatch: %q", calls[0].ID)
 		}
-		if calls[0].Name != "shell" {
+		if calls[0].Name != "Shell" {
 			t.Errorf("Name mismatch: %q", calls[0].Name)
 		}
 
@@ -425,7 +425,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type": "tool_use",
 				"id":   "toolu_004",
-				"name": "shell",
+				"name": "Shell",
 			},
 		}
 		calls := parseToolCallsFromAnthropic(content)
@@ -439,7 +439,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    12345,
-				"name":  "shell",
+				"name":  "Shell",
 				"input": map[string]interface{}{},
 			},
 		}
@@ -471,7 +471,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    "tu_a",
-				"name":  "shell",
+				"name":  "Shell",
 				"input": map[string]interface{}{"command": "a"},
 			},
 			map[string]interface{}{
@@ -494,13 +494,13 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 
 func TestDetectXMLToolInvocation(t *testing.T) {
 	t.Run("invoke + 已知工具名 → true", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<invoke name="shell">`) {
+		if !detectXMLToolInvocation(`<invoke name="Shell">`) {
 			t.Error("should detect invoke with known tool")
 		}
 	})
 
 	t.Run("invoke + 单引号 → true", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<invoke name='smart_shell'>`) {
+		if !detectXMLToolInvocation(`<invoke name='SmartShell'>`) {
 			t.Error("should detect invoke with single quotes")
 		}
 	})
@@ -512,13 +512,13 @@ func TestDetectXMLToolInvocation(t *testing.T) {
 	})
 
 	t.Run("tool_call + 已知工具名 → true", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<tool_call name="spawn">`) {
+		if !detectXMLToolInvocation(`<tool_call name="Spawn">`) {
 			t.Error("should detect tool_call with known tool")
 		}
 	})
 
 	t.Run("tool_call + 单引号 + 浏览器工具 → true", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<tool_call name='browser_click'>`) {
+		if !detectXMLToolInvocation(`<tool_call name='BrowserClick'>`) {
 			t.Error("should detect tool_call with known browser tool")
 		}
 	})
@@ -571,7 +571,7 @@ func TestDetectXMLToolInvocation(t *testing.T) {
 		for i := range prefix {
 			prefix[i] = 'x'
 		}
-		long := string(prefix) + `<invoke name="shell">`
+		long := string(prefix) + `<invoke name="Shell">`
 		// invoke 部分在第 500 字符之后，应被截断检测不到
 		if detectXMLToolInvocation(long) {
 			t.Error("should NOT detect invoke beyond 500-rune boundary")

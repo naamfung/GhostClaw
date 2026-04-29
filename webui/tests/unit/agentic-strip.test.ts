@@ -124,7 +124,7 @@ describe('parseAgenticContent strips orphaned markers', () => {
                 const input =
                         'Text before.\n' +
                         '<<<AGENTIC_TOOL_CALL_START>>>\n' +
-                        '<<<TOOL_NAME:smart_shell>>>\n' +
+                        '<<<TOOL_NAME:SmartShell>>>\n' +
                         '<<<TOOL_ARGS_START>>>{"command":"ls"}<<<TOOL_ARGS_END>>>\n' +
                         'result output\n' +
                         '<<<AGENTIC_TOOL_CALL_END>>>\n' +
@@ -134,7 +134,7 @@ describe('parseAgenticContent strips orphaned markers', () => {
                 const textSections = sections.filter(s => s.type === 'text');
                 const toolSections = sections.filter(s => s.type === 'tool_call');
                 expect(toolSections.length).toBe(1);
-                expect(toolSections[0].toolName).toBe('smart_shell');
+                expect(toolSections[0].toolName).toBe('SmartShell');
                 expect(textSections.length).toBe(2);
                 expect(textSections[0].content).toContain('Text before');
                 expect(textSections[1].content).toContain('Text after');

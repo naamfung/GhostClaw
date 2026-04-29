@@ -86,13 +86,13 @@ func handleSmartShell(ctx context.Context, argsMap map[string]interface{}, ch Ch
         if wakeAfterMinutes <= 0 {
                 wakeAfterMinutes = 5
         }
-        if waf, ok := argsMap["wake_after_minutes"].(float64); ok && waf > 0 {
+        if waf, ok := argsMap["WakeAfterMinutes"].(float64); ok && waf > 0 {
                 wakeAfterMinutes = int(waf)
         }
 
         // 解析 timeout_secs：異步任務的最大執行時間
         timeoutSecs := 0
-        if ts, ok := argsMap["timeout_secs"]; ok {
+        if ts, ok := argsMap["TimeoutSecs"]; ok {
                 switch v := ts.(type) {
                 case float64:
                         timeoutSecs = int(v)
@@ -130,7 +130,7 @@ func handleSmartShell(ctx context.Context, argsMap map[string]interface{}, ch Ch
 }
 
 // handleSmartShellSync 同步执行命令
-// timeoutSecs: 用戶通過 smart_shell 參數傳入的超時秒數，0 表示使用默認值
+// timeoutSecs: 用戶通過 SmartShell 參數傳入的超時秒數，0 表示使用默認值
 func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnknown bool, timeoutSecs int) (string, bool) {
         timeout := globalToolsConfig.SmartShell.SyncTimeout
         if timeout <= 0 {
@@ -158,7 +158,7 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                         "mode":            "confirm_required",
                         "confirm_message": result.ConfirmMessage,
                         "suggestions":     result.Suggestions,
-                        "message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 smart_shell(command, mode=\"async\") 异步执行。",
+                        "message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 SmartShell(command, mode=\"async\") 异步执行。",
                 }
                 resultTOON, _ := toon.Marshal(response)
                 return string(resultTOON), false
@@ -171,10 +171,10 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                                 "此命令不在已知命令列表中，系统尝试同步执行但超时。\n\n"+
                                 "建议：\n"+
                                 "1. 如果这是一个长时间运行的命令，请使用异步模式：\n"+
-                                "   smart_shell(command, mode=\"async\")\n\n"+
+                                "   SmartShell(command, mode=\"async\")\n\n"+
                                 "2. 如果此命令应该快速完成但卡住了，请检查命令是否正确。", timeout)
                 } else {
-                        message = fmt.Sprintf("⏱️ 命令执行超时（%d秒）。建议使用异步模式：smart_shell(command, mode=\"async\")", timeout)
+                        message = fmt.Sprintf("⏱️ 命令执行超时（%d秒）。建议使用异步模式：SmartShell(command, mode=\"async\")", timeout)
                 }
                 response := map[string]interface{}{
                         "mode":            "timeout",
@@ -230,7 +230,7 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                 "command":    command,
                 "stdout":     stdout,
                 "stderr":     stderr,
-                "exit_code":  result.ExitCode,
+                "ExitCode":  result.ExitCode,
         }
         if stdoutFile != "" {
                 response["stdout_file"] = stdoutFile
@@ -267,12 +267,12 @@ func handleSmartShellAsync(command string, wakeAfterMinutes int, ch Channel, tim
 
         result := map[string]interface{}{
                 "mode":               "async",
-                "task_id":            task.ID,
+                "TaskId":            task.ID,
                 "pid":                task.PID,
                 "status":             "running",
                 "command":            command,
                 "wake_after_minutes": wakeAfterMinutes,
-                "timeout_secs":       timeoutSecs,
+                "TimeoutSecs":       timeoutSecs,
                 "message":            msg,
         }
 
@@ -312,7 +312,7 @@ func handleSmartShellInteractive(command string, suggestion CommandSuggestion, w
 
         result := map[string]interface{}{
                 "mode":               "interactive",
-                "task_id":            task.ID,
+                "TaskId":            task.ID,
                 "pid":                task.PID,
                 "status":             "running",
                 "command":            command,
@@ -339,7 +339,7 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
         }
 
         wakeAfterMinutes := 5
-        if waf, ok := argsMap["wake_after_minutes"].(float64); ok {
+        if waf, ok := argsMap["WakeAfterMinutes"].(float64); ok {
                 wakeAfterMinutes = int(waf)
         }
 
@@ -356,7 +356,7 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
         }
 
         result := map[string]interface{}{
-                "task_id":            task.ID,
+                "TaskId":            task.ID,
                 "pid":                task.PID,
                 "status":             "running",
                 "command":            command,
@@ -365,9 +365,9 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
                         "⏳ **重要提示**：你现在不需要调用 check 工具轮询任务状态。\n"+
                         "系统会在 %d 分钟后主动通知你任务的执行结果。\n\n"+
                         "你可以继续处理其他工作。如需提前检查或终止，可使用：\n"+
-                        "• shell_delayed_check - 检查任务状态（不建议频繁调用）\n"+
-                        "• shell_delayed_wait - 延长等待时间\n"+
-                        "• shell_delayed_terminate - 终止任务", task.PID, wakeAfterMinutes, wakeAfterMinutes),
+                        "• ShellDelayed_check - 检查任务状态（不建议频繁调用）\n"+
+                        "• ShellDelayed_wait - 延长等待时间\n"+
+                        "• ShellDelayed_terminate - 终止任务", task.PID, wakeAfterMinutes, wakeAfterMinutes),
         }
 
         resultTOON, _ := toon.Marshal(result)
@@ -379,9 +379,9 @@ func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Cha
                 return "Error: task manager not initialized", false
         }
 
-        taskID, ok := argsMap["task_id"].(string)
+        taskID, ok := argsMap["TaskId"].(string)
         if !ok || taskID == "" {
-                return "Error: missing or invalid 'task_id' parameter", false
+                return "Error: missing or invalid 'TaskId' parameter", false
         }
 
         info, err := globalTaskManager.GetTaskInfo(taskID)
@@ -396,10 +396,10 @@ func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Cha
                 runtimeMinutes := info["runtime_minutes"].(float64)
                 message = fmt.Sprintf("\n\n⏳ 任务仍在运行中（已运行 %.1f 分钟）。\n\n"+
                         "📋 可选操作：\n"+
-                        "• 如需继续等待：调用 shell_delayed_wait 工具设置等待时间，**然后停止检查，等待系统通知**\n"+
-                        "• 如需终止任务：使用 shell_delayed_terminate 工具\n\n"+
+                        "• 如需继续等待：调用 ShellDelayed_wait 工具设置等待时间，**然后停止检查，等待系统通知**\n"+
+                        "• 如需终止任务：使用 ShellDelayed_terminate 工具\n\n"+
                         "⚠️ **注意**：调用 wait 工具后，不要继续调用 check 工具轮询，系统会在唤醒时间主动通知你。", runtimeMinutes)
-        case "completed":
+        case "Completed":
                 message = "\n\n✅ 任务已完成！退出码为 0。"
         case "failed":
                 message = "\n\n❌ 任务执行失败。请检查 stderr 了解错误详情。"
@@ -418,9 +418,9 @@ func handleTaskTerminate(ctx context.Context, argsMap map[string]interface{}, ch
                 return "Error: task manager not initialized", false
         }
 
-        taskID, ok := argsMap["task_id"].(string)
+        taskID, ok := argsMap["TaskId"].(string)
         if !ok || taskID == "" {
-                return "Error: missing or invalid 'task_id' parameter", false
+                return "Error: missing or invalid 'TaskId' parameter", false
         }
 
         force := false
@@ -439,7 +439,7 @@ func handleTaskTerminate(ctx context.Context, argsMap map[string]interface{}, ch
         }
 
         result := map[string]interface{}{
-                "task_id":   taskID,
+                "TaskId":   taskID,
                 "status":    "terminated",
                 "method":    forceStr,
                 "timestamp": time.Now().Format(time.RFC3339),
@@ -461,12 +461,12 @@ func handleTaskList(ctx context.Context, argsMap map[string]interface{}, ch Chan
         }
 
         type taskSummary struct {
-                ID          string    `toon:"task_id"`
+                ID          string    `toon:"TaskId"`
                 Command     string    `toon:"command"`
                 Status      string    `toon:"status"`
                 PID         int       `toon:"pid"`
-                StartTime   time.Time `toon:"start_time"`
-                RuntimeMin  float64   `toon:"runtime_minutes"`
+                StartTime   time.Time `toon:"StartTime"`
+                RuntimeMin  float64   `toon:"RuntimeMinutes"`
                 Description string    `toon:"description,omitempty"`
         }
 
@@ -497,13 +497,13 @@ func handleTaskWait(ctx context.Context, argsMap map[string]interface{}, ch Chan
                 return "Error: task manager not initialized", false
         }
 
-        taskID, ok := argsMap["task_id"].(string)
+        taskID, ok := argsMap["TaskId"].(string)
         if !ok || taskID == "" {
-                return "Error: missing or invalid 'task_id' parameter", false
+                return "Error: missing or invalid 'TaskId' parameter", false
         }
 
         waitMinutes := 5
-        if wm, ok := argsMap["wait_minutes"].(float64); ok {
+        if wm, ok := argsMap["WaitMinutes"].(float64); ok {
                 waitMinutes = int(wm)
         }
 
@@ -515,9 +515,9 @@ func handleTaskWait(ctx context.Context, argsMap map[string]interface{}, ch Chan
         nextWakeTime := time.Now().Add(time.Duration(waitMinutes) * time.Minute)
 
         result := map[string]interface{}{
-                "task_id":         taskID,
-                "status":          "waiting",
-                "wait_minutes":    waitMinutes,
+                "TaskId":         taskID,
+                "status":          "Waiting",
+                "WaitMinutes":    waitMinutes,
                 "next_wake_after": nextWakeTime.Format(time.RFC3339),
                 "message": fmt.Sprintf("✅ 已设置 %d 分钟后唤醒（预计时间: %s）。\n\n"+
                         "⏳ **重要提示**：你现在不需要再调用任何任务相关工具（check/wait）。\n"+
@@ -534,9 +534,9 @@ func handleTaskRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
                 return "Error: task manager not initialized", false
         }
 
-        taskID, ok := argsMap["task_id"].(string)
+        taskID, ok := argsMap["TaskId"].(string)
         if !ok || taskID == "" {
-                return "Error: missing or invalid 'task_id' parameter", false
+                return "Error: missing or invalid 'TaskId' parameter", false
         }
 
         err := globalTaskManager.RemoveTask(taskID)

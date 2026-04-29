@@ -5,7 +5,11 @@
         import { useSidebar } from '$lib/components/ui/sidebar';
         import { serverStore, needsSetup } from '$lib/stores/server.svelte';
         import { SETTINGS_SECTION_TITLES } from '$lib/constants';
-        import { onMount } from 'svelte';
+        interface Props {
+                navOpen?: boolean;
+        }
+
+        let { navOpen = false }: Props = $props();
 
         const sidebar = useSidebar();
 
@@ -40,6 +44,7 @@
         class="pointer-events-none fixed top-0 right-0 left-0 z-50 flex items-center justify-end p-2 duration-200 ease-linear md:p-4 {sidebar.open
                 ? 'md:left-[var(--sidebar-width)]'
                 : ''}"
+        style:right={navOpen ? 'var(--nav-width)' : '0'}
 >
         <div class="pointer-events-auto flex items-center space-x-2">
                 <Button

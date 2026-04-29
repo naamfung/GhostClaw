@@ -15,35 +15,35 @@ import (
 type TextReplaceOptions struct {
         // 基本参数
         Text         string `json:"text"`           // 输入文本（优先使用）
-        FilePath     string `json:"file_path"`      // 文件路径（可选，与 Text 二选一）
+        FilePath     string `json:"FilePath"`      // 文件路径（可选，与 Text 二选一）
         Pattern      string `json:"pattern"`        // 搜索模式（字符串或正则表达式）
         Replacement  string `json:"replacement"`    // 替换文本（为空则删除匹配）
         OutputToFile string `json:"output_to_file"` // 输出到文件（可选，默认返回字符串）
 
         // 模式选项
-        UseRegex     bool `json:"use_regex"`      // 使用正则表达式（默认 false，简单字符串匹配）
-        IgnoreCase   bool `json:"ignore_case"`    // 忽略大小写（默认 false）
+        UseRegex     bool `json:"UseRegex"`      // 使用正则表达式（默认 false，简单字符串匹配）
+        IgnoreCase   bool `json:"IgnoreCase"`    // 忽略大小写（默认 false）
         Global       bool `json:"global"`         // 全局替换（默认 true，替换所有匹配）
         Multiline    bool `json:"multiline"`      // 多行模式（默认 true）
 
         // 行范围限制
-        StartLine    int `json:"start_line"`    // 起始行号（1-based，0 表示从头开始）
-        EndLine      int `json:"end_line"`      // 结束行号（0 表示到末尾）
-        LinePattern  string `json:"line_pattern"`  // 只处理匹配此模式的行
-        ExcludePattern string `json:"exclude_pattern"` // 排除匹配此模式的行
+        StartLine    int `json:"StartLine"`    // 起始行号（1-based，0 表示从头开始）
+        EndLine      int `json:"EndLine"`      // 结束行号（0 表示到末尾）
+        LinePattern  string `json:"LinePattern"`  // 只处理匹配此模式的行
+        ExcludePattern string `json:"ExcludePattern"` // 排除匹配此模式的行
 
         // 操作类型
         Operation string `json:"operation"` // 操作类型：replace（替换）, delete（删除行）, print（打印匹配行）, count（计数）
 
         // 输出选项
-        ShowLineNumbers bool `json:"show_line_numbers"` // 显示行号
+        ShowLineNumbers bool `json:"ShowLineNumbers"` // 显示行号
         ShowChangesOnly bool `json:"show_changes_only"` // 只显示修改的行
-        InPlace         bool `json:"in_place"`          // 原地修改文件（仅对文件有效）
+        InPlace         bool `json:"InPlace"`          // 原地修改文件（仅对文件有效）
         Backup          bool `json:"backup"`            // 修改前备份文件（仅对 in_place 有效）
 
         // 高级选项
-        MaxReplacements int `json:"max_replacements"` // 每行最大替换次数（0 表示无限制）
-        DryRun          bool `json:"dry_run"`          // 模拟运行，不实际修改
+        MaxReplacements int `json:"MaxReplacements"` // 每行最大替换次数（0 表示无限制）
+        DryRun          bool `json:"DryRun"`          // 模拟运行，不实际修改
 }
 
 // TextReplaceResult 文本替换结果
@@ -64,13 +64,13 @@ func handleTextReplace(ctx context.Context, argsMap map[string]interface{}, ch C
 
         // 验证参数
         if opts.Text == "" && opts.FilePath == "" {
-                return "Error: 必须提供 'text' 或 'file_path' 参数", false
+                return "Error: 必须提供 'text' 或 'FilePath' 参数", false
         }
         if opts.Pattern == "" && opts.Operation != "print" && opts.Operation != "count" {
                 return "Error: 必须提供 'pattern' 参数", false
         }
         if opts.FilePath != "" && opts.InPlace && opts.OutputToFile != "" {
-                return "Error: 'in_place' 和 'output_to_file' 不能同时使用", false
+                return "Error: 'InPlace' 和 'output_to_file' 不能同时使用", false
         }
 
         // 执行操作
@@ -123,7 +123,7 @@ func parseTextReplaceOptions(argsMap map[string]interface{}) TextReplaceOptions 
         if v, ok := argsMap["text"].(string); ok {
                 opts.Text = v
         }
-        if v, ok := argsMap["file_path"].(string); ok {
+        if v, ok := argsMap["FilePath"].(string); ok {
                 opts.FilePath = v
         }
         if v, ok := argsMap["pattern"].(string); ok {
@@ -135,10 +135,10 @@ func parseTextReplaceOptions(argsMap map[string]interface{}) TextReplaceOptions 
         if v, ok := argsMap["output_to_file"].(string); ok {
                 opts.OutputToFile = v
         }
-        if v, ok := argsMap["use_regex"].(bool); ok {
+        if v, ok := argsMap["UseRegex"].(bool); ok {
                 opts.UseRegex = v
         }
-        if v, ok := argsMap["ignore_case"].(bool); ok {
+        if v, ok := argsMap["IgnoreCase"].(bool); ok {
                 opts.IgnoreCase = v
         }
         if v, ok := argsMap["global"].(bool); ok {
@@ -147,37 +147,37 @@ func parseTextReplaceOptions(argsMap map[string]interface{}) TextReplaceOptions 
         if v, ok := argsMap["multiline"].(bool); ok {
                 opts.Multiline = v
         }
-        if v, ok := argsMap["start_line"].(float64); ok {
+        if v, ok := argsMap["StartLine"].(float64); ok {
                 opts.StartLine = int(v)
         }
-        if v, ok := argsMap["end_line"].(float64); ok {
+        if v, ok := argsMap["EndLine"].(float64); ok {
                 opts.EndLine = int(v)
         }
-        if v, ok := argsMap["line_pattern"].(string); ok {
+        if v, ok := argsMap["LinePattern"].(string); ok {
                 opts.LinePattern = v
         }
-        if v, ok := argsMap["exclude_pattern"].(string); ok {
+        if v, ok := argsMap["ExcludePattern"].(string); ok {
                 opts.ExcludePattern = v
         }
         if v, ok := argsMap["operation"].(string); ok {
                 opts.Operation = v
         }
-        if v, ok := argsMap["show_line_numbers"].(bool); ok {
+        if v, ok := argsMap["ShowLineNumbers"].(bool); ok {
                 opts.ShowLineNumbers = v
         }
         if v, ok := argsMap["show_changes_only"].(bool); ok {
                 opts.ShowChangesOnly = v
         }
-        if v, ok := argsMap["in_place"].(bool); ok {
+        if v, ok := argsMap["InPlace"].(bool); ok {
                 opts.InPlace = v
         }
         if v, ok := argsMap["backup"].(bool); ok {
                 opts.Backup = v
         }
-        if v, ok := argsMap["max_replacements"].(float64); ok {
+        if v, ok := argsMap["MaxReplacements"].(float64); ok {
                 opts.MaxReplacements = int(v)
         }
-        if v, ok := argsMap["dry_run"].(bool); ok {
+        if v, ok := argsMap["DryRun"].(bool); ok {
                 opts.DryRun = v
         }
 
@@ -524,22 +524,22 @@ func copyFile(src, dst string) error {
 
 // handleTextSearch 处理文本搜索（在文件中搜索）
 func handleTextSearch(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
-        filePath, _ := argsMap["file_path"].(string)
+        filePath, _ := argsMap["FilePath"].(string)
         pattern, _ := argsMap["pattern"].(string)
-        useRegex, _ := argsMap["use_regex"].(bool)
-        ignoreCase, _ := argsMap["ignore_case"].(bool)
-        showLineNumbers, _ := argsMap["show_line_numbers"].(bool)
+        useRegex, _ := argsMap["UseRegex"].(bool)
+        ignoreCase, _ := argsMap["IgnoreCase"].(bool)
+        showLineNumbers, _ := argsMap["ShowLineNumbers"].(bool)
         contextLines := 0
-        if v, ok := argsMap["context_lines"].(float64); ok {
+        if v, ok := argsMap["ContextLines"].(float64); ok {
                 contextLines = int(v)
         }
         maxResults := 100
-        if v, ok := argsMap["max_results"].(float64); ok {
+        if v, ok := argsMap["MaxResults"].(float64); ok {
                 maxResults = int(v)
         }
 
         if filePath == "" {
-                return "Error: 必须提供 'file_path' 参数", false
+                return "Error: 必须提供 'FilePath' 参数", false
         }
         if pattern == "" {
                 return "Error: 必须提供 'pattern' 参数", false
@@ -627,19 +627,19 @@ func handleTextSearch(ctx context.Context, argsMap map[string]interface{}, ch Ch
 // handleTextTransform 处理文本转换（大小写转换、行操作等）
 func handleTextTransform(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         text, _ := argsMap["text"].(string)
-        filePath, _ := argsMap["file_path"].(string)
+        filePath, _ := argsMap["FilePath"].(string)
         transform, _ := argsMap["transform"].(string) // uppercase, lowercase, trim, sort, unique, reverse, number_lines
         startLine := 0
-        if v, ok := argsMap["start_line"].(float64); ok {
+        if v, ok := argsMap["StartLine"].(float64); ok {
                 startLine = int(v)
         }
         endLine := 0
-        if v, ok := argsMap["end_line"].(float64); ok {
+        if v, ok := argsMap["EndLine"].(float64); ok {
                 endLine = int(v)
         }
 
         if text == "" && filePath == "" {
-                return "Error: 必须提供 'text' 或 'file_path' 参数", false
+                return "Error: 必须提供 'text' 或 'FilePath' 参数", false
         }
 
         var input string
@@ -708,14 +708,14 @@ func handleTextTransform(ctx context.Context, argsMap map[string]interface{}, ch
                 for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
                         lines[i], lines[j] = lines[j], lines[i]
                 }
-        case "number_lines", "nl":
+        case "NumberLines", "nl":
                 // 添加行号
                 numbered := make([]string, len(lines))
                 for i, line := range lines {
                         numbered[i] = fmt.Sprintf("%6d\t%s", i+1, line)
                 }
                 lines = numbered
-        case "remove_empty", "remove_blank":
+        case "RemoveEmpty", "remove_blank":
                 // 移除空行
                 nonEmpty := make([]string, 0)
                 for _, line := range lines {
