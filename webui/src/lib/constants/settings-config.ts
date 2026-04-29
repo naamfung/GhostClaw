@@ -6,6 +6,7 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         // Do not use nested objects, keep it single level. Prefix the key if you need to group them.
         theme: ColorMode.SYSTEM,
         defaultRole: '',
+        defaultLanguage: '',
         showThoughtInProgress: false,
         showMessageStats: true,
         disableAutoScroll: false,
@@ -46,6 +47,8 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
                 'Choose the color theme for the interface. You can choose between System (follows your device settings), Light, or Dark.',
         defaultRole:
                 '设置 AI 的默认角色。留空则使用后端默认角色。',
+        defaultLanguage:
+                '约束 AI 的输出语言。使用自然语言描述，如「简体中文」「广东简体粤语」「English」。留空则不限制。',
         temperature:
                 'Controls the randomness of the generated text by affecting the probability distribution of the output tokens. Higher = more random, lower = more focused.',
         max_tokens: 'The maximum number of token per output. Use -1 for infinite (no limit).',

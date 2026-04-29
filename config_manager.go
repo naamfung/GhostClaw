@@ -546,6 +546,15 @@ func (cm *ConfigManager) UpdateDefaultRole(role string) error {
         return cm.saveLocked()
 }
 
+// UpdateDefaultLanguage 更新默認輸出語言，保存
+func (cm *ConfigManager) UpdateDefaultLanguage(lang string) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        cm.config.DefaultLanguage = lang
+        return cm.saveLocked()
+}
+
 // UpdateTimeout 更新超时配置，保存
 func (cm *ConfigManager) UpdateTimeout(timeout TimeoutConfig) error {
         cm.mu.Lock()

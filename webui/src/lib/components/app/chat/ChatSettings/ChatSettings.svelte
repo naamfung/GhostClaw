@@ -89,6 +89,11 @@
                                         key: SETTINGS_KEYS.DEFAULT_ROLE,
                                         label: '默认角色',
                                         type: SettingsFieldType.TEXTAREA
+                                },
+                                {
+                                        key: SETTINGS_KEYS.DEFAULT_LANGUAGE,
+                                        label: '输出语言',
+                                        type: SettingsFieldType.INPUT
                                 }
                         ]
                 },
@@ -343,6 +348,11 @@
                         // Default role
                         if (processedConfig.defaultRole !== undefined) {
                                 backendConfig.defaultRole = processedConfig.defaultRole;
+                        }
+
+                        // Default language
+                        if (processedConfig.defaultLanguage !== undefined) {
+                                backendConfig.DefaultLanguage = processedConfig.defaultLanguage;
                         }
 
                         // Browser configuration

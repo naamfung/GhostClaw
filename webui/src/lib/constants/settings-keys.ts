@@ -8,6 +8,7 @@ export const SETTINGS_KEYS = {
         // General
         THEME: 'theme',
         DEFAULT_ROLE: 'defaultRole',
+        DEFAULT_LANGUAGE: 'defaultLanguage',
         // Display
         SHOW_MESSAGE_STATS: 'showMessageStats',
         SHOW_THOUGHT_IN_PROGRESS: 'showThoughtInProgress',

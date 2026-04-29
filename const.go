@@ -89,6 +89,13 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 prompt.WriteString("- 如果新消息是一个完全独立的新任务，开始处理新任务，不要继续历史中已完成的旧任务\n")
                 prompt.WriteString(fmt.Sprintf("- 消息中带有 `%s` 标记的是当前应优先处理的目标\n\n", LatestRequestMarker))
 
+                // 0a3. 語言設定
+                if lang := globalConfig.DefaultLanguage; lang != "" {
+                        prompt.WriteString("## 輸出語言\n\n")
+                        prompt.WriteString(fmt.Sprintf("你必須始終使用 **%s** 來回覆用戶。", lang))
+                        prompt.WriteString("包括所有思考過程、工具調用結果和對話內容，都必須嚴格遵守此語言要求。\n\n")
+                }
+
                 // 0b. 关于雇主
                 if profile.User != "" {
                         prompt.WriteString("# 关于雇主\n\n")

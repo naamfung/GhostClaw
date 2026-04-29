@@ -230,6 +230,7 @@ type Config struct {
         DataDir             string                  `toon:"DataDir" json:"DataDir,omitempty"`
         CronConfig          CronConfig              `toon:"CronConfig" json:"CronConfig"`
         DefaultRole         string                  `toon:"DefaultRole" json:"DefaultRole"`
+        DefaultLanguage     string                  `toon:"DefaultLanguage,omitempty" json:"DefaultLanguage,omitempty"` // 輸出語言（自然語言描述），如「广东简体粤语」「台湾繁体中文」「English」
         Timeout             TimeoutConfig           `toon:"Timeout" json:"Timeout"`
         Security            SecurityConfig          `toon:"Security" json:"Security"`
         Heartbeat           HeartbeatConfig         `toon:"Heartbeat" json:"Heartbeat"`

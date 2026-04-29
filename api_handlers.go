@@ -120,12 +120,13 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
 
         // 解析请求
         var newConfig struct {
-                APIConfig       APIConfig         `json:"APIConfig"`
-                DefaultRole     string            `json:"DefaultRole"`
-                Timeout         TimeoutConfig     `json:"Timeout"`
-                BrowserConfig   *BrowserConfig    `json:"BrowserConfig"`
-                Security        *SecurityConfig   `json:"Security"`
-                Tools           *ToolsConfig      `json:"Tools"`
+                APIConfig        APIConfig         `json:"APIConfig"`
+                DefaultRole      string            `json:"DefaultRole"`
+                DefaultLanguage  string            `json:"DefaultLanguage"`
+                Timeout          TimeoutConfig     `json:"Timeout"`
+                BrowserConfig    *BrowserConfig    `json:"BrowserConfig"`
+                Security         *SecurityConfig   `json:"Security"`
+                Tools            *ToolsConfig      `json:"Tools"`
         }
         if err := json.Unmarshal(body, &newConfig); err != nil {
                 http.Error(w, `{"error": "解析 JSON 失败"}`, http.StatusBadRequest)
@@ -165,6 +166,13 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 }
                 if globalStage != nil {
                         globalStage.SetUpdateSystemPrompt()
+                }
+        }
+
+        // 更新輸出語言
+        if _, exists := rawMap["DefaultLanguage"]; exists {
+                if err := globalConfigManager.UpdateDefaultLanguage(newConfig.DefaultLanguage); err != nil {
+                        log.Printf("Warning: failed to update default language: %v", err)
                 }
         }
 
