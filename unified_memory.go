@@ -414,6 +414,28 @@ func (m *UnifiedMemory) GetRecentSessions(limit int) []SessionRecord {
         return records
 }
 
+// GetUserContext 獲取用戶身份上下文（僅事實 + 偏好）。
+// 用於新會話首輪注入，確保模型至少記住用戶姓名等基本資訊，
+// 避免每次 /new 後都問「你叫咩名」。
+// 不包含歷史經驗，防止舊會話的操作上下文洩漏到新會話。
+func (m *UnifiedMemory) GetUserContext() string {
+	var sb strings.Builder
+	facts := m.SearchEntries(MemoryCategoryFact, "", 5)
+	prefs := m.SearchEntries(MemoryCategoryPreference, "", 3)
+
+	if len(facts) > 0 || len(prefs) > 0 {
+		sb.WriteString("## 关于用户的记忆\n\n")
+		for _, f := range facts {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", f.Key, f.Value))
+		}
+		for _, p := range prefs {
+			sb.WriteString(fmt.Sprintf("- 偏好: %s: %s\n", p.Key, p.Value))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
 // GetContextForPrompt 获取提示上下文（用于注入系统提示）
 func (m *UnifiedMemory) GetContextForPrompt(taskDesc string) string {
         var sb strings.Builder

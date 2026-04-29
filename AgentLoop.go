@@ -324,11 +324,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
     // 防止舊會話的記憶上下文洩漏到新會話，導致模型「記住過去的事」。
     session := GetGlobalSession()
     isNewSession := session.ConsumeIsNewSession()
-    if isNewSession {
-        log.Printf("[AgentLoop] New session detected, skipping memory context injection for first turn")
-    }
 
-    if globalUnifiedMemory != nil && !isNewSession {
+    if globalUnifiedMemory != nil {
         // 找到最新的用户消息
         var latestUserMessage string
         var latestUserIdx int = -1
@@ -342,12 +339,20 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
         }
 
-        taskDesc := getCurrentTaskDescriptionFromMessages(messages)
-        if latestUserMessage != "" {
-            taskDesc = latestUserMessage
+        var memoryContext string
+        if isNewSession {
+            // 新會話首輪：僅注入用戶身份資訊（姓名/偏好），不注入歷史經驗
+            // 確保模型至少記住用戶基本資訊，避免每次 /new 後都問「你叫咩名」
+            log.Printf("[AgentLoop] New session detected, injecting user context only (no experiences)")
+            memoryContext = globalUnifiedMemory.GetUserContext()
+        } else {
+            taskDesc := getCurrentTaskDescriptionFromMessages(messages)
+            if latestUserMessage != "" {
+                taskDesc = latestUserMessage
+            }
+            memoryContext = globalUnifiedMemory.GetContextForPrompt(taskDesc)
         }
 
-        memoryContext := globalUnifiedMemory.GetContextForPrompt(taskDesc)
         fencedBlock := BuildMemoryContextBlock(memoryContext)
         if fencedBlock != "" && latestUserIdx > 0 {
             // 插入到最新 user message 之前（紧跟上一条消息之后）
