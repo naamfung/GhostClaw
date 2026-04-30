@@ -174,9 +174,9 @@ func (mc *MemoryConsolidator) Consolidate(ctx context.Context, sessionKey string
         lock = &sync.Mutex{}
         mc.consolidationLocks[sessionKey] = lock
     }
-    mc.mu.Unlock()
-
+    // 持鎖期間先獲取 per-session lock，避免 TOCTOU
     lock.Lock()
+    mc.mu.Unlock()
     defer lock.Unlock()
 
     result, err := mc.callLLMForConsolidation(ctx, messages)
@@ -574,8 +574,12 @@ func (mc *MemoryConsolidator) WriteDailyLog(sessionID string, messages []Message
         defer f.Close()
 
         // YAML 文檔分隔符
-        f.WriteString("\n---\n")
-        f.Write(yamlBytes)
+        if _, err := f.WriteString("\n---\n"); err != nil {
+                return err
+        }
+        if _, err := f.Write(yamlBytes); err != nil {
+                return err
+        }
         return nil
 }
 

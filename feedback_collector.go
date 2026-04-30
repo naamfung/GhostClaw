@@ -303,7 +303,9 @@ func (fc *FeedbackCollector) CollectImplicitFeedback(userMessage string, message
                                 "implicit_score": 0.4,
                         },
                 }
-                _ = fc.SaveFeedback(record)
+                if err := fc.SaveFeedback(record); err != nil {
+                        log.Printf("[FeedbackCollector] Failed to save inferred feedback: %v", err)
+                }
                 return record
         }
 
@@ -353,7 +355,9 @@ func (fc *FeedbackCollector) CollectImplicitFeedback(userMessage string, message
                 },
         }
 
-        _ = fc.SaveFeedback(record)
+        if err := fc.SaveFeedback(record); err != nil {
+                log.Printf("[FeedbackCollector] Failed to save implicit feedback: %v", err)
+        }
         // 將反饋接入記憶評分：正面反饋提升最近記憶分數，負面降低
         adjustMemoryScoresFromFeedback(record.Rating)
         return record

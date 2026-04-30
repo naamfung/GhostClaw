@@ -238,9 +238,11 @@ func recoverViaGo(dbPath string) bool {
 // rebuildFromScratch 刪除損壞數據庫，讓主流程重建空白 DB
 func rebuildFromScratch(dbPath string) bool {
         log.Printf("[DB] No usable backup found, rebuilding from scratch: %s", dbPath)
-        os.Remove(dbPath)
-        os.Remove(dbPath + "-wal")
-        os.Remove(dbPath + "-shm")
+        for _, f := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+                if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+                        log.Printf("[DB] Failed to remove %s: %v", f, err)
+                }
+        }
         return true
 }
 
@@ -275,11 +277,17 @@ func InitDB(dataDir string) error {
 
         // 在 AutoMigrate 之前設置 WAL 模式和忙等待超時
         // WAL 模式：並發讀不阻塞寫，大幅降低 SQLITE_BUSY 和損壞風險
-        db.Exec("PRAGMA journal_mode=WAL")
+        if err := db.Exec("PRAGMA journal_mode=WAL").Error; err != nil {
+                log.Printf("[DB] WARNING: Failed to enable WAL mode: %v", err)
+        }
         // 並發寫時自動重試 5 秒，避免 SQLITE_BUSY
-        db.Exec("PRAGMA busy_timeout=5000")
+        if err := db.Exec("PRAGMA busy_timeout=5000").Error; err != nil {
+                log.Printf("[DB] WARNING: Failed to set busy_timeout: %v", err)
+        }
         // NORMAL：WAL 模式下足夠安全，同時大幅提升寫入性能
-        db.Exec("PRAGMA synchronous=NORMAL")
+        if err := db.Exec("PRAGMA synchronous=NORMAL").Error; err != nil {
+                log.Printf("[DB] WARNING: Failed to set synchronous mode: %v", err)
+        }
 
         // 自动迁移（建表/更新列）
         if err := db.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistories{}); err != nil {
@@ -321,7 +329,9 @@ func periodicBackup(dbPath string, interval time.Duration, keep int) {
                         continue
                 }
                 // Checkpoint WAL 確保所有寫入都同步到主 DB 文件
-                globalDB.Exec("PRAGMA wal_checkpoint(PASSIVE)")
+                if err := globalDB.Exec("PRAGMA wal_checkpoint(PASSIVE)").Error; err != nil {
+                        log.Printf("[DB] WAL checkpoint during backup failed: %v", err)
+                }
                 backupPath := dbPath + fmt.Sprintf(".backup.%s", time.Now().Format("20060102_150405"))
                 data, err := os.ReadFile(dbPath)
                 if err != nil {

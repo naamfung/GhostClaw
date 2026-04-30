@@ -1361,8 +1361,11 @@ func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, api
         // Debug 模式：寫出完整請求體以便檢查
         if IsDebug {
                 debugReqFile := fmt.Sprintf("debug_request_%d.json", time.Now().Unix())
-                os.WriteFile(debugReqFile, jsonData, 0600)
-                log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
+                if err := os.WriteFile(debugReqFile, jsonData, 0600); err != nil {
+                        log.Printf("[CallModel] Failed to write debug request: %v", err)
+                } else {
+                        log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
+                }
         }
 
         req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
@@ -2065,8 +2068,11 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                         }
                         if IsDebug {
                                 debugFile := fmt.Sprintf("debug_response_%d.json", time.Now().Unix())
-                                os.WriteFile(debugFile, bodyBytes, 0600)
-                                fmt.Printf("Debug response data written to: %s\n", debugFile)
+                                if err := os.WriteFile(debugFile, bodyBytes, 0600); err != nil {
+                                        log.Printf("[CallModel] Failed to write debug response: %v", err)
+                                } else {
+                                        fmt.Printf("Debug response data written to: %s\n", debugFile)
+                                }
                         }
                         r := bytes.NewReader(bodyBytes)
                         resp.Body = io.NopCloser(r)

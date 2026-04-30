@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ import (
 // 在任務完成後調用 LLM 進行自省，從對話中提取可復用的經驗教訓，
 // 並自動保存為記憶，形成真正的閉環自學習。
 type SelfLearner struct {
+	mu             sync.Mutex
 	lastReflection time.Time
 	minInterval    time.Duration // 最小自省間隔
 }
@@ -24,18 +26,24 @@ var globalSelfLearner = &SelfLearner{
 
 // Reflect 在任務完成後進行 LLM 自省。
 func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, messages []Message) {
+	sl.mu.Lock()
 	if time.Since(sl.lastReflection) < sl.minInterval {
+		sl.mu.Unlock()
 		return
 	}
 	sl.lastReflection = time.Now()
+	sl.mu.Unlock()
 
 	prompt := sl.buildReflectionPrompt(taskDesc, messages)
 	if prompt == "" {
 		return
 	}
 
+	// 使用帶超時的 context 防止 goroutine 洩漏
+	reflectCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	go func() {
-		result, err := sl.callLLM(ctx, prompt)
+		defer cancel()
+		result, err := sl.callLLM(reflectCtx, prompt)
 		if err != nil {
 			log.Printf("[SelfLearner] Reflection LLM call failed: %v", err)
 			return
