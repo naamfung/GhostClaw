@@ -2920,7 +2920,7 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
                         content = result
                 }
         } else {
-                content = "Error: Unknown tool name: " + toolName
+                content = GetUnknownToolErrorMessage(toolName)
                 status = TaskStatusFailed
         }
 

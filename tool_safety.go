@@ -433,8 +433,31 @@ func minInt(a, b, c int) int {
         return c
 }
 
+// snakeToPascalCase 將 snake_case 工具名轉換為 PascalCase
+// 例如：ssh_connect → SshConnect, browser_click → BrowserClick
+func snakeToPascalCase(s string) string {
+        parts := strings.Split(s, "_")
+        for i, part := range parts {
+                if len(part) > 0 {
+                        parts[i] = strings.Title(part)
+                }
+        }
+        return strings.Join(parts, "")
+}
+
 // GetUnknownToolErrorMessage 生成未知工具的错误消息
+// 自動檢測 snake_case 命名並提供明確的 PascalCase 修正指引
 func GetUnknownToolErrorMessage(toolName string) string {
+        // 檢測 snake_case：如果工具名含底線，先試自動轉 PascalCase
+        if strings.Contains(toolName, "_") {
+                pascalName := snakeToPascalCase(toolName)
+                for _, name := range allKnownToolNames {
+                        if name == pascalName {
+                                return fmt.Sprintf("工具名不能使用底線格式 (snake_case)！請使用駝峰式 (PascalCase)：'%s'", pascalName)
+                        }
+                }
+        }
+
         suggestion := FindSimilarTool(toolName)
         if suggestion != "" {
                 return fmt.Sprintf("工具 '%s' 不存在。你是否想使用 '%s'？\n可用的工具列表请参考系统提示中的工具部分。", toolName, suggestion)
@@ -653,9 +676,21 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 if !isMCP {
                         log.Printf("[ToolSafety] 未知工具调用: %s", toolName)
                         content := GetUnknownToolErrorMessage(toolName)
+
+                        // 追蹤重複未知工具調用，達到閾值後觸發 escalation
+                        shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
+                                EscalateRepeatedFailure, toolName, content,
+                        )
+
                         emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
+
+                        finalContent := content
+                        if shouldStop {
+                                finalContent = escalatePrefix + userMsg
+                        }
+
                         return EnrichedMessage{
-                                Content: content,
+                                Content: finalContent,
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
