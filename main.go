@@ -341,13 +341,8 @@ func main() {
         }
         config := globalConfigManager.GetConfig()
 
-        // 设置数据目录（默认为程序目录下的 data/）
+        // 设置数据目录（由 applyDefaults 确保不为空，默认为 execDir/data）
         globalDataDir = config.DataDir
-        if globalDataDir == "" {
-                globalDataDir = filepath.Join(globalExecDir, "data")
-                // 舊路徑遷移：首次啟動時將 projectRoot 下的資產目錄移入 data/
-                migrateToDataDir(globalExecDir, globalDataDir)
-        }
 
         // 初始化上传目录（globalExecDir 已设置）
         initUploadDir()
@@ -1044,53 +1039,3 @@ func testPluginSystem() {
         log.Println("[Test Plugin System] Completed successfully!")
 }
 
-// migrateToDataDir 將舊路徑下的資產目錄遷移到新的 data/ 目錄。
-// 舊行為：memory/、plugins/、skills/、profiles/、roles/ 直接在 execDir 下
-// 新行為：全部統一在 data/ 下
-func migrateToDataDir(execDir, dataDir string) {
-        dirs := []string{"memory", "plugins", "skills", "profiles", "roles", "pending_messages"}
-        for _, dir := range dirs {
-                oldPath := filepath.Join(execDir, dir)
-                newPath := filepath.Join(dataDir, dir)
-                if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-                        continue
-                }
-                if _, err := os.Stat(newPath); err == nil {
-                        continue // 新路徑已存在，跳過
-                }
-                log.Printf("[Migration] Moving %s -> %s", oldPath, newPath)
-                if err := os.MkdirAll(dataDir, 0755); err != nil {
-                        log.Printf("[Migration] Failed to create %s: %v", dataDir, err)
-                        continue
-                }
-                if err := os.Rename(oldPath, newPath); err != nil {
-                        log.Printf("[Migration] Rename failed for %s: %v — trying copy", dir, err)
-                        copyDir(oldPath, newPath)
-                } else {
-                        log.Printf("[Migration] Moved %s to %s", oldPath, newPath)
-                }
-        }
-}
-
-// copyDir 遞歸複製目錄
-func copyDir(src, dst string) {
-        if err := os.MkdirAll(dst, 0755); err != nil {
-                return
-        }
-        entries, err := os.ReadDir(src)
-        if err != nil {
-                return
-        }
-        for _, entry := range entries {
-                srcPath := filepath.Join(src, entry.Name())
-                dstPath := filepath.Join(dst, entry.Name())
-                if entry.IsDir() {
-                        copyDir(srcPath, dstPath)
-                } else {
-                        data, err := os.ReadFile(srcPath)
-                        if err == nil {
-                                os.WriteFile(dstPath, data, 0644)
-                        }
-                }
-        }
-}

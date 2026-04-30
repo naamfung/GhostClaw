@@ -171,7 +171,7 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
                         config.DataDir = filepath.Join(cm.execDir, config.DataDir)
                 }
         } else {
-                config.DataDir = cm.execDir
+                config.DataDir = filepath.Join(cm.execDir, "data")
         }
 
         // Models map 初始化
