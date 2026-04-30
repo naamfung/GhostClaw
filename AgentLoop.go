@@ -1221,7 +1221,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		// 通用錯誤升級檢測：檢查 (1) sentinel prefix 信號 (2) 重複工具失敗模式
 		// escalatePrefix = "__ESCALATE__:" 開頭的信號會以用戶身份注入消息歷史
 		var escalateInjected bool
-		for _, result := range results {
+		for i, result := range results {
 		    contentStr, _ := result.Content.(string)
 
 		    // (1) Sentinel prefix 檢測：來自 SafeExecuteTool 或其他安全檢查的升級信號
@@ -1237,9 +1237,16 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 				break
 		    }
 
-		    // (2) 重複工具失敗檢測：同一工具連續失敗 N 次後觸發升級
+		    // (2) 重複工具失敗檢測：同一工具+參數連續失敗 N 次後觸發升級
+		    // 注意：errorKey 使用 generateFingerprint 包含參數信息，避免將"同工具不同參數"的合法重試誤判為重複
 		    if result.Meta.Status == TaskStatusFailed && result.Meta.ToolName != "" {
 				errorKey := result.Meta.ToolName
+				if i < len(parsedCalls) && parsedCalls[i].ArgsJSON != "" {
+					var argsMap map[string]interface{}
+					if json.Unmarshal([]byte(parsedCalls[i].ArgsJSON), &argsMap) == nil {
+						errorKey = generateFingerprint(result.Meta.ToolName, argsMap)
+					}
+				}
 				shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
 					EscalateRepeatedFailure, errorKey, contentStr,
 				)
