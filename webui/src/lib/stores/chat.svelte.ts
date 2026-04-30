@@ -51,6 +51,8 @@ interface ConversationStateEntry {
 
 const countOccurrences = (source: string, token: string): number =>
         source ? source.split(token).length - 1 : 0;
+/** 判斷內容係咪純命令格式（/new, /help 等），不含額外文字 */
+const isCommandOnlyMessage = (content: string): boolean => /^\/\w+$/.test(content.trim());
 const hasUnclosedReasoningTag = (content: string): boolean =>
         countOccurrences(content, REASONING_TAGS.START) > countOccurrences(content, REASONING_TAGS.END);
 const wrapReasoningContent = (content: string, reasoningContent?: string): string => {
@@ -78,6 +80,8 @@ class ChatStore {
                 | null = null;
         private _pendingDraftMessage = $state<string>('');
         private _pendingDraftFiles = $state<ChatUploadedFile[]>([]);
+        /** 追蹤標題被 command 暫掛嘅 conversation，等第二條 user message 覆蓋 */
+        private titlePendingConversations = new Set<string>();
 
         private setChatLoading(convId: string, loading: boolean): void {
                 this.touchConversationState(convId);
@@ -507,8 +511,20 @@ class ChatStore {
                                 parentIdForUserMessage ?? '-1',
                                 allExtras
                         );
-                        if (isNewConversation && content)
+                        if (isNewConversation && content) {
+                                if (isCommandOnlyMessage(content)) {
+                                        // 純命令作為第一條消息：先用 command 做標題，mark 等第二條 user message 覆蓋
+                                        await conversationsStore.updateConversationName(currentConv.id, content.trim());
+                                        this.titlePendingConversations.add(currentConv.id);
+                                } else {
+                                        await conversationsStore.updateConversationName(currentConv.id, content.trim());
+                                }
+                        }
+                        // 如果 conversation 係 title-pending，用第二條 user message 覆蓋標題
+                        if (!isNewConversation && this.titlePendingConversations.has(currentConv.id) && content) {
                                 await conversationsStore.updateConversationName(currentConv.id, content.trim());
+                                this.titlePendingConversations.delete(currentConv.id);
+                        }
                         const assistantMessage = await this.createAssistantMessage(userMessage.id);
                         conversationsStore.addMessageToActive(assistantMessage);
                         await this.streamChatCompletion(
