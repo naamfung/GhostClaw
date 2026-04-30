@@ -1358,6 +1358,13 @@ func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, api
         }
         log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(jsonData), apiType)
 
+        // Debug 模式：寫出完整請求體以便檢查
+        if IsDebug {
+                debugReqFile := fmt.Sprintf("debug_request_%d.json", time.Now().Unix())
+                os.WriteFile(debugReqFile, jsonData, 0600)
+                log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
+        }
+
         req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
         if err != nil {
                 return nil, fmt.Errorf("failed to create request: %w", err)

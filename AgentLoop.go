@@ -464,6 +464,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
                 systemPrompt = SYSTEM_PROMPT
             }
 
+            // === 语言宪章注入 ===
+            systemPrompt = BuildLanguageCharter(globalConfig.DefaultLanguage) + systemPrompt
+
             // === Bootstrap: 首次对话引导 ===
             if globalUnifiedMemory != nil && IsBootstrapNeeded(globalUnifiedMemory) {
                 bootstrapPrompt := GetBootstrapMissingKeysPrompt(globalUnifiedMemory)

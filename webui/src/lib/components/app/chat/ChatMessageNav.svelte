@@ -56,9 +56,9 @@
 	class:translate-x-0={open}
 	class:translate-x-full={!open}
 >
-	<!-- 切換按鈕：固定在面板左邊緣外側，跟住面板一齊郁；附帶消息數量 -->
+	<!-- 切換按鈕：固定在面板左邊緣外側，跟住面板一齊郁 -->
 	<button
-		class="absolute -left-6 top-20 flex h-8 min-w-6 items-center justify-center gap-1 rounded-l-md border border-border/40 border-r-0 bg-background/80 text-muted-foreground backdrop-blur-md hover:bg-accent hover:text-accent-foreground px-1.5"
+		class="absolute -left-6 top-20 flex h-8 w-6 items-center justify-center rounded-l-md border border-border/40 border-r-0 bg-background/80 text-muted-foreground backdrop-blur-md hover:bg-accent hover:text-accent-foreground"
 		onclick={toggle}
 		aria-label={open ? '收起消息导航' : '展开消息导航'}
 		title={open ? '收起消息导航' : '展开消息导航'}
@@ -68,7 +68,6 @@
 		{:else}
 			<ChevronLeft class="h-3.5 w-3.5" />
 		{/if}
-		<span class="text-[10px] leading-none tabular-nums">{userMessages.length}</span>
 	</button>
 
 	<!-- 面板內容 -->

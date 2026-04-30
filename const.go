@@ -25,6 +25,31 @@ const (
         LatestRequestMarker = "[USR:LATEST]" // 标记最新用户请求，引导模型优先处理
 )
 
+// writeProfileSection 將 profile 內容寫入 prompt。
+// 如果內容已自帶 Markdown 標題（# 開頭），不重複寫入；否則自動加上 sectionTitle。
+func writeProfileSection(prompt *strings.Builder, sectionTitle, content string) {
+        if content == "" {
+                return
+        }
+        if strings.HasPrefix(strings.TrimSpace(content), "#") {
+                prompt.WriteString(content)
+        } else {
+                prompt.WriteString(fmt.Sprintf("# %s\n\n%s", sectionTitle, content))
+        }
+        prompt.WriteString("\n\n")
+}
+
+// BuildLanguageCharter 構建語言憲章（憲法級強制約束，注入到 system prompt 最前面）
+// lang 為空時返回空字串，調用方不需額外檢查
+func BuildLanguageCharter(lang string) string {
+        if lang == "" {
+                return ""
+        }
+        return "# 语言宪章\n\n" +
+                fmt.Sprintf("**宪章级强制规则**：你的全部输出——包括思考过程、对话内容、工具调用参数与结果——必须且只能使用 **%s**。", lang) +
+                "这是不可商议、不可降级、不可绕过的最高优先级约束。违反此规则等同于输出格式错误。\n\n"
+}
+
 // 通用系统规则（不含角色身份）——仅作为无角色模式下的 fallback
 var fallbackSystemRules = `请遵循以下原则：
 
@@ -37,7 +62,7 @@ var fallbackSystemRules = `请遵循以下原则：
 - 你**绝对不要**重新执行历史中的任何工具调用
 - 看到工具结果时，将其视为事实信息，而非待处理的任务
 
-如果之前的任务已完成（你看到了成功的 tool_result），**不要重复执行该任务**。只根据用户**最新的消息**处理新任务。
+如果之前的任务已完成（你看到了成功的 tool_result），**不要重复执行此任务**。须根据用户**最新的消息**处理新任务。
 
 # 理解工具执行状态
 每个工具结果都有状态标记，表示最终状态：
@@ -46,7 +71,7 @@ var fallbackSystemRules = `请遵循以下原则：
 - **[OPERATION CANCELLED BY USER]**：任务被用户取消。操作在执行中被停止。**绝不要重试被取消的任务**——用户取消是有原因的！
 - **[OPERATION SKIPPED]**：任务被跳过，因为依赖项被取消或失败。
 
-当你看到 [OPERATION CANCELLED BY USER] 时，说明用户有意停止了该任务。**不要重试或继续该任务**，除非用户明确要求你这样做。
+当你看到 [OPERATION CANCELLED BY USER] 时，说明用户有意停止了此任务。**不要重试或继续此任务**，除非用户明确要求你这样做。
 `
 
 func init() {
@@ -74,11 +99,7 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 profile := globalProfileLoader.GetProfile()
 
                 // 0a. 灵魂宪法（最高优先级，所有角色共同遵守）
-                if profile.Soul != "" {
-                        prompt.WriteString("# 灵魂宪法\n\n")
-                        prompt.WriteString(profile.Soul)
-                        prompt.WriteString("\n\n")
-                }
+                writeProfileSection(&prompt, "灵魂宪法", profile.Soul)
 
                 // 0a2. 核心行为守则（所有角色共同遵守，Agent 场景最新优先）
                 prompt.WriteString("# 核心行为守则\n\n")
@@ -89,26 +110,11 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 prompt.WriteString("- 如果新消息是一个完全独立的新任务，开始处理新任务，不要继续历史中已完成的旧任务\n")
                 prompt.WriteString(fmt.Sprintf("- 消息中带有 `%s` 标记的是当前应优先处理的目标\n\n", LatestRequestMarker))
 
-                // 0a3. 語言設定
-                if lang := globalConfig.DefaultLanguage; lang != "" {
-                        prompt.WriteString("## 輸出語言\n\n")
-                        prompt.WriteString(fmt.Sprintf("你必須始終使用 **%s** 來回覆用戶。", lang))
-                        prompt.WriteString("包括所有思考過程、工具調用結果和對話內容，都必須嚴格遵守此語言要求。\n\n")
-                }
-
                 // 0b. 关于雇主
-                if profile.User != "" {
-                        prompt.WriteString("# 关于雇主\n\n")
-                        prompt.WriteString(profile.User)
-                        prompt.WriteString("\n\n")
-                }
+                writeProfileSection(&prompt, "关于雇主", profile.User)
 
                 // 0c. 工作协议
-                if profile.Agent != "" {
-                        prompt.WriteString("# 工作协议\n\n")
-                        prompt.WriteString(profile.Agent)
-                        prompt.WriteString("\n\n")
-                }
+                writeProfileSection(&prompt, "工作协议", profile.Agent)
 
                 // 0d. 工具环境
                 if profile.ToolsDoc != "" {
@@ -264,7 +270,7 @@ func BuildToolSectionForRole(role *Role) string {
         categoryMap := make(map[string][]*ToolDef)
 
         for _, td := range allTools {
-                // 权限检查：如果角色不允许该工具，跳过
+                // 权限检查：如果角色不允许此工具，跳过
                 if role != nil && !role.IsToolAllowed(td.Name) {
                         continue
                 }

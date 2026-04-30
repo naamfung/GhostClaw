@@ -947,7 +947,18 @@ func runDebugMode(prompt string, session *GlobalSession) {
         _, cancel := context.WithCancel(context.Background())
         defer cancel()
         cmdChan := NewCmdChannel()
-        history := []Message{{Role: "user", Content: prompt}}
+
+        // 構建完整的初始消息歷史（含 system prompt），與 Web 模式一致
+        var systemPrompt string
+        if globalRoleManager != nil && globalActorManager != nil && globalStage != nil {
+                currentActor := globalStage.GetCurrentActor()
+                systemPrompt = BuildSystemPromptForActor(currentActor, globalActorManager, globalRoleManager, globalStage)
+        } else {
+                systemPrompt = SYSTEM_PROMPT
+        }
+        systemPrompt = BuildLanguageCharter(globalConfig.DefaultLanguage) + systemPrompt
+
+        history := []Message{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}
         ok, taskID := session.TryStartTask()
         if !ok {
                 log.Println("[Debug Mode] Another task already running.")
