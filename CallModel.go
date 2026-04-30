@@ -347,6 +347,37 @@ func injectRuntimeContext(messages []Message) []Message {
         }}, messages...)
 }
 
+// markHistoricalUserMessages 標記最新 user 消息之前的所有 user 消息為 [USR:HISTORICAL]，
+// 明確告知模型呢啲係歷史已處理請求，唔係當前指令。
+// 配合 markLatestUserRequest 使用：歷史消息標 [USR:HISTORICAL]，最新標 [USR:LATEST]。
+func markHistoricalUserMessages(messages []Message) []Message {
+        // 搵最後一條 user 消息
+        lastUserIdx := -1
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        lastUserIdx = i
+                }
+        }
+
+        if lastUserIdx < 0 {
+                return messages
+        }
+
+        // 標記最新 user 消息之前的所有 user 消息為歷史
+        for i := 0; i < lastUserIdx; i++ {
+                if messages[i].Role == "user" {
+                        if content, ok := messages[i].Content.(string); ok {
+                                if !strings.HasPrefix(content, HistoricalMarker) &&
+                                        !strings.HasPrefix(content, LatestRequestMarker) {
+                                        messages[i].Content = HistoricalMarker + " " + content
+                                }
+                        }
+                }
+        }
+
+        return messages
+}
+
 // markLatestUserRequest 标记最后一条 user 消息为 [USR:LATEST]，引导模型优先处理
 // 在任何有歷史上下文嘅場景下都加上標記（包括壓縮後只有一條 user message 嘅情況），
 // 防止模型將壓縮摘要中提取嘅歷史目標誤認為當前指令。
@@ -1174,6 +1205,7 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         t4 := time.Now()
 
         filteredMessages = injectRuntimeContext(filteredMessages)
+        filteredMessages = markHistoricalUserMessages(filteredMessages)
         filteredMessages = markLatestUserRequest(filteredMessages)
         t5 := time.Now()
 
