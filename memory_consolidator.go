@@ -538,6 +538,10 @@ func (mc *MemoryConsolidator) WriteDailyLog(sessionID string, messages []Message
 
         var summaries []messageSummary
         for _, msg := range messages {
+                // 略過系統消息（記憶圍欄等元數據），只記錄用戶/助手對話
+                if msg.Role == "system" {
+                        continue
+                }
                 var s messageSummary
                 s.Role = msg.Role
                 if content, ok := msg.Content.(string); ok {
@@ -679,6 +683,7 @@ func RecoverMemoriesFromYAML() (int, error) {
                 }
 
                 record := Memories{
+                        ID:       fmt.Sprintf("recovered-%s-%s-%d", entry.Category, entry.Key, time.Now().UnixNano()),
                         Category: entry.Category,
                         Key:      entry.Key,
                         Value:    entry.Value,
