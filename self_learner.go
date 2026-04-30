@@ -102,7 +102,7 @@ func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, 
 		return "", fmt.Errorf("prepare request: %w", err)
 	}
 
-	resp, err := sendRequest(ctx, data, endpoint, apiKey, apiType)
+	resp, err := sendRequest(ctx, data, reqBaseURL+endpoint, apiKey, apiType)
 	if err != nil {
 		return "", fmt.Errorf("send: %w", err)
 	}

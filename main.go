@@ -748,16 +748,7 @@ func main() {
         go func() {
                 <-sigCh
                 fmt.Println("\n✋ 收到终止信号，正在关闭...")
-                cancel()
-                session.autoSaveHistory()
-                // 保存未处理消息队列
-                if err := session.SavePendingMessages(); err != nil {
-                        log.Printf("Failed to save pending messages: %v", err)
-                }
-                if emailPoller != nil {
-                        emailPoller.Stop()
-                }
-                os.Exit(0)
+                cancel() // 觸發主 goroutine 正常退出，由主流程處理清理
         }()
 
         // 根据启动模式选择运行方式

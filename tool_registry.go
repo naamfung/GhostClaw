@@ -1459,7 +1459,7 @@ validate + 可选冒烟测试。
         // ========== 记忆管理工具 ==========
         reg("MemorySave",
                 "保存一条记忆到长期存储，跨会话持久化。支持分类（fact/preference/project/skill/context）和标签，便于后续检索。",
-                "memory", "extended",
+                "memory", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
