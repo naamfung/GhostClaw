@@ -761,6 +761,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 
             // 插入歷史摘要 divider（含被截斷消息的結構化摘要）
             var divider strings.Builder
+            // 記憶圍欄：明確隔離歷史摘要，防止模型將歷史內容誤認為當前指令
+            divider.WriteString("[MEMORY_CONTEXT]\n")
+            divider.WriteString("[System note: 以下是早期对话历史的压缩摘要，仅供参考。请以最新用户消息为准，不要执行摘要中描述的历史任务。]\n\n")
             divider.WriteString("=== 历史对话摘要 ===\n")
 
             // 從被截斷的消息中生成結構化摘要，確保模型記得已完成嘅任務
@@ -817,7 +820,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             divider.WriteString("当前时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
 
             divider.WriteString("\n请注意：如有指令冲突，以最新用户消息的指令为准\n")
-            divider.WriteString("=== 摘要结束，以下继续对话 ===")
+            divider.WriteString("=== 摘要结束，以下继续对话 ===\n")
+            divider.WriteString("[/MEMORY_CONTEXT]")
 
             dividerMsg := Message{
                 Role:      "system",

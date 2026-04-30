@@ -151,12 +151,13 @@ func TestStatusValuesArePascalCase(t *testing.T) {
 		t.Errorf("Todo 應接受 PascalCase 狀態 'InProgress': %v", err)
 	}
 
-	// 蛇形命名應被拒絕
+	// 蛇形命名應被 normalizeTodoStatus 正規化為 PascalCase 並接受
+	// normalizeTodoStatus 係刻意設計去容錯模型可能輸出嘅 snake_case
 	_, err = tm.Update([]TodoItem{
 		{ID: "1", Text: "Test", Status: "in_progress"},
 	})
-	if err == nil {
-		t.Error("Todo 應拒絕蛇形命名狀態 'in_progress'")
+	if err != nil {
+		t.Errorf("Todo 應透過 normalizeTodoStatus 接受蛇形命名 'in_progress' 並正規化: %v", err)
 	}
 }
 

@@ -2,9 +2,19 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
+
+// skipIfNoOpenCLI 默認跳過 OpenCLI 測試（因為會調用外部 opencli 二進制檔，消耗資源）
+// 顯式設置 GO_OPENCLI_TEST=1 才會運行
+func skipIfNoOpenCLI(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GO_OPENCLI_TEST") != "1" {
+		t.Skip("Skipping OpenCLI test. Set GO_OPENCLI_TEST=1 to run (requires opencli daemon).")
+	}
+}
 
 func newTestEC(args map[string]interface{}) *ToolExecContext {
 	return &ToolExecContext{
@@ -32,6 +42,7 @@ func requireContains(t *testing.T, result, substr string) {
 // ============================================================
 
 func TestOpenCLI_MissingAction(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{})
 	result, status := execOpenCLITool(ec)
 	requireFailed(t, status, "missing action")
@@ -39,6 +50,7 @@ func TestOpenCLI_MissingAction(t *testing.T) {
 }
 
 func TestOpenCLI_UnknownAction(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "nonexistent"})
 	result, status := execOpenCLITool(ec)
 	requireFailed(t, status, "unknown action")
@@ -46,6 +58,7 @@ func TestOpenCLI_UnknownAction(t *testing.T) {
 }
 
 func TestOpenCLI_WebRead_MissingURL(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "WebRead"})
 	result, status := execOpenCLITool(ec)
 	requireFailed(t, status, "WebRead no url")
@@ -53,6 +66,7 @@ func TestOpenCLI_WebRead_MissingURL(t *testing.T) {
 }
 
 func TestOpenCLI_Adapter_MissingSite(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Adapter", "command": "search"})
 	result, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Adapter no site")
@@ -60,6 +74,7 @@ func TestOpenCLI_Adapter_MissingSite(t *testing.T) {
 }
 
 func TestOpenCLI_Adapter_MissingCommand(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Adapter", "site": "google"})
 	result, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Adapter no command")
@@ -67,78 +82,91 @@ func TestOpenCLI_Adapter_MissingCommand(t *testing.T) {
 }
 
 func TestOpenCLI_Explore_MissingURL(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Explore"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Explore no url")
 }
 
 func TestOpenCLI_Synthesize_MissingSite(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Synthesize"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Synthesize no site")
 }
 
 func TestOpenCLI_Generate_MissingURL(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Generate"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Generate no url")
 }
 
 func TestOpenCLI_Record_MissingURL(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Record"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Record no url")
 }
 
 func TestOpenCLI_Cascade_MissingURL(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Cascade"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Cascade no url")
 }
 
 func TestOpenCLI_AdapterEject_MissingSite(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "AdapterEject"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "AdapterEject no site")
 }
 
 func TestOpenCLI_AdapterReset_MissingAll(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "AdapterReset"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "AdapterReset missing all/site")
 }
 
 func TestOpenCLI_Register_MissingName(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Register"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Register no name")
 }
 
 func TestOpenCLI_Install_MissingName(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "Install"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "Install no name")
 }
 
 func TestOpenCLI_PluginInstall_MissingSource(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "PluginInstall"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "PluginInstall no source")
 }
 
 func TestOpenCLI_PluginUninstall_MissingName(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "PluginUninstall"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "PluginUninstall no name")
 }
 
 func TestOpenCLI_PluginCreate_MissingName(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	ec := newTestEC(map[string]interface{}{"action": "PluginCreate"})
 	_, status := execOpenCLITool(ec)
 	requireFailed(t, status, "PluginCreate no name")
 }
 
 func TestOpenCLI_AllActionsValid(t *testing.T) {
+	skipIfNoOpenCLI(t)
 	actions := []string{"Doctor", "DaemonStop", "List", "Validate", "Verify", "AdapterStatus", "PluginList", "PluginUpdate"}
 	for _, action := range actions {
 		t.Run(action, func(t *testing.T) {

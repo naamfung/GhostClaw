@@ -347,31 +347,31 @@ func injectRuntimeContext(messages []Message) []Message {
         }}, messages...)
 }
 
-// markLatestUserRequest 标记最后一条 user 消息为 [GC:LATEST]，引导模型优先处理
-// 仅当存在多条 user 消息时才添加标记（避免单条对话时冗余）
+// markLatestUserRequest 标记最后一条 user 消息为 [USR:LATEST]，引导模型优先处理
+// 在任何有歷史上下文嘅場景下都加上標記（包括壓縮後只有一條 user message 嘅情況），
+// 防止模型將壓縮摘要中提取嘅歷史目標誤認為當前指令。
 func markLatestUserRequest(messages []Message) []Message {
-        if len(messages) < 2 {
-                return messages
-        }
-
-        // 统计 user 消息数量，并找到最后一条
-        userCount := 0
+        // 搵最後一條 user 消息
         lastUserIdx := -1
         for i, msg := range messages {
                 if msg.Role == "user" {
-                        userCount++
                         lastUserIdx = i
                 }
         }
 
-        // 只有一条 user 消息时不需要标记
-        if userCount <= 1 {
+        if lastUserIdx < 0 {
                 return messages
         }
 
-        // 给最后一条 user 消息添加标记
-        if lastUserIdx >= 0 {
-                if content, ok := messages[lastUserIdx].Content.(string); ok {
+        // 冇其他消息（得一條 user message，冇 system/assistant/tool），唔需要標記
+        if len(messages) <= 1 {
+                return messages
+        }
+
+        // 加上最新請求標記
+        if content, ok := messages[lastUserIdx].Content.(string); ok {
+                // 避免重複標記
+                if !strings.HasPrefix(content, LatestRequestMarker) {
                         messages[lastUserIdx].Content = LatestRequestMarker + " " + content
                 }
         }

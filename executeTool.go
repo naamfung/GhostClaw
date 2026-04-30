@@ -2637,11 +2637,11 @@ func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
 
         case "PluginUpdate":
                 if v, _ := ec.ArgsMap["all"].(bool); v {
-                        opencliCmd = "opencli plugin update"
+                        opencliCmd = "opencli plugin update --all"
                 } else if name, _ := ec.ArgsMap["name"].(string); name != "" {
                         opencliCmd = "opencli plugin update " + name
                 } else {
-                        opencliCmd = "opencli plugin update"
+                        return "Error: PluginUpdate 需要 name 参数或 all=true", TaskStatusFailed
                 }
 
         case "PluginCreate":
