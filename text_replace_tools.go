@@ -108,7 +108,7 @@ func handleTextReplace(ctx context.Context, argsMap map[string]interface{}, ch C
                 sb.WriteString("\n---")
         }
 
-        return sb.String(), false
+        return sb.String(), true
 }
 
 // parseTextReplaceOptions 解析参数
@@ -621,7 +621,7 @@ func handleTextSearch(ctx context.Context, argsMap map[string]interface{}, ch Ch
         }
 
         sb.WriteString(fmt.Sprintf("\n共找到 %d 个匹配", matches))
-        return sb.String(), false
+        return sb.String(), true
 }
 
 // handleTextTransform 处理文本转换（大小写转换、行操作等）
@@ -729,7 +729,7 @@ func handleTextTransform(ctx context.Context, argsMap map[string]interface{}, ch
         }
 
         result := strings.Join(lines, "\n")
-        return fmt.Sprintf("✅ 转换完成\n\n结果:\n%s", result), false
+        return fmt.Sprintf("✅ 转换完成\n\n结果:\n%s", result), true
 }
 
 // parseIntOrDefault 解析整数参数

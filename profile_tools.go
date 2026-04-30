@@ -12,7 +12,7 @@ import (
 func handleProfileCheck(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         missing := GetMissingBootstrapKeys(globalUnifiedMemory)
         if len(missing) == 0 {
-                return "All required bootstrap keys are present. No initialization needed.", false
+                return "All required bootstrap keys are present. No initialization needed.", true
         }
 
         var sb strings.Builder
@@ -31,7 +31,7 @@ func handleProfileCheck(ctx context.Context, argsMap map[string]interface{}, ch 
                         sb.WriteString(fmt.Sprintf("- **%s**\n", key))
                 }
         }
-        return sb.String(), false
+        return sb.String(), true
 }
 
 // handleActorIdentitySet writes content to profiles/actors/<actor_name>/IDENTITY.md.
@@ -61,7 +61,7 @@ func handleActorIdentitySet(ctx context.Context, argsMap map[string]interface{},
                 return fmt.Sprintf("Error: failed to write IDENTITY.md: %v", err), false
         }
 
-        return fmt.Sprintf("Actor identity set for '%s' at %s", actorName, identityPath), false
+        return fmt.Sprintf("Actor identity set for '%s' at %s", actorName, identityPath), true
 }
 
 // handleActorIdentityClear deletes profiles/actors/<actor_name>/IDENTITY.md.
@@ -80,7 +80,7 @@ func handleActorIdentityClear(ctx context.Context, argsMap map[string]interface{
                 return fmt.Sprintf("Error: failed to delete IDENTITY.md: %v", err), false
         }
 
-        return fmt.Sprintf("Actor identity cleared for '%s'.", actorName), false
+        return fmt.Sprintf("Actor identity cleared for '%s'.", actorName), true
 }
 
 // handleProfileReload forces a profile reload from disk.
@@ -114,5 +114,5 @@ func handleProfileReload(ctx context.Context, argsMap map[string]interface{}, ch
                 sb.WriteString(fmt.Sprintf("- Actor identities: %s\n", strings.Join(names, ", ")))
         }
 
-        return sb.String(), false
+        return sb.String(), true
 }

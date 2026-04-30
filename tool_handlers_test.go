@@ -363,9 +363,10 @@ func TestExecMemoryRecall_MissingArgs(t *testing.T) {
 
 func TestExecMemoryList_Executes(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	result, status := execMemoryList(ec)
-	if status != TaskStatusSuccess {
-		t.Errorf("MemoryList should succeed: %s", result)
+	_, status := execMemoryList(ec)
+	// 無 globalUnifiedMemory 時應該返回 TaskStatusFailed
+	if status != TaskStatusFailed {
+		t.Error("MemoryList without globalUnifiedMemory should fail")
 	}
 }
 
@@ -390,28 +391,37 @@ func TestExecSchemeEval_MissingExpression(t *testing.T) {
 // Spawn
 // ============================================================
 
-// Spawn 函數返回 (string, error) 但 error 永遠 nil — 錯誤以 content 形式返回
+// Spawn 函數返回 (string, bool) — false 表示錯誤
 func TestExecSpawn_NoTask(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	result, _ := execSpawn(ec)
+	result, status := execSpawn(ec)
+	if status != TaskStatusFailed {
+		t.Errorf("Spawn without task should fail, got status=%v, result=%s", status, result)
+	}
 	if !strings.Contains(result, "Error") {
-		t.Errorf("Spawn should return error without task, got: %s", result)
+		t.Errorf("Spawn should return error message, got: %s", result)
 	}
 }
 
 func TestExecSpawnCheck_NoTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	result, _ := execSpawnCheck(ec)
+	result, status := execSpawnCheck(ec)
+	if status != TaskStatusFailed {
+		t.Errorf("SpawnCheck without task_id should fail, got status=%v, result=%s", status, result)
+	}
 	if !strings.Contains(result, "Error") {
-		t.Errorf("SpawnCheck should return error without task_id, got: %s", result)
+		t.Errorf("SpawnCheck should return error message, got: %s", result)
 	}
 }
 
 func TestExecSpawnCancel_NoTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	result, _ := execSpawnCancel(ec)
+	result, status := execSpawnCancel(ec)
+	if status != TaskStatusFailed {
+		t.Errorf("SpawnCancel without task_id should fail, got status=%v, result=%s", status, result)
+	}
 	if !strings.Contains(result, "Error") {
-		t.Errorf("SpawnCancel should return error without task_id, got: %s", result)
+		t.Errorf("SpawnCancel should return error message, got: %s", result)
 	}
 }
 

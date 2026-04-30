@@ -34,10 +34,10 @@ func getCurrentRoleForSpawn() *Role {
 }
 
 // handleSpawn 处理 spawn 工具调用
-func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
+func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
     task, ok := argsMap["task"].(string)
     if !ok || task == "" {
-        return "Error: 缺少任务描述 (task)", nil
+        return "Error: 缺少任务描述 (task)", false
     }
 
     maxIterations := 15
@@ -72,7 +72,7 @@ func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel
 
     subagentTask, err := globalSubagentManager.SpawnWithOverrides(task, sessionID, maxIterations, currentRole, 0, modelOverride, credentialOverride)
     if err != nil {
-        return fmt.Sprintf("Error: 创建子代理失败: %v", err), nil
+        return fmt.Sprintf("Error: 创建子代理失败: %v", err), false
     }
 
     result := fmt.Sprintf("子代理已创建:\n- 任务ID: %s\n- 任务: %s\n- 最大迭代: %d\n- 深度: %d\n- 状态: running",
@@ -85,14 +85,14 @@ func handleSpawn(ctx context.Context, argsMap map[string]interface{}, ch Channel
     }
     result += "\n\n子代理将在后台执行任务。使用 SpawnCheck 检查进度，SpawnList 查看所有任务。"
 
-    return result, nil
+    return result, true
 }
 
 // handleSpawnBatch 处理 spawn_batch 工具调用（并行批量创建子代理）
-func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
+func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
     tasksRaw, ok := argsMap["tasks"]
     if !ok {
-        return "Error: 缺少任务列表 (tasks)", nil
+        return "Error: 缺少任务列表 (tasks)", false
     }
 
     var taskStrings []string
@@ -104,11 +104,11 @@ func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Ch
             }
         }
     default:
-        return "Error: tasks 参数必须是字符串数组", nil
+        return "Error: tasks 参数必须是字符串数组", false
     }
 
     if len(taskStrings) == 0 {
-        return "Error: 任务列表为空", nil
+        return "Error: 任务列表为空", false
     }
 
     maxIterations := 15
@@ -141,7 +141,7 @@ func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Ch
 
     spawnedTasks, err := globalSubagentManager.SpawnMultipleWithOverrides(taskStrings, sessionID, maxIterations, currentRole, modelOverride, credentialOverride)
     if err != nil {
-        return fmt.Sprintf("Error: 批量创建子代理失败: %v", err), nil
+        return fmt.Sprintf("Error: 批量创建子代理失败: %v", err), false
     }
 
     result := fmt.Sprintf("已创建 %d 个并行子代理任务:\n\n", len(spawnedTasks))
@@ -151,23 +151,23 @@ func handleSpawnBatch(ctx context.Context, argsMap map[string]interface{}, ch Ch
     }
     result += "所有子代理将在后台并行执行。使用 SpawnCheck 检查各任务进度，SpawnList 查看所有任务。"
 
-    return result, nil
+    return result, true
 }
 
 // handleSpawnCheck 处理 SpawnCheck 工具调用
-func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
+func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
     taskID, ok := argsMap["TaskId"].(string)
     if !ok || taskID == "" {
-        return "Error: 缺少任务ID (task_id)", nil
+        return "Error: 缺少任务ID (task_id)", false
     }
 
     if globalSubagentManager == nil {
-        return "Error: 子代理管理器未初始化", nil
+        return "Error: 子代理管理器未初始化", false
     }
 
     info, err := globalSubagentManager.GetTaskInfo(taskID)
     if err != nil {
-        return fmt.Sprintf("Error: %v", err), nil
+        return fmt.Sprintf("Error: %v", err), false
     }
 
     result := fmt.Sprintf("子代理任务状态:\n- 任务ID: %s\n- 状态: %s\n- 迭代次数: %d/%d\n- 深度: %d\n- 运行时间: %.1f 秒",
@@ -184,18 +184,18 @@ func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Ch
         result += fmt.Sprintf("\n\n结果:\n%s", info["result"])
     }
 
-    return result, nil
+    return result, true
 }
 
 // handleSpawnList 处理 SpawnList 工具调用
-func handleSpawnList(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
+func handleSpawnList(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
     if globalSubagentManager == nil {
-        return "当前没有子代理任务", nil
+        return "Error: 子代理管理器未初始化", false
     }
 
     tasks := globalSubagentManager.List()
     if len(tasks) == 0 {
-        return "当前没有子代理任务", nil
+        return "当前没有子代理任务", true
     }
 
     result := fmt.Sprintf("共 %d 个子代理任务:\n\n", len(tasks))
@@ -206,26 +206,26 @@ func handleSpawnList(ctx context.Context, argsMap map[string]interface{}, ch Cha
         task.mu.RUnlock()
     }
 
-    return result, nil
+    return result, true
 }
 
 // handleSpawnCancel 处理 spawn_cancel 工具调用
-func handleSpawnCancel(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, error) {
+func handleSpawnCancel(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
     taskID, ok := argsMap["TaskId"].(string)
     if !ok || taskID == "" {
-        return "Error: 缺少任务ID (task_id)", nil
+        return "Error: 缺少任务ID (task_id)", false
     }
 
     if globalSubagentManager == nil {
-        return "Error: 子代理管理器未初始化", nil
+        return "Error: 子代理管理器未初始化", false
     }
 
     err := globalSubagentManager.Cancel(taskID)
     if err != nil {
-        return fmt.Sprintf("Error: %v", err), nil
+        return fmt.Sprintf("Error: %v", err), false
     }
 
-    return fmt.Sprintf("子代理任务 %s 已取消", taskID), nil
+    return fmt.Sprintf("子代理任务 %s 已取消", taskID), true
 }
 
 // logSubagentResult 记录子代理结果

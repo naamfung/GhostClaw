@@ -24,7 +24,7 @@ func handlePluginList(ctx context.Context, argsMap map[string]interface{}, ch Ch
         if err != nil {
                 return fmt.Sprintf("Error marshaling plugin list: %v", err), false
         }
-        return string(data), false
+        return string(data), true
 }
 
 func handlePluginCreate(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -90,7 +90,7 @@ func handlePluginLoad(ctx context.Context, argsMap map[string]interface{}, ch Ch
         if err := globalPluginManager.LoadPlugin(name, code, ""); err != nil {
                 return fmt.Sprintf("Error loading plugin: %v\nCheck the Lua code for syntax errors.", err), false
         }
-        return fmt.Sprintf("Plugin '%s' loaded successfully.", name), false
+        return fmt.Sprintf("Plugin '%s' loaded successfully.", name), true
 }
 
 func handlePluginUnload(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -101,7 +101,7 @@ func handlePluginUnload(ctx context.Context, argsMap map[string]interface{}, ch 
         if err := globalPluginManager.UnloadPlugin(name); err != nil {
                 return fmt.Sprintf("Error unloading plugin: %v\nMake sure the plugin is loaded.", err), false
         }
-        return fmt.Sprintf("Plugin '%s' unloaded (files remain).", name), false
+        return fmt.Sprintf("Plugin '%s' unloaded (files remain).", name), true
 }
 
 // handlePluginDelete 完全删除插件（包括文件夹和文件）
@@ -113,7 +113,7 @@ func handlePluginDelete(ctx context.Context, argsMap map[string]interface{}, ch 
         if err := globalPluginManager.DeletePlugin(name); err != nil {
                 return fmt.Sprintf("Error deleting plugin: %v", err), false
         }
-        return fmt.Sprintf("Plugin '%s' deleted successfully (folder removed).", name), false
+        return fmt.Sprintf("Plugin '%s' deleted successfully (folder removed).", name), true
 }
 
 func handlePluginReload(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -124,7 +124,7 @@ func handlePluginReload(ctx context.Context, argsMap map[string]interface{}, ch 
         if err := globalPluginManager.ReloadPlugin(name); err != nil {
                 return fmt.Sprintf("Error reloading plugin: %v\nMake sure the plugin exists and the file is readable.", err), false
         }
-        return fmt.Sprintf("Plugin '%s' reloaded.", name), false
+        return fmt.Sprintf("Plugin '%s' reloaded.", name), true
 }
 
 func handlePluginCall(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -167,7 +167,7 @@ func handlePluginCall(ctx context.Context, argsMap map[string]interface{}, ch Ch
         if err != nil {
                 return fmt.Sprintf("Error calling plugin function: %v\nCheck that the function exists and arguments are correct.", err), false
         }
-        return result, false
+        return result, true
 }
 
 // handlePluginCompile 编译Lua代码（语法检查）
@@ -199,7 +199,7 @@ func handlePluginCompile(ctx context.Context, argsMap map[string]interface{}, ch
         if err != nil {
                 return fmt.Sprintf("Compilation error: %v\nFix the syntax errors and try again.", err), false
         }
-        return fmt.Sprintf("Plugin '%s' compiled successfully (syntax OK).", name), false
+        return fmt.Sprintf("Plugin '%s' compiled successfully (syntax OK).", name), true
 }
 
 // handlePluginAPIs 处理plugin_apis工具调用，返回插件系统的内部接口信息
@@ -272,7 +272,7 @@ return {
                 return "Error: failed to generate API documentation", false
         }
         
-        return string(apiDocsTOON), false
+        return string(apiDocsTOON), true
 }
 
 // handlePluginDetail 处理plugin_detail工具调用，返回插件的详细信息
@@ -349,7 +349,7 @@ func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch 
                 return fmt.Sprintf("Error: failed to generate plugin details: %v", err), false
         }
 
-        return string(detailTOON), false
+        return string(detailTOON), true
 }
 
 // callToolInternal 执行一个工具并返回结果字符串（无流式输出）

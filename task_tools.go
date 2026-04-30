@@ -243,7 +243,7 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
         }
 
         resultTOON, _ := toon.Marshal(response)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 // handleSmartShellAsync 异步执行命令
@@ -277,7 +277,7 @@ func handleSmartShellAsync(command string, wakeAfterMinutes int, ch Channel, tim
         }
 
         resultTOON, _ := toon.Marshal(result)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 // handleSmartShellInteractive 处理交互式命令
@@ -323,7 +323,7 @@ func handleSmartShellInteractive(command string, suggestion CommandSuggestion, w
         }
 
         resultTOON, _ := toon.Marshal(result)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 // ==================== 原有后台任务工具函数 ====================
@@ -371,7 +371,7 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
         }
 
         resultTOON, _ := toon.Marshal(result)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -410,7 +410,7 @@ func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Cha
         info["message"] = message
 
         resultTOON, _ := toon.Marshal(info)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 func handleTaskTerminate(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -447,7 +447,7 @@ func handleTaskTerminate(ctx context.Context, argsMap map[string]interface{}, ch
         }
 
         resultTOON, _ := toon.Marshal(result)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 func handleTaskList(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -489,7 +489,7 @@ func handleTaskList(ctx context.Context, argsMap map[string]interface{}, ch Chan
         }
 
         resultTOON, _ := toon.Marshal(summaries)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 func handleTaskWait(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -526,7 +526,7 @@ func handleTaskWait(ctx context.Context, argsMap map[string]interface{}, ch Chan
         }
 
         resultTOON, _ := toon.Marshal(result)
-        return string(resultTOON), false
+        return string(resultTOON), true
 }
 
 func handleTaskRemove(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
@@ -544,5 +544,5 @@ func handleTaskRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
                 return fmt.Sprintf("Error: %v", err), false
         }
 
-        return fmt.Sprintf("任务 %s 已从列表中移除。", taskID), false
+        return fmt.Sprintf("任务 %s 已从列表中移除。", taskID), true
 }

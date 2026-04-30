@@ -392,9 +392,9 @@ func TestToolHandlers(t *testing.T) {
                 "channel":      map[string]interface{}{"type": "log"},
                 "timeout_sec":  60,
         }
-        content, used := handleCronAdd(context.Background(), addArgs, &dummyChannel{})
-        if used {
-                t.Error("handleCronAdd returned usedTodo = true")
+        content, ok := handleCronAdd(context.Background(), addArgs, &dummyChannel{})
+        if !ok {
+                t.Errorf("handleCronAdd failed: %s", content)
         }
         if content == "" {
                 t.Error("handleCronAdd returned empty content")
@@ -414,9 +414,9 @@ func TestToolHandlers(t *testing.T) {
 
         // 列出任务
         listArgs := map[string]interface{}{}
-        content, used = handleCronList(context.Background(), listArgs, &dummyChannel{})
-        if used {
-                t.Error("handleCronList returned usedTodo = true")
+        content, ok = handleCronList(context.Background(), listArgs, &dummyChannel{})
+        if !ok {
+                t.Errorf("handleCronList failed: %s", content)
         }
         if !strings.Contains(content, "tool_test_job") {
                 t.Errorf("Job not found in list: %s", content)
@@ -424,9 +424,9 @@ func TestToolHandlers(t *testing.T) {
 
         // 查询状态
         statusArgs := map[string]interface{}{"name": "tool_test_job"}
-        content, used = handleCronStatus(context.Background(), statusArgs, &dummyChannel{})
-        if used {
-                t.Error("handleCronStatus returned usedTodo = true")
+        content, ok = handleCronStatus(context.Background(), statusArgs, &dummyChannel{})
+        if !ok {
+                t.Errorf("handleCronStatus failed: %s", content)
         }
         var status map[string]interface{}
         if err := toon.Unmarshal([]byte(content), &status); err != nil {
@@ -438,9 +438,9 @@ func TestToolHandlers(t *testing.T) {
 
         // 删除任务
         removeArgs := map[string]interface{}{"name": "tool_test_job"}
-        content, used = handleCronRemove(context.Background(), removeArgs, &dummyChannel{})
-        if used {
-                t.Error("handleCronRemove returned usedTodo = true")
+        content, ok = handleCronRemove(context.Background(), removeArgs, &dummyChannel{})
+        if !ok {
+                t.Errorf("handleCronRemove failed: %s", content)
         }
         if !strings.Contains(content, "已刪除") {
                 t.Errorf("Unexpected removal message: %s", content)

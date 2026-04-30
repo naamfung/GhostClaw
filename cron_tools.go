@@ -95,7 +95,7 @@ func handleCronAdd(ctx context.Context, argsMap map[string]interface{}, ch Chann
 	if err := globalCronManager.AddJob(job); err != nil {
 		return fmt.Sprintf("Error adding job: %v%s", err, cronAddUsage), false
 	}
-	return fmt.Sprintf("✅ 定時任務已添加\n  名稱: %s\n  排程: %s\n  類型: %s", name, schedule, category), false
+	return fmt.Sprintf("✅ 定時任務已添加\n  名稱: %s\n  排程: %s\n  類型: %s", name, schedule, category), true
 }
 
 // handleCronRemove 刪除任務
@@ -139,9 +139,9 @@ func handleCronRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
 	}
 
 	if wasRunning {
-		return fmt.Sprintf("✅ 任務「%s」已刪除（正在執行的任務已終止）", name), false
+		return fmt.Sprintf("✅ 任務「%s」已刪除（正在執行的任務已終止）", name), true
 	}
-	return fmt.Sprintf("✅ 任務「%s」已刪除", name), false
+	return fmt.Sprintf("✅ 任務「%s」已刪除", name), true
 }
 
 // handleCronList 列出所有任務
@@ -163,7 +163,7 @@ func handleCronList(ctx context.Context, argsMap map[string]interface{}, ch Chan
 	if err != nil {
 		return fmt.Sprintf("Error marshaling jobs: %v", err), false
 	}
-	return string(data), false
+	return string(data), true
 }
 
 // handleCronStatus 查詢任務狀態
@@ -193,7 +193,7 @@ func handleCronStatus(ctx context.Context, argsMap map[string]interface{}, ch Ch
 	if err != nil {
 		return fmt.Sprintf("Error marshaling status: %v", err), false
 	}
-	return string(data), false
+	return string(data), true
 }
 
 // parseChannelConf 從 map 解析 ChannelConf

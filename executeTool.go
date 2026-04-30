@@ -61,7 +61,10 @@ func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execSmartShellTool(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSmartShell(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSmartShell(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -1752,12 +1755,18 @@ func execCronRemove(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execCronList(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleCronList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleCronList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execCronStatus(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleCronStatus(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleCronStatus(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -1786,27 +1795,42 @@ func execMemoryForget(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execMemoryList(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleMemoryList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleMemoryList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execProfileCheck(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleProfileCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleProfileCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execActorIdentitySet(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleActorIdentitySet(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleActorIdentitySet(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execActorIdentityClear(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleActorIdentityClear(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleActorIdentityClear(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execProfileReload(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleProfileReload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleProfileReload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2206,33 +2230,40 @@ func execPluginCreate(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execPluginList(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginLoad(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginLoad(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginLoad(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginUnload(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginUnload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginUnload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginReload(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginReload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginReload(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginCall(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginCall(ec.Ctx, ec.ArgsMap, ec.Ch)
-        // 检查是否是插件不存在的错误
-        if strings.Contains(content, "Error:") || strings.Contains(content, "error:") {
-                // 确保错误消息格式正确，以Error:开头
-                if !strings.HasPrefix(content, "Error:") {
-                        content = "Error: " + content
-                }
+        content, ok := handlePluginCall(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
                 return content, TaskStatusFailed
         }
         return content, TaskStatusSuccess
@@ -2255,12 +2286,18 @@ func execPluginDelete(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execPluginAPIs(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginAPIs(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginAPIs(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execPluginDetail(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handlePluginDetail(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handlePluginDetail(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2291,7 +2328,10 @@ func execShellDelayedTerminate(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execShellDelayedList(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleTaskList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleTaskList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -2312,30 +2352,44 @@ func execShellDelayedRemove(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 // --- Spawn tool handlers ---
-// handleSpawn* 使用 (string, error) 但 error 永遠為 nil（錯誤以 content 返回）
 
 func execSpawn(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSpawn(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSpawn(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execSpawnCheck(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSpawnCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSpawnCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execSpawnList(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSpawnList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSpawnList(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execSpawnCancel(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSpawnCancel(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSpawnCancel(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
 func execSpawnBatch(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := handleSpawnBatch(ec.Ctx, ec.ArgsMap, ec.Ch)
+        content, ok := handleSpawnBatch(ec.Ctx, ec.ArgsMap, ec.Ch)
+        if !ok {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 

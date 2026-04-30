@@ -79,7 +79,7 @@ func handleMemorySave(ctx context.Context, argsMap map[string]interface{}, ch Ch
         return fmt.Sprintf("Error saving memory: %v", err), false
     }
 
-    return fmt.Sprintf("Memory saved: [%s] %s = %s", category, key, value), false
+    return fmt.Sprintf("Memory saved: [%s] %s = %s", category, key, value), true
 }
 
 // handleMemoryRecall 检索记忆
@@ -131,7 +131,7 @@ func handleMemoryRecall(ctx context.Context, argsMap map[string]interface{}, ch 
         }
     }
 
-    return sb.String(), false
+    return sb.String(), true
 }
 
 // handleMemoryGet 按键名精确获取记忆
@@ -160,7 +160,7 @@ func handleMemoryGet(ctx context.Context, argsMap map[string]interface{}, ch Cha
             if err != nil {
                 return fmt.Sprintf("Error formatting memory: %v", err), false
             }
-            return string(data), false
+            return string(data), true
         }
     }
 
@@ -199,7 +199,7 @@ func handleMemoryForget(ctx context.Context, argsMap map[string]interface{}, ch 
         return fmt.Sprintf("Memory '%s' not found.", key), false
     }
 
-    return fmt.Sprintf("Memory '%s' has been forgotten.", key), false
+    return fmt.Sprintf("Memory '%s' has been forgotten.", key), true
 }
 
 // handleMemoryList 列出记忆
@@ -271,7 +271,7 @@ func handleMemoryList(ctx context.Context, argsMap map[string]interface{}, ch Ch
         }
     }
 
-    return sb.String(), false
+    return sb.String(), true
 }
 
 // handleMemorySummarize 生成记忆摘要
@@ -369,5 +369,5 @@ func handleMemorySummarize(ctx context.Context, argsMap map[string]interface{}, 
     if result == "# 关于用户的记忆\n\n" {
         return "No memories to summarize.", false
     }
-    return result, false
+    return result, true
 }
