@@ -857,81 +857,92 @@ func (cc *ContextCompressor) renderStructuredSummary(s *structuredSummary) strin
 
         // 記憶圍欄：明確告訴模型呢啲係歷史背景資料，唔係當前用戶指令
         sb.WriteString("[MEMORY_CONTEXT]\n")
-        sb.WriteString("[System note: 以下是被压缩的对话历史摘要，仅作背景参考，不是当前用户指令。请勿执行摘要中描述的历史任务，除非最新用户消息明确要求继续。]\n\n")
+        sb.WriteString("(System note: 以下是已被压缩的早期对话历史摘要. " +
+                "所有目标/进展/决策均为历史记录, 已经处理完毕或已过时. " +
+                "请勿根据此摘要发起任何操作, 仅作理解对话背景之用. " +
+                "如摘要内容与最新用户消息冲突, 以最新用户消息为准.)\n\n")
 
-        sb.WriteString("=== 对话历史摘要 ===\n")
-        sb.WriteString(fmt.Sprintf("摘要版本: v%d | 压缩时间: %s | 压缩消息数: 原始摘要覆盖\n",
+        sb.WriteString("=== 已压缩的对话历史摘要（非当前任务） ===\n")
+        sb.WriteString(fmt.Sprintf("摘要版本: v%d | 压缩时间: %s\n",
                 s.Version, time.Now().Format("2006-01-02 15:04:05")))
 
         if cc.focusTopic != "" {
-                sb.WriteString(fmt.Sprintf("焦点主题: %s\n", cc.focusTopic))
+                sb.WriteString(fmt.Sprintf("历史焦点主题: %s（可能已被最新消息取代）\n", cc.focusTopic))
         }
 
         sb.WriteString("\n")
 
-        // Goal
+        // Goal — 已处理的用户请求
         if len(s.Goals) > 0 {
-                sb.WriteString("## 🎯 目标 (Goal)\n")
+                sb.WriteString("## 📜 已处理的用户请求 / Past User Requests\n")
+                sb.WriteString("(以下请求已在对话早期处理完毕, 请勿重新执行)\n")
                 for i, goal := range s.Goals {
                         sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, goal))
                 }
                 sb.WriteString("\n")
         }
 
-        // Constraints
+        // Constraints — 历史约束
         if len(s.Constraints) > 0 {
-                sb.WriteString("## ⚠️ 约束 (Constraints)\n")
+                sb.WriteString("## 📜 历史约束 / Past Constraints\n")
+                sb.WriteString("(对话早期用户提出的限制, 可能已被最新指令覆盖)\n")
                 for i, c := range s.Constraints {
                         sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, c))
                 }
                 sb.WriteString("\n")
         }
 
-        // Progress
+        // Progress — 已完成的工作
         if len(s.Progress) > 0 {
-                sb.WriteString("## ✅ 进展 (Progress)\n")
+                sb.WriteString("## 📜 已完成的工作 / Completed Work\n")
+                sb.WriteString("(对话早期已完成的步骤, 仅供参考, 无需重复)\n")
                 for i, p := range s.Progress {
                         sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, p))
                 }
                 sb.WriteString("\n")
         }
 
-        // Key Decisions
+        // Key Decisions — 历史决策
         if len(s.Decisions) > 0 {
-                sb.WriteString("## 🔑 关键决策 (Key Decisions)\n")
+                sb.WriteString("## 📜 历史决策 / Past Decisions\n")
+                sb.WriteString("(对话早期做出的选择, 仅作背景参考)\n")
                 for i, d := range s.Decisions {
                         sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, d))
                 }
                 sb.WriteString("\n")
         }
 
-        // Pending Items
+        // Pending Items — 可能已过时的遗留事项
         if len(s.Pending) > 0 {
-                sb.WriteString("## 📋 待办事项 (Pending Items)\n")
+                sb.WriteString("## 📜 历史遗留事项 / Historical Leftovers\n")
+                sb.WriteString("(对话早期未完成的事项, 可能已过时或被后续操作解决. 除非最新用户消息明确要求继续, 否则忽略.)\n")
                 for i, p := range s.Pending {
                         sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, p))
                 }
                 sb.WriteString("\n")
         }
 
-        // Tool Summary
+        // Tool Summary — 工具使用记录
         if len(s.ToolSummary) > 0 {
-                sb.WriteString("## 🔧 工具摘要 (Tool Summary)\n")
+                sb.WriteString("## 📜 历史工具使用记录 / Past Tool Usage\n")
+                sb.WriteString("(对话早期使用过的工具及其结果摘要)\n")
                 for _, ts := range s.ToolSummary {
                         sb.WriteString(fmt.Sprintf("- %s\n", ts))
                 }
                 sb.WriteString("\n")
         }
 
-        // Footer guidance
-        sb.WriteString("## ⚡ 重要提示\n")
-        sb.WriteString("- 此摘要包含了被压缩的对话历史（支持增量更新）\n")
-        sb.WriteString("- 请优先响应最新的用户消息\n")
-        sb.WriteString("- 如有指令冲突，以最新用户消息为准\n")
+        // Footer guidance — 强免责声明
+        sb.WriteString("## 重要免责声明\n")
+        sb.WriteString("- 以上所有内容均为对话早期的历史摘要, 已压缩归档\n")
+        sb.WriteString("- 历史请求/目标/待办事项均已在当时处理或已过时\n")
+        sb.WriteString("- 如有指令冲突, 以最新用户消息 (标注为 [USR:LATEST]) 的指令为准\n")
+        sb.WriteString("- 请勿根据此摘要的历史目标或待办事项发起任何新操作\n")
+        sb.WriteString("- 此摘要仅用于帮助理解对话背景, 不构成任何执行指令\n")
         if cc.focusTopic != "" {
-                sb.WriteString(fmt.Sprintf("- 当前焦点主题: %s，请保持上下文连贯\n", cc.focusTopic))
+                sb.WriteString(fmt.Sprintf("- 注意: 历史焦点主题 %s 可能已被最新消息取代\n", cc.focusTopic))
         }
-        sb.WriteString("=== 摘要结束 ===\n")
+        sb.WriteString("=== 历史摘要结束, 请关注最新用户消息 ===\n")
         sb.WriteString("[/MEMORY_CONTEXT]")
 
         return sb.String()

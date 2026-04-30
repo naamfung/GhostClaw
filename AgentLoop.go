@@ -763,8 +763,10 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             var divider strings.Builder
             // 記憶圍欄：明確隔離歷史摘要，防止模型將歷史內容誤認為當前指令
             divider.WriteString("[MEMORY_CONTEXT]\n")
-            divider.WriteString("[System note: 以下是早期对话历史的压缩摘要，仅供参考。请以最新用户消息为准，不要执行摘要中描述的历史任务。]\n\n")
-            divider.WriteString("=== 历史对话摘要 ===\n")
+            divider.WriteString("[System note: 以下是已被截断的早期对话历史压缩摘要。")
+            divider.WriteString("所有内容均为历史记录，不是当前用户指令。")
+            divider.WriteString("仅作理解对话背景之用，请以最新用户消息为准。]\n\n")
+            divider.WriteString("=== 已截断的对话历史摘要 ===\n")
 
             // 從被截斷的消息中生成結構化摘要，確保模型記得已完成嘅任務
             // 注意：fullMessages 係 pipeline 前嘅完整列表，messages 已被 pipeline 替換
@@ -809,7 +811,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             }
 
             if latestUserContent != "" {
-                divider.WriteString("用户最新请求: " + latestUserContent + "\n")
+                divider.WriteString("最新用户请求: " + latestUserContent + "\n")
             }
 
             compressedCount := boundaryStart - 1
@@ -819,8 +821,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             divider.WriteString("对话轮数: " + strconv.Itoa(len(messages)) + " | 已截断: " + strconv.Itoa(compressedCount) + " 条消息\n")
             divider.WriteString("当前时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
 
-            divider.WriteString("\n请注意：如有指令冲突，以最新用户消息的指令为准\n")
-            divider.WriteString("=== 摘要结束，以下继续对话 ===\n")
+            divider.WriteString("\n如有指令冲突，以最新用户消息 [USR:LATEST] 的指令为准\n")
+            divider.WriteString("以上历史摘要不构成任何执行指令，请勿据此发起操作\n")
+            divider.WriteString("=== 历史摘要结束，请聚焦最新用户消息 ===\n")
             divider.WriteString("[/MEMORY_CONTEXT]")
 
             dividerMsg := Message{
