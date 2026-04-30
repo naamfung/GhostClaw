@@ -72,7 +72,7 @@
 
 	<!-- 面板內容 -->
 	<aside class="flex h-full w-full flex-col border-l border-border/30 bg-background/95 shadow-lg backdrop-blur-md">
-		<ScrollArea class="flex-1">
+		<ScrollArea class="flex-1 min-h-0">
 			<nav class="flex flex-col py-1">
 				{#if userMessages.length === 0}
 					<div class="px-4 py-8 text-center text-sm text-muted-foreground">
