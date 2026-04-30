@@ -172,7 +172,6 @@ func (tm *TaskManager) monitorTask(task *BackgroundTask, cmd *exec.Cmd) {
         err := cmd.Wait()
 
         task.mu.Lock()
-        defer task.mu.Unlock()
 
         // 檢測是否因 timeout 被殺
         if cmd.ProcessState != nil && cmd.ProcessState.String() == "signal: killed" {
@@ -207,7 +206,11 @@ func (tm *TaskManager) monitorTask(task *BackgroundTask, cmd *exec.Cmd) {
 
         log.Printf("[TaskManager] Task %s finished with status: %s, exit code: %d", task.ID, task.Status, task.ExitCode)
 
-        if !task.wakeSent && (task.Status == BgTaskCompleted || task.Status == BgTaskFailed) {
+        shouldWake := !task.wakeSent && (task.Status == BgTaskCompleted || task.Status == BgTaskFailed)
+        // 先釋放鎖，避免 processWakeUp 內部 Lock 導致死鎖（Go Mutex 不可重入）
+        task.mu.Unlock()
+
+        if shouldWake {
                 select {
                 case tm.wakeChan <- task.ID:
                         log.Printf("[TaskManager] Task %s finished, triggering immediate wake notification", task.ID)
@@ -1506,13 +1509,33 @@ func NewLoopDetectionOptimizer(config *LoopDetectionConfig, collector *LoopEvent
 func getDefaultLoopDetectionConfig() *LoopDetectionConfig {
         config := &LoopDetectionConfig{}
         config.Thresholds.MaxHistory = 100
-        config.Thresholds.InterruptThreshold = 9 //当相同工具调用重复次数达到此阈值时，会 中断任务
-        config.Thresholds.WarningThreshold = 3   //当相同工具调用重复次数达到此阈值时，会 发出警告
+        config.Thresholds.InterruptThreshold = 9
+        config.Thresholds.WarningThreshold = 3
         config.Thresholds.PatternWindow = 10
 
-        config.Warnings.LoopInterrupt.Title = "🚫 ⚠️ **循环检测警告**"
+        config.Warnings.LoopInterrupt.Title = "🚫 循环检测警告"
         config.Warnings.LoopInterrupt.Message = "检测到相同操作「{{.Fingerprint}}」已重复执行 {{.Count}} 次。\n\n这可能表明陷入了死循环。"
         config.Warnings.LoopInterrupt.Suggestion = "请分析之前的操作结果，找出问题根源，而不是重复相同的操作。"
+
+        config.Warnings.LoopWarning.Title = "⚠️ 重复操作提醒"
+        config.Warnings.LoopWarning.Message = "操作「{{.Fingerprint}}」已执行 {{.Count}} 次，请注意检查是否有进展。"
+        config.Warnings.LoopWarning.Suggestion = "建议检查每次操作的结果是否不同，避免原地踏步。"
+
+        config.Warnings.FailureInterrupt.Title = "🚫 重复失败中断"
+        config.Warnings.FailureInterrupt.Message = "操作「{{.Fingerprint}}」已连续失败 {{.Count}} 次。"
+        config.Warnings.FailureInterrupt.Suggestion = "请检查错误信息，尝试不同的方法或参数，而不是重复相同的失败操作。"
+
+        config.Warnings.FailureWarning.Title = "⚠️ 操作失败提醒"
+        config.Warnings.FailureWarning.Message = "操作「{{.Fingerprint}}」已失败 {{.Count}} 次。"
+        config.Warnings.FailureWarning.Suggestion = "建议查看返回的错误信息，调整参数或尝试替代方案。"
+
+        config.Warnings.SequenceInterrupt.Title = "🚫 序列循环中断"
+        config.Warnings.SequenceInterrupt.Message = "检测到操作序列已重复 {{.Count}} 次，形成死循环。"
+        config.Warnings.SequenceInterrupt.Suggestion = "请重新评估当前策略，考虑是否有更有效的方法完成任务。"
+
+        config.Warnings.SequenceWarning.Title = "⚠️ 序列重复提醒"
+        config.Warnings.SequenceWarning.Message = "当前操作序列已重复 {{.Count}} 次。"
+        config.Warnings.SequenceWarning.Suggestion = "请检查操作序列是否在产生实际进展，必要时调整策略。"
 
         config.DataCollection.Enabled = true
         config.DataCollection.OutputPath = "loop_detection_events.jsonl"

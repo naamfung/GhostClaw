@@ -481,31 +481,32 @@ func main() {
 
                 wakeMsg := GetTaskWakeMessage(task)
 
-                if task.SessionID != "" {
-                        GetBus().NotifyDelayedTask(
-                                task.ID,
-                                task.Command,
-                                string(task.Status),
-                                output,
-                                task.SessionID,
-                        )
-                        log.Printf("[TaskManager] Wake notification sent for task %s to session %s", task.ID, task.SessionID)
-
-                        session := GetGlobalSession()
-                        
-                        // 将唤醒通知添加到输入消息列表中（自动增长，不会满）
-                        session.inputMu.Lock()
-                        session.InputMessages = append(session.InputMessages, wakeMsg)
-                        session.inputMu.Unlock()
-                        
-                        log.Printf("[TaskManager] Wake notification added to input messages for session %s", task.SessionID)
-                        
-                        // 立即嘗試處理隊列——processInputQueue 內部有 TaskRunning guard，
-                        // 不會造成重複處理；若模型正在忙碌則自動延遲重試
-                        go processInputQueue(session)
-                } else {
-                        log.Printf("[TaskManager] Task %s has no session ID, cannot send wake notification", task.ID)
+                // 通知消息總線（sessionID 為空時使用 "default"）
+                sessionID := task.SessionID
+                if sessionID == "" {
+                        sessionID = "default"
                 }
+                GetBus().NotifyDelayedTask(
+                        task.ID,
+                        task.Command,
+                        string(task.Status),
+                        output,
+                        sessionID,
+                )
+                log.Printf("[TaskManager] Wake notification sent for task %s (session: %s)", task.ID, sessionID)
+
+                session := GetGlobalSession()
+
+                // 将唤醒通知添加到输入消息列表中（自动增长，不会满）
+                session.inputMu.Lock()
+                session.InputMessages = append(session.InputMessages, wakeMsg)
+                session.inputMu.Unlock()
+
+                log.Printf("[TaskManager] Wake notification added to input messages for session %s", sessionID)
+
+                // 立即嘗試處理隊列——processInputQueue 內部有 TaskRunning guard，
+                // 不會造成重複處理；若模型正在忙碌則自動延遲重試
+                go processInputQueue(session)
         })
         log.Println("Task manager started.")
         defer func() {

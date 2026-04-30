@@ -493,43 +493,97 @@ func (tm *TrajectoryManager) messageContentToString(content interface{}) string 
 // extractToolCalls 提取工具调用记录
 func (tm *TrajectoryManager) extractToolCalls(messages []Message) []ToolCall {
         var toolCalls []ToolCall
+        tcIndexByID := make(map[string]int) // tool_call_id -> index in toolCalls
 
+        // Phase 1: 從 assistant 消息擷取工具調用
         for _, msg := range messages {
-                if msg.ToolCalls != nil {
-                        // 尝试不同的类型断言
-                        if toolCallsSlice, ok := msg.ToolCalls.([]ToolCall); ok {
-                                for _, tc := range toolCallsSlice {
-                                        toolCalls = append(toolCalls, tc)
-                                }
-                        } else if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
-                                for _, tc := range tcSlice {
-                                        if tcMap, ok := tc.(map[string]interface{}); ok {
-                                                functionName := ""
-                                                arguments := make(map[string]interface{})
+                if msg.ToolCalls == nil {
+                        continue
+                }
 
-                                                if function, ok := tcMap["function"].(map[string]interface{}); ok {
-                                                        if name, ok := function["name"].(string); ok {
-                                                                functionName = name
-                                                        }
-                                                        if args, ok := function["arguments"].(map[string]interface{}); ok {
-                                                                arguments = args
-                                                        }
-                                                }
+                // 嘗試不同類型斷言
+                // 路徑 A：已預先轉換為 []ToolCall
+                if tcSlice, ok := msg.ToolCalls.([]ToolCall); ok {
+                        for _, tc := range tcSlice {
+                                toolCalls = append(toolCalls, tc)
+                        }
+                        continue
+                }
 
-                                                if functionName != "" {
-                                                        toolCalls = append(toolCalls, ToolCall{
-                                                                FunctionName: functionName,
-                                                                Arguments:    arguments,
-                                                                Timestamp:    time.Now(),
-                                                        })
-                                                }
-                                        }
+                // 路徑 B：通用 API 響應格式（[]interface{} 或 []map[string]interface{}）
+                var rawCalls []map[string]interface{}
+                if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
+                        for _, item := range tcSlice {
+                                if tcMap, ok := item.(map[string]interface{}); ok {
+                                        rawCalls = append(rawCalls, tcMap)
                                 }
+                        }
+                } else if tcSlice, ok := msg.ToolCalls.([]map[string]interface{}); ok {
+                        rawCalls = tcSlice
+                }
+
+                for _, tcMap := range rawCalls {
+                        functionName := ""
+                        arguments := make(map[string]interface{})
+                        var callID string
+
+                        if id, ok := tcMap["id"].(string); ok {
+                                callID = id
+                        }
+                        if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                if name, ok := function["name"].(string); ok {
+                                        functionName = name
+                                }
+                                if args, ok := function["arguments"].(map[string]interface{}); ok {
+                                        arguments = args
+                                }
+                        }
+
+                        if functionName != "" {
+                                idx := len(toolCalls)
+                                if callID != "" {
+                                        tcIndexByID[callID] = idx
+                                }
+                                toolCalls = append(toolCalls, ToolCall{
+                                        FunctionName: functionName,
+                                        Arguments:    arguments,
+                                        Timestamp:    time.Now(),
+                                })
                         }
                 }
         }
 
+        // Phase 2: 從 tool 結果消息判斷成功/失敗
+        for _, msg := range messages {
+                if msg.Role != "tool" || msg.ToolCallID == "" {
+                        continue
+                }
+                idx, ok := tcIndexByID[msg.ToolCallID]
+                if !ok {
+                        continue
+                }
+                toolCalls[idx].Result = tm.messageContentToString(msg.Content)
+                toolCalls[idx].Success = !isErrorResult(msg.Content)
+        }
+
         return toolCalls
+}
+
+// isErrorResult 判斷工具結果是否爲錯誤
+func isErrorResult(content interface{}) bool {
+        var s string
+        switch v := content.(type) {
+        case string:
+                s = v
+        case []byte:
+                s = string(v)
+        default:
+                if content == nil {
+                        return false
+                }
+                s = fmt.Sprintf("%v", content)
+        }
+        return strings.HasPrefix(s, "Error:") || strings.HasPrefix(s, "error:")
 }
 
 // extractUserFeedback 提取用户反馈

@@ -5,6 +5,7 @@ import (
         "errors"
         "fmt"
         "log"
+        "math"
         "regexp"
         "strings"
         "time"
@@ -120,9 +121,15 @@ func (m *UnifiedMemory) SaveEntry(category MemoryCategory, key, value string, ta
                 existing.Scope = string(scope)
                 existing.UpdatedAt = now
                 existing.AccessCnt++
-                return db.Save(&existing).Error
+                return retryOnBusy(func() error {
+                        return db.Save(&existing).Error
+                })
         }
-        // 新建
+        if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+                // 非 "record not found" 的真正錯誤（例如 SQLITE_BUSY），向上傳播
+                return fmt.Errorf("query existing entry: %w", result.Error)
+        }
+        // 新建 — 確認係 ErrRecordNotFound 先行到呢度
         mem := Memories{
                 ID:        uuid.New().String(),
                 Category:  string(category),
@@ -134,7 +141,9 @@ func (m *UnifiedMemory) SaveEntry(category MemoryCategory, key, value string, ta
                 UpdatedAt: now,
                 AccessCnt: 1,
         }
-        return db.Create(&mem).Error
+        return retryOnBusy(func() error {
+                return db.Create(&mem).Error
+        })
 }
 
 // GetEntry 获取记忆
@@ -172,20 +181,42 @@ func (m *UnifiedMemory) DeleteEntry(category MemoryCategory, key string) error {
         return db.Where("category = ? AND key = ?", category, key).Delete(&Memories{}).Error
 }
 
+// retryOnBusy 在遇到 SQLITE_BUSY 時以指數退避重試，最多重試 3 次
+func retryOnBusy(operation func() error) error {
+        const maxRetries = 3
+        var lastErr error
+        for attempt := 0; attempt < maxRetries; attempt++ {
+                err := operation()
+                if err == nil {
+                        return nil
+                }
+                lastErr = err
+                if strings.Contains(err.Error(), "database is locked") {
+                        backoff := time.Duration(math.Pow(2, float64(attempt))) * 100 * time.Millisecond
+                        time.Sleep(backoff)
+                        continue
+                }
+                return err
+        }
+        return lastErr
+}
+
 // UpdateEntry 更新记忆
 func (m *UnifiedMemory) UpdateEntry(category MemoryCategory, key, newValue string, newTags []string) error {
         db := m.getDB()
         if db == nil {
                 return fmt.Errorf("database not available")
         }
-        return db.Model(&Memories{}).
-                Where("category = ? AND key = ?", category, key).
-                Updates(map[string]interface{}{
-                        "value":      newValue,
-                        "tags":       toJSON(newTags),
-                        "updated_at": time.Now(),
-                        "access_cnt": gorm.Expr("access_cnt + 1"),
-                }).Error
+        return retryOnBusy(func() error {
+                return db.Model(&Memories{}).
+                        Where("category = ? AND key = ?", category, key).
+                        Updates(map[string]interface{}{
+                                "value":      newValue,
+                                "tags":       toJSON(newTags),
+                                "updated_at": time.Now(),
+                                "access_cnt": gorm.Expr("access_cnt + 1"),
+                        }).Error
+        })
 }
 
 // SearchEntries 搜索记忆
