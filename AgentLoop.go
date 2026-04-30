@@ -609,17 +609,40 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		// 通常只能等到模型空闲才发送。此处检查 InputMessages 队列，
 		// 若有待处理的唤醒通知，立即注入为 user 消息，使模型在下一次
 		// API 调用时即可看到，无需等待当前 AgentLoop 完全结束。
+		//
+		// 安全注入策略：找到最后一条 user 消息并合并通知内容，避免
+		// 在 assistant(tool_use) → tool(tool_result) 链路中间插入
+		// 新的 user 消息。MiniMax 等 API 严格要求 tool_result 必须
+		// 紧跟在 tool_use 之后，中间不能有任何 user content。
 		if session := GetGlobalSession(); session != nil {
 			session.inputMu.Lock()
 			var remaining []string
 			for _, input := range session.InputMessages {
 				if strings.Contains(input, "任务唤醒通知") {
-					messages = append(messages, Message{
-						Role:      "user",
-						Content:   input,
-						Timestamp: time.Now().Unix(),
-					})
-					log.Printf("[AgentLoop] Injected pending wake notification into conversation (iteration=%d)", iteration)
+					// 從尾部向前找最後一條 user 消息，將喚醒通知合併進去
+					// 這樣不會破壞 tool_use→tool_result 的順序
+					merged := false
+					for i := len(messages) - 1; i >= 0; i-- {
+						if messages[i].Role == "user" {
+							if contentStr, ok := messages[i].Content.(string); ok {
+								messages[i].Content = contentStr + "\n\n" + input
+							} else {
+								messages[i].Content = input
+							}
+							merged = true
+							log.Printf("[AgentLoop] Merged wake notification into existing user message (index=%d, iteration=%d)", i, iteration)
+							break
+						}
+					}
+					if !merged {
+						// 極端情況：沒有任何 user 消息（不應該發生，I2 保證至少一條）
+						messages = append(messages, Message{
+							Role:      "user",
+							Content:   input,
+							Timestamp: time.Now().Unix(),
+						})
+						log.Printf("[AgentLoop] Injected pending wake notification as new user message (iteration=%d)", iteration)
+					}
 				} else {
 					remaining = append(remaining, input)
 				}
