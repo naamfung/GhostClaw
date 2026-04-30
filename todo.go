@@ -44,6 +44,22 @@ func NewTodoManager() *TodoManager {
         }
 }
 
+// normalizeTodoStatus 將模型可能傳入嘅各種 status 格式統一轉為 handler 期望嘅 PascalCase
+func normalizeTodoStatus(status string) string {
+        switch strings.ToLower(status) {
+        case "pending":
+                return "Pending"
+        case "inprogress", "in_progress":
+                return "InProgress"
+        case "completed", "done":
+                return "Completed"
+        case "waiting", "blocked":
+                return "Waiting"
+        default:
+                return status
+        }
+}
+
 // Update 更新指定列表的待辦事項
 // list_id 為空時使用 "default"
 func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error) {
@@ -64,7 +80,7 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
 
         for i, item := range items {
                 text := strings.TrimSpace(item.Text)
-                status := item.Status
+                status := normalizeTodoStatus(item.Status)
                 if status == "" {
                         status = "Pending"
                 }

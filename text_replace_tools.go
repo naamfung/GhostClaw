@@ -725,7 +725,7 @@ func handleTextTransform(ctx context.Context, argsMap map[string]interface{}, ch
                 }
                 lines = nonEmpty
         default:
-                return fmt.Sprintf("Error: 未知的转换类型: %s (可用: uppercase, lowercase, trim, sort, unique, reverse, number_lines, remove_empty)", transform), false
+                return fmt.Sprintf("Error: 未知的转换类型: %s (可用: uppercase, lowercase, trim, sort, unique, reverse, NumberLines, RemoveEmpty)", transform), false
         }
 
         result := strings.Join(lines, "\n")

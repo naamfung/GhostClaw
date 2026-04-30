@@ -830,8 +830,8 @@ func todosToolDef(listID, desc string) map[string]interface{} {
                                                                 },
                                                                 "status": map[string]interface{}{
                                                                         "type":       "string",
-                                                                        "enum":        []string{"pending", "InProgress", "completed", "Waiting"},
-                                                                        "description": "任務狀態：pending / in_progress / completed / waiting（異步等待中）",
+                                                                        "enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
+                                                                        "description": "任務狀態：Pending / InProgress / Completed / Waiting（異步等待中）",
                                                                 },
                                                         },
                                                         "required": []string{"id", "content", "status"},

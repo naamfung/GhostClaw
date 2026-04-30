@@ -1435,8 +1435,8 @@ validate + 可选冒烟测试。
                                                         },
                                                         "status": map[string]interface{}{
                                                                 "type":        "string",
-                                                                "enum":        []string{"pending", "InProgress", "completed", "Waiting"},
-                                                                "description": "任务状态：pending（待处理）、in_progress（进行中）、completed（已完成）、waiting（异步等待中）",
+                                                                "enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
+                                                                "description": "任务状态：Pending（待处理）、InProgress（进行中）、Completed（已完成）、Waiting（异步等待中）",
                                                         },
                                                         "priority": map[string]interface{}{
                                                                 "type":        "string",
@@ -1864,7 +1864,7 @@ validate + 可选冒烟测试。
                         "properties": map[string]interface{}{
                                 "text": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "输入文本（与 file_path 二选一）",
+                                        "description": "输入文本（与 FilePath 二选一）",
                                 },
                                 "FilePath": map[string]interface{}{
                                         "type":        "string",
@@ -1987,7 +1987,7 @@ validate + 可选冒烟测试。
                         "properties": map[string]interface{}{
                                 "text": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "输入文本（与 file_path 二选一）",
+                                        "description": "输入文本（与 FilePath 二选一）",
                                 },
                                 "FilePath": map[string]interface{}{
                                         "type":        "string",
@@ -1996,7 +1996,7 @@ validate + 可选冒烟测试。
                                 "transform": map[string]interface{}{
                                         "type":        "string",
                                         "enum":        []string{"uppercase", "lowercase", "trim", "sort", "unique", "reverse", "NumberLines", "RemoveEmpty"},
-                                        "description": "转换类型：uppercase/lowercase(大小写) / trim(去空白) / sort(排序) / unique(去重) / reverse(反转) / number_lines(加行号) / remove_empty(移除空行)",
+                                        "description": "转换类型：uppercase/lowercase(大小写) / trim(去空白) / sort(排序) / unique(去重) / reverse(反转) / NumberLines(加行号) / RemoveEmpty(移除空行)",
                                 },
                                 "StartLine": map[string]interface{}{
                                         "type":        "integer",
@@ -2173,7 +2173,7 @@ validate + 可选冒烟测试。
                                 },
                                 "password": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "密码（与 private_key_path 二选一）",
+                                        "description": "密码（与 PrivateKeyPath 二选一）",
                                 },
                                 "PrivateKeyPath": map[string]interface{}{
                                         "type":        "string",

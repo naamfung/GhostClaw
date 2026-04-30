@@ -445,6 +445,25 @@ func snakeToPascalCase(s string) string {
         return strings.Join(parts, "")
 }
 
+// normalizeArgsMapKeys 將含底線嘅 snake_case key 轉為 PascalCase 版本並合併入 argsMap
+// 處理 LLM 用 snake_case 傳參但 handler 用 PascalCase 讀取嘅兼容問題
+// 只處理含 "_" 嘅 key，保留原始 key 並新增 PascalCase 版本，雙向兼容
+func normalizeArgsMapKeys(argsMap map[string]interface{}) {
+        if argsMap == nil {
+                return
+        }
+        for key, value := range argsMap {
+                if strings.Contains(key, "_") {
+                        pascalKey := snakeToPascalCase(key)
+                        if pascalKey != key {
+                                if _, exists := argsMap[pascalKey]; !exists {
+                                        argsMap[pascalKey] = value
+                                }
+                        }
+                }
+        }
+}
+
 // GetUnknownToolErrorMessage 生成未知工具的错误消息
 // 自動檢測 snake_case 命名並提供明確的 PascalCase 修正指引
 func GetUnknownToolErrorMessage(toolName string) string {
@@ -559,6 +578,9 @@ func emitToolCallTags(ch Channel, toolName string, argsMap map[string]interface{
 // 2. 先读后写检查
 // 3. 未知工具引导
 func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[string]interface{}, ch Channel, role *Role) EnrichedMessage {
+        // 參數名歸一化：將 snake_case key 轉為 PascalCase 兼容版本
+        normalizeArgsMapKeys(argsMap)
+
         // Plan Mode 权限检查（分階段工具控制）
         if globalPlanMode.IsActive() && !globalPlanMode.IsToolAllowedInPlanMode(toolName) {
                 currentPhase := globalPlanMode.PhaseName()
