@@ -925,7 +925,7 @@ func LoadLoopDetectionConfig(configPath string) (*LoopDetectionConfig, error) {
 // getLoopDetectionConfigPath 获取配置文件路径
 func getLoopDetectionConfigPath() string {
         if globalExecDir != "" {
-                return filepath.Join(globalExecDir, "data", "loop_detection_config.toon")
+                return filepath.Join(globalDataDir, "loop_detection_config.toon")
         }
         return "data/loop_detection_config.toon"
 }
@@ -968,11 +968,7 @@ func NewLoopDetectorWithConfig(config *LoopDetectionConfig) *LoopDetector {
         if config.DataCollection.Enabled {
                 outputPath := config.DataCollection.OutputPath
                 if outputPath != "" && !filepath.IsAbs(outputPath) {
-                        if globalExecDir != "" {
-                                outputPath = filepath.Join(globalExecDir, "data", outputPath)
-                        } else {
-                                outputPath = filepath.Join("data", outputPath)
-                        }
+                        outputPath = filepath.Join(globalDataDir, outputPath)
                 }
                 ld.eventCollector = NewLoopEventCollector(outputPath, true)
         }

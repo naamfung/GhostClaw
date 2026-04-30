@@ -213,11 +213,24 @@ func (ms *MemoryScorer) SetScoreFactors(factors map[string]float64) {
 // ========== 全局实例 ==========
 var globalMemoryScorer *MemoryScorer
 
-// InitMemoryScorer 初始化记忆评分器
+// InitMemoryScorer 初始化记忆评分器並啟動定期評分
 func InitMemoryScorer() {
         if globalMemoryScorer == nil {
                 globalMemoryScorer = NewMemoryScorer()
                 log.Println("[MemoryScorer] Initialized")
+        }
+        // 啟動定期評分（每 12 小時一次）
+        go globalMemoryScorer.startPeriodicScoring(12 * time.Hour)
+}
+
+// startPeriodicScoring 定期執行批量記憶評分
+func (ms *MemoryScorer) startPeriodicScoring(interval time.Duration) {
+        ticker := time.NewTicker(interval)
+        defer ticker.Stop()
+        for range ticker.C {
+                if err := ms.BatchUpdateScores(); err != nil {
+                        log.Printf("[MemoryScorer] Periodic scoring error: %v", err)
+                }
         }
 }
 

@@ -9,6 +9,8 @@ import (
     "strings"
     "sync"
     "time"
+
+    "gopkg.in/yaml.v3"
 )
 
 // ========== 原有类型定义保持不变 ==========
@@ -505,62 +507,190 @@ func (mc *MemoryConsolidator) ResetSessionOffset(sessionKey string) {
     mc.sessionOffset[sessionKey] = 0
 }
 
-// WriteDailyLog 写入每日日志
+// sessionYAMLEntry 單個會話的 YAML 記錄
+type sessionYAMLEntry struct {
+        SessionID string           `yaml:"session_id"`
+        Timestamp string           `yaml:"timestamp"`
+        Date      string           `yaml:"date"`
+        Messages  []messageSummary `yaml:"messages"`
+}
+
+type messageSummary struct {
+        Role      string   `yaml:"role"`
+        Content   string   `yaml:"content"`
+        ToolCalls []string `yaml:"tool_names,omitempty"`
+}
+
+// WriteDailyLog 以 YAML 格式寫入每日會話日誌。
+// 結構化格式便於機器解析，可在 DB 損壞時恢復會話記錄。
 func (mc *MemoryConsolidator) WriteDailyLog(sessionID string, messages []Message) error {
         if len(messages) == 0 {
                 return nil
         }
-        // 确保 memory 目录存在
-        memoryDir := filepath.Join(globalDataDir, "memory")
+        memoryDir := MemoryDir()
         if err := os.MkdirAll(memoryDir, 0755); err != nil {
                 return err
         }
 
-        today := time.Now().Format("2006-01-02")
-        dailyLogPath := filepath.Join(memoryDir, today+".md")
+        now := time.Now()
+        today := now.Format("2006-01-02")
+        dailyLogPath := filepath.Join(memoryDir, today+".yaml")
 
-        // 提取关键信息
-        var entries []string
+        var summaries []messageSummary
         for _, msg := range messages {
-                if msg.Role == "user" {
-                        if content, ok := msg.Content.(string); ok && content != "" {
-                                entries = append(entries, fmt.Sprintf("- [用户] %s", TruncateRunes(content, 200)))
-                        }
-                } else if msg.Role == "assistant" {
-                        if msg.ToolCalls != nil {
-                                entries = append(entries, "- [工具调用] ...")
-                        } else if content, ok := msg.Content.(string); ok && content != "" {
-                                entries = append(entries, fmt.Sprintf("- [助手] %s", TruncateRunes(content, 200)))
-                        }
-                } else if msg.Role == "tool" {
-                        if content, ok := msg.Content.(string); ok && content != "" {
-                                entries = append(entries, fmt.Sprintf("- [工具结果] %s", TruncateRunes(content, 100)))
-                        }
+                var s messageSummary
+                s.Role = msg.Role
+                if content, ok := msg.Content.(string); ok {
+                        s.Content = TruncateRunes(content, 300)
+                }
+                if msg.ToolCalls != nil {
+                        s.ToolCalls = []string{"(tool_calls)"}
+                }
+                if s.Content != "" || len(s.ToolCalls) > 0 {
+                        summaries = append(summaries, s)
                 }
         }
 
-        if len(entries) == 0 {
+        if len(summaries) == 0 {
                 return nil
         }
 
-        // 打开文件（追加或创建）
+        entry := sessionYAMLEntry{
+                SessionID: sessionID,
+                Timestamp: now.Format("15:04:05"),
+                Date:      today,
+                Messages:  summaries,
+        }
+
+        yamlBytes, err := yaml.Marshal(entry)
+        if err != nil {
+                return err
+        }
+
         f, err := os.OpenFile(dailyLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if err != nil {
                 return err
         }
         defer f.Close()
 
-        timestamp := time.Now().Format("15:04:05")
-        header := fmt.Sprintf("\n## 会话 %s [%s]\n", sessionID, timestamp)
-        if _, err := f.WriteString(header); err != nil {
+        // YAML 文檔分隔符
+        f.WriteString("\n---\n")
+        f.Write(yamlBytes)
+        return nil
+}
+
+// ========== 記憶 YAML 備份與恢復 ==========
+
+// memoryBackupEntry 單條記憶的 YAML 結構
+type memoryBackupEntry struct {
+        Category string `yaml:"category"`
+        Key      string `yaml:"key"`
+        Value    string `yaml:"value"`
+        Scope    string `yaml:"scope"`
+        Tags     string `yaml:"tags,omitempty"`
+        Score    float64 `yaml:"score"`
+}
+
+// memoryBackup 完整記憶備份的 YAML 結構
+type memoryBackup struct {
+        BackupDate string             `yaml:"backup_date"`
+        Memories   []memoryBackupEntry `yaml:"memories"`
+}
+
+// BackupMemoriesToYAML 將所有記憶匯出為 YAML 文件。
+// 用於定期備份，確保 DB 損壞時可從 YAML 恢復。
+func BackupMemoriesToYAML() error {
+        if globalDB == nil {
+                return fmt.Errorf("database not initialized")
+        }
+        memoryDir := MemoryDir()
+        if err := os.MkdirAll(memoryDir, 0755); err != nil {
                 return err
         }
-        for _, entry := range entries {
-                if _, err := f.WriteString(entry + "\n"); err != nil {
-                        return err
-                }
+
+        var records []Memories
+        if err := globalDB.Find(&records).Error; err != nil {
+                return fmt.Errorf("failed to query memories: %w", err)
         }
+
+        var entries []memoryBackupEntry
+        for _, r := range records {
+                entries = append(entries, memoryBackupEntry{
+                        Category: r.Category,
+                        Key:      r.Key,
+                        Value:    r.Value,
+                        Scope:    r.Scope,
+                        Tags:     r.Tags,
+                        Score:    r.Score,
+                })
+        }
+
+        backup := memoryBackup{
+                BackupDate: time.Now().Format(time.RFC3339),
+                Memories:   entries,
+        }
+
+        yamlBytes, err := yaml.Marshal(backup)
+        if err != nil {
+                return fmt.Errorf("failed to marshal memories: %w", err)
+        }
+
+        backupPath := filepath.Join(memoryDir, "memories_backup.yaml")
+        if err := os.WriteFile(backupPath, yamlBytes, 0644); err != nil {
+                return fmt.Errorf("failed to write backup: %w", err)
+        }
+
+        log.Printf("[MemoryBackup] %d memories backed up to %s", len(entries), backupPath)
         return nil
+}
+
+// RecoverMemoriesFromYAML 從 YAML 備份文件恢復記憶到數據庫。
+// 僅恢復數據庫中不存在的記憶（以 key 判斷），避免重複。
+// 返回恢復的記憶數量。
+func RecoverMemoriesFromYAML() (int, error) {
+        if globalDB == nil {
+                return 0, fmt.Errorf("database not initialized")
+        }
+
+        memoryDir := MemoryDir()
+        backupPath := filepath.Join(memoryDir, "memories_backup.yaml")
+
+        data, err := os.ReadFile(backupPath)
+        if err != nil {
+                return 0, fmt.Errorf("cannot read backup file: %w", err)
+        }
+
+        var backup memoryBackup
+        if err := yaml.Unmarshal(data, &backup); err != nil {
+                return 0, fmt.Errorf("failed to parse backup YAML: %w", err)
+        }
+
+        recovered := 0
+        for _, entry := range backup.Memories {
+                // 檢查是否已存在（以 key 判斷）
+                var existing Memories
+                result := globalDB.Where("key = ? AND category = ?", entry.Key, entry.Category).First(&existing)
+                if result.Error == nil {
+                        continue // 已存在，跳過
+                }
+
+                record := Memories{
+                        Category: entry.Category,
+                        Key:      entry.Key,
+                        Value:    entry.Value,
+                        Scope:    entry.Scope,
+                        Tags:     entry.Tags,
+                        Score:    entry.Score,
+                }
+                if err := globalDB.Create(&record).Error; err != nil {
+                        log.Printf("[MemoryRecover] Failed to restore %s/%s: %v", entry.Category, entry.Key, err)
+                        continue
+                }
+                recovered++
+        }
+
+        log.Printf("[MemoryRecover] Recovered %d memories from %s", recovered, backupPath)
+        return recovered, nil
 }
 
 // ========== 全局函数 ==========

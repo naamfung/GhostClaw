@@ -354,7 +354,26 @@ func (fc *FeedbackCollector) CollectImplicitFeedback(userMessage string, message
         }
 
         _ = fc.SaveFeedback(record)
+        // 將反饋接入記憶評分：正面反饋提升最近記憶分數，負面降低
+        adjustMemoryScoresFromFeedback(record.Rating)
         return record
+}
+
+// adjustMemoryScoresFromFeedback 根據用戶反饋調整最近訪問記憶的分數
+func adjustMemoryScoresFromFeedback(rating int) {
+        if globalMemoryScorer == nil || globalDB == nil {
+                return
+        }
+        // 只在明顯正面(4-5)或明顯負面(1-2)時調整
+        if rating >= 4 {
+                // 正面反饋：對最近更新的記憶輕微加分
+                globalDB.Exec("UPDATE memories SET score = MIN(1.0, score + 0.05) WHERE updated_at > ?",
+                        time.Now().Add(-30*time.Minute))
+        } else if rating <= 2 {
+                // 負面反饋：對最近更新的記憶輕微減分
+                globalDB.Exec("UPDATE memories SET score = MAX(0.0, score - 0.05) WHERE updated_at > ?",
+                        time.Now().Add(-30*time.Minute))
+        }
 }
 
 // ParseFeedbackFromMessage 从用户消息中解析显式评分（保留兼容性）

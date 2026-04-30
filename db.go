@@ -4,7 +4,6 @@ import (
         "fmt"
         "log"
         "os"
-        "os/exec"
         "path/filepath"
         "strings"
         "sync"
@@ -111,88 +110,149 @@ func WaitDBRecovery() {
         }
 }
 
-// recoverDB 嘗試修復損壞的 SQLite 數據庫文件。
-// 使用 sqlite3 的 .recover 等價操作：通過 integrity_check 檢測損壞，
-// 然後 dump + 重建。返回 true 表示執行了修復。
+// recoverDB 嘗試修復損壞的 SQLite 數據庫。
+// 修復順序：1. Go 原生修復 → 2. 還原最新 DB 備份 → 3. 重建空白 DB
+// 使用 GORM 原生 PRAGMA integrity_check 檢測，不依賴外部 sqlite3 CLI。
+// 返回 true 表示執行了修復（或重建）。
 func recoverDB(dbPath string) bool {
-        // 使用 sqlite3 命令行工具執行 integrity check
-        checkCmd := fmt.Sprintf("sqlite3 %q \"PRAGMA integrity_check;\"", dbPath)
-        output, err := execCommandShell(checkCmd)
-        if err != nil || !strings.Contains(output, "ok") {
-                log.Printf("[DB] Database integrity check failed: %s (output: %s)", err, strings.TrimSpace(output))
-        } else {
-                // 數據庫完好，無需修復
+        // 先用 GORM 直接打開嘗試做 integrity check
+        db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+                Logger: logger.Default.LogMode(logger.Silent),
+        })
+        if err != nil {
+                log.Printf("[DB] Cannot open database for integrity check: %v", err)
+                if isDBMalformedError(err) {
+                        return restoreFromBackupOrRebuild(dbPath)
+                }
                 return false
         }
 
-        log.Printf("[DB] Attempting database recovery for: %s", dbPath)
-
-        // 備份損壞的數據庫
-        backupPath := dbPath + ".corrupted.bak"
-        if err := backupFile(dbPath, backupPath); err != nil {
-                log.Printf("[DB] Failed to backup corrupted database: %v", err)
-        } else {
-                log.Printf("[DB] Corrupted database backed up to: %s", backupPath)
+        var result string
+        rawDB, _ := db.DB()
+        if rawDB != nil {
+                row := rawDB.QueryRow("PRAGMA integrity_check")
+                row.Scan(&result)
+                rawDB.Close()
+        }
+        sqlDB, _ := db.DB()
+        if sqlDB != nil {
+                sqlDB.Close()
         }
 
-        // 使用 sqlite3 .recover 命令重建（.dump 對損壞數據庫可能失敗，.recover 更強壯）
-        recoverFile := dbPath + ".recover.sql"
-        recoverCmd := fmt.Sprintf("sqlite3 %q \".recover\" > %q 2>/dev/null", dbPath, recoverFile)
-        if _, err := execCommandShell(recoverCmd); err != nil {
-                log.Printf("[DB] .recover command failed: %v, trying .dump fallback", err)
-                // 回退到 .dump
-                dumpCmd := fmt.Sprintf("sqlite3 %q \".dump\" > %q 2>/dev/null", dbPath, recoverFile)
-                execCommandShell(dumpCmd)
+        if strings.EqualFold(strings.TrimSpace(result), "ok") {
+                log.Printf("[DB] Integrity check passed, database is healthy")
+                return false
         }
 
-        // 檢查 recover 文件是否有內容
-        if info, err := os.Stat(recoverFile); err != nil || info.Size() < 10 {
-                log.Printf("[DB] Recovery dump is empty or missing, removing corrupted DB and starting fresh")
-                os.Remove(dbPath)
-                os.Remove(recoverFile)
-                // 同時清理可能的 WAL 和 SHM 文件
-                os.Remove(dbPath + "-wal")
-                os.Remove(dbPath + "-shm")
+        log.Printf("[DB] Integrity check failed: %s, attempting recovery", result)
+
+        // 備份當前（損壞的）數據庫以供事後分析
+        bakPath := dbPath + ".corrupted.bak"
+        if data, err := os.ReadFile(dbPath); err == nil {
+                os.WriteFile(bakPath, data, 0644)
+                log.Printf("[DB] Corrupted database saved to: %s", bakPath)
+        }
+
+        // 步驟 1：嘗試 Go 原生修復
+        if recoverViaGo(dbPath) {
+                log.Printf("[DB] Database recovered via Go-native repair")
                 return true
         }
 
-        // 刪除損壞的數據庫並用 recover 數據重建
-        os.Remove(dbPath)
-        os.Remove(dbPath + "-wal")
-        os.Remove(dbPath + "-shm")
+        // 步驟 2：Go 原生修復失敗 → 嘗試從最近 DB 備份恢復
+        return restoreFromBackupOrRebuild(dbPath)
+}
 
-        rebuildCmd := fmt.Sprintf("sqlite3 %q < %q", dbPath, recoverFile)
-        if _, err := execCommandShell(rebuildCmd); err != nil {
-                log.Printf("[DB] Failed to rebuild database from recovery dump: %v", err)
-                os.Remove(recoverFile)
+// restoreFromBackupOrRebuild 從最近的 DB 備份恢復，若無備份則重建空白 DB。
+func restoreFromBackupOrRebuild(dbPath string) bool {
+        latestBackup := findLatestBackup(dbPath)
+        if latestBackup != "" {
+                log.Printf("[DB] Restoring from backup: %s", latestBackup)
+                // 刪除損壞的 DB 文件
+                os.Remove(dbPath)
+                os.Remove(dbPath + "-wal")
+                os.Remove(dbPath + "-shm")
+                // 複製備份到正式路徑
+                data, err := os.ReadFile(latestBackup)
+                if err != nil {
+                        log.Printf("[DB] Failed to read backup: %v", err)
+                } else if err := os.WriteFile(dbPath, data, 0644); err != nil {
+                        log.Printf("[DB] Failed to restore backup: %v", err)
+                } else {
+                        // 再跑一次修復確保備份 DB 可用
+                        if recoverViaGo(dbPath) {
+                                log.Printf("[DB] Backup restored and verified: %s", latestBackup)
+                                return true
+                        }
+                        log.Printf("[DB] Backup %s is also corrupted, falling back to rebuild", latestBackup)
+                }
+        }
+
+        // 步驟 3：無可用備份 → 重建空白 DB
+        return rebuildFromScratch(dbPath)
+}
+
+// findLatestBackup 查找最新的 DB 備份文件，無則返回空字串
+func findLatestBackup(dbPath string) string {
+        pattern := dbPath + ".backup.*"
+        matches, err := filepath.Glob(pattern)
+        if err != nil || len(matches) == 0 {
+                return ""
+        }
+        // filepath.Glob 返回的結果已按字母排序（含時間戳），最後一個即最新
+        return matches[len(matches)-1]
+}
+
+// recoverViaGo 用 Go 原生方式修復數據庫（不依賴外部 sqlite3）
+func recoverViaGo(dbPath string) bool {
+        srcDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+                Logger: logger.Default.LogMode(logger.Silent),
+        })
+        if err != nil {
+                return false
+        }
+        sqlDB, _ := srcDB.DB()
+        if sqlDB == nil {
+                return false
+        }
+        defer sqlDB.Close()
+
+        // AutoMigrate 修復 schema
+        if err := srcDB.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistories{}); err != nil {
+                log.Printf("[DB] AutoMigrate during recovery failed: %v", err)
                 return false
         }
 
-        os.Remove(recoverFile)
-        log.Printf("[DB] Database successfully recovered")
+        // VACUUM 重建（清理碎片）
+        if err := srcDB.Exec("VACUUM").Error; err != nil {
+                log.Printf("[DB] VACUUM during recovery failed: %v", err)
+        }
+
+        // Checkpoint WAL
+        srcDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+
+        log.Printf("[DB] Go-native recovery completed for: %s", dbPath)
         return true
 }
 
-// backupFile 複製文件（用於數據庫備份）
-func backupFile(src, dst string) error {
-        data, err := os.ReadFile(src)
-        if err != nil {
-                return err
-        }
-        return os.WriteFile(dst, data, 0644)
+// rebuildFromScratch 刪除損壞數據庫，讓主流程重建空白 DB
+func rebuildFromScratch(dbPath string) bool {
+        log.Printf("[DB] No usable backup found, rebuilding from scratch: %s", dbPath)
+        os.Remove(dbPath)
+        os.Remove(dbPath + "-wal")
+        os.Remove(dbPath + "-shm")
+        return true
 }
 
-// execCommandShell 執行 shell 命令並返回輸出
-func execCommandShell(cmd string) (string, error) {
-        cmdObj := exec.Command("sh", "-c", cmd)
-        output, err := cmdObj.CombinedOutput()
-        return string(output), err
+// MemoryDir 返回記憶數據目錄的規範路徑（globalDataDir/memory）
+func MemoryDir() string {
+        return filepath.Join(globalDataDir, "memory")
 }
 
 // InitDB 初始化数据库连接并自动迁移
-// 数据库存放在 dataDir/memory/ghostclaw.db
+// 数据库存放在 MemoryDir()/ghostclaw.db
 func InitDB(dataDir string) error {
-        memoryDir := filepath.Join(dataDir, "memory")
+        memoryDir := MemoryDir()
         if err := os.MkdirAll(memoryDir, 0755); err != nil {
                 return fmt.Errorf("failed to create memory directory: %v", err)
         }
@@ -235,7 +295,79 @@ func InitDB(dataDir string) error {
                 log.Printf("[DB] Session data rebuilt from .toon backup files after DB init")
         }
 
+        // 啟動定期備份
+        go periodicBackup(dbPath, 6*time.Hour, 4)
+
+        // DB 重建後嘗試從 YAML 備份恢復記憶
+        var memCount int64
+        db.Model(&Memories{}).Count(&memCount)
+        if memCount == 0 {
+                if recovered, err := RecoverMemoriesFromYAML(); err != nil {
+                        log.Printf("[DB] Memory recovery from YAML skipped: %v", err)
+                } else if recovered > 0 {
+                        log.Printf("[DB] Recovered %d memories from YAML backup", recovered)
+                }
+        }
+
         return nil
+}
+
+// periodicBackup 定期備份數據庫文件，保留最近 keep 份
+func periodicBackup(dbPath string, interval time.Duration, keep int) {
+        ticker := time.NewTicker(interval)
+        defer ticker.Stop()
+        for range ticker.C {
+                if globalDB == nil {
+                        continue
+                }
+                // Checkpoint WAL 確保所有寫入都同步到主 DB 文件
+                globalDB.Exec("PRAGMA wal_checkpoint(PASSIVE)")
+                backupPath := dbPath + fmt.Sprintf(".backup.%s", time.Now().Format("20060102_150405"))
+                data, err := os.ReadFile(dbPath)
+                if err != nil {
+                        log.Printf("[DB] Periodic backup failed: %v", err)
+                        continue
+                }
+                if err := os.WriteFile(backupPath, data, 0644); err != nil {
+                        log.Printf("[DB] Periodic backup write failed: %v", err)
+                        continue
+                }
+                log.Printf("[DB] Periodic backup created: %s (%d bytes)", backupPath, len(data))
+                // 同時備份記憶到 YAML
+                if err := BackupMemoriesToYAML(); err != nil {
+                        log.Printf("[DB] Memory YAML backup failed: %v", err)
+                }
+                // 自動清理低質量 Skill
+                if globalSkillManagerV2 != nil {
+                        if suggestions, err := globalSkillManagerV2.EvolutionOptimizer().GenerateCleanupSuggestions(); err == nil {
+                                for _, s := range suggestions {
+                                        log.Printf("[SkillCleanup] %s: %s (action=%s)", s.SkillName, s.Reason, s.Action)
+                                        if s.Action == "delete" {
+                                                if err := globalSkillManagerV2.DeleteSkill(s.SkillName); err != nil {
+                                                        log.Printf("[SkillCleanup] Failed to delete %s: %v", s.SkillName, err)
+                                                } else {
+                                                        log.Printf("[SkillCleanup] Deleted low-quality skill: %s", s.SkillName)
+                                                }
+                                        }
+                                }
+                        }
+                }
+                // 清理舊備份
+                cleanOldBackups(dbPath, keep)
+        }
+}
+
+// cleanOldBackups 清理舊備份文件，保留最近 keep 份
+func cleanOldBackups(dbPath string, keep int) {
+        pattern := dbPath + ".backup.*"
+        matches, err := filepath.Glob(pattern)
+        if err != nil || len(matches) <= keep {
+                return
+        }
+        // 按文件名（含時間戳）排序，刪除最舊的
+        for i := 0; i < len(matches)-keep; i++ {
+                os.Remove(matches[i])
+        }
 }
 
 // initFTS5 creates FTS5 virtual tables and triggers for all main tables.

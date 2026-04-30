@@ -547,7 +547,7 @@ func BackupSessionToFile(session *GlobalSession) {
         }
 
         // 創建備份目錄
-        backupDir := filepath.Join(globalExecDir, "data", "backups")
+        backupDir := filepath.Join(globalDataDir, "backups")
         if err := os.MkdirAll(backupDir, 0755); err != nil {
                 log.Printf("[Backup] Failed to create backup directory: %v", err)
                 return
@@ -617,7 +617,7 @@ func RebuildFromBackups() bool {
                 return false // 數據庫中已有數據，無需重建
         }
 
-        backupDir := filepath.Join(globalExecDir, "data", "backups")
+        backupDir := filepath.Join(globalDataDir, "backups")
         entries, err := os.ReadDir(backupDir)
         if err != nil {
                 return false // 備份目錄不存在，首次運行屬於正常

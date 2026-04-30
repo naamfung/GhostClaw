@@ -138,7 +138,7 @@ func (s *GlobalSession) LoadFromPersist() error {
 // SavePendingMessages 保存未处理消息队列到文件
 func (s *GlobalSession) SavePendingMessages() error {
         // 创建消息队列目录
-        messagesDir := filepath.Join(globalExecDir, "pending_messages")
+        messagesDir := filepath.Join(globalDataDir, "pending_messages")
         if err := os.MkdirAll(messagesDir, 0755); err != nil {
                 return fmt.Errorf("failed to create pending messages directory: %w", err)
         }
@@ -169,7 +169,7 @@ func (s *GlobalSession) SavePendingMessages() error {
 // loadPendingMessages 从文件加载未处理消息队列
 func (s *GlobalSession) loadPendingMessages() error {
         // 检查消息队列文件是否存在
-        filePath := filepath.Join(globalExecDir, "pending_messages", "pending_messages.json")
+        filePath := filepath.Join(globalDataDir, "pending_messages", "pending_messages.json")
         if _, err := os.Stat(filePath); os.IsNotExist(err) {
                 return nil
         }

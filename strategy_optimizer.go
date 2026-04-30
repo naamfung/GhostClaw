@@ -324,29 +324,24 @@ func (so *StrategyOptimizer) optimizeToolUsage(report *InsightsReport) *AppliedC
 	}
 
 	if len(lowSuccessTools) > 0 {
-		// 为低成功率工具生成改进建议
-		toolImprovements := make(map[string]string)
-		for _, toolName := range lowSuccessTools {
-			// 根据工具名称生成针对性的改进建议
-			switch toolName {
-			case "search":
-				toolImprovements[toolName] = "使用更具体的搜索关键词，避免模糊查询"
-			case "web_search":
-				toolImprovements[toolName] = "提供更明确的搜索意图，指定所需信息的类型"
-			case "run_command":
-				toolImprovements[toolName] = "确保命令语法正确，提供完整的命令参数"
-			default:
-				toolImprovements[toolName] = "检查输入参数格式，确保提供所有必要信息"
+		// 分析每個低成功率工具的具體數據
+		var criticalTools []string
+		for _, tool := range report.ToolUsage.TopTools {
+			if tool.SuccessRate < 0.3 && tool.Count > 5 {
+				criticalTools = append(criticalTools, tool.Name)
+				log.Printf("[StrategyOptimizer] CRITICAL: %s success rate=%.0f%% (%d calls) — consider reviewing or disabling",
+					tool.Name, tool.SuccessRate*100, tool.Count)
 			}
 		}
 
-		// 这里可以实现工具使用策略的优化
-		// 例如更新工具描述、添加更多示例等
-		log.Printf("[StrategyOptimizer] Generated improvements for %d low-success tools", len(toolImprovements))
+		improvement := fmt.Sprintf("分析 %d 个低成功率工具", len(lowSuccessTools))
+		if len(criticalTools) > 0 {
+			improvement += fmt.Sprintf("，其中 %d 个成功率低于30%%: %s", len(criticalTools), strings.Join(criticalTools, ", "))
+		}
 
 		return &AppliedChange{
 			Type:        "tool_usage",
-			Description: fmt.Sprintf("优化 %d 个低成功率工具的使用策略", len(lowSuccessTools)),
+			Description: improvement,
 			Priority:    "medium",
 			Success:     true,
 		}
@@ -679,7 +674,7 @@ func (so *StrategyOptimizer) loadLoopDetectionEventsFromFile() []LoopDetectionEv
 	var events []LoopDetectionEvent
 
 	// 尝试读取事件文件（使用程序自身目录下的 data 目录）
-	eventFile := filepath.Join(globalExecDir, "data", "loop_detection_events.jsonl")
+	eventFile := filepath.Join(globalDataDir, "loop_detection_events.jsonl")
 	data, err := os.ReadFile(eventFile)
 	if err != nil {
 		return events

@@ -1404,6 +1404,12 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         }
     }
 
+    // LLM 自省學習：任務完成後分析對話，提取經驗教訓
+    if globalSelfLearner != nil {
+        taskDesc := getCurrentTaskDescriptionFromMessages(messages)
+        go globalSelfLearner.Reflect(context.Background(), taskDesc, messages)
+    }
+
     if globalMemoryConsolidator != nil {
         go func() {
             sessionKey := "default"
