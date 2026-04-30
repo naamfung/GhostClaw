@@ -306,6 +306,14 @@ func InitDB(dataDir string) error {
         // 啟動定期備份
         go periodicBackup(dbPath, 6*time.Hour, 4)
 
+        // 啟動後立即執行一次 YAML 備份（不等 6 小時）
+        go func() {
+                time.Sleep(30 * time.Second) // 等系統完全啟動
+                if err := BackupMemoriesToYAML(); err != nil {
+                        log.Printf("[DB] Initial YAML backup failed: %v", err)
+                }
+        }()
+
         // DB 重建後嘗試從 YAML 備份恢復記憶
         var memCount int64
         db.Model(&Memories{}).Count(&memCount)

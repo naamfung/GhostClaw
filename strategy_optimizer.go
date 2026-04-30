@@ -27,6 +27,7 @@ type StrategyOptimizer struct {
 	// 状态
 	lastOptimization  time.Time
 	optimizationCount int
+	lastResults       *OptimizationResult // 上次優化結果，用於去重
 }
 
 // OptimizationConfig 优化配置
@@ -175,10 +176,16 @@ func (so *StrategyOptimizer) Optimize() (*OptimizationResult, error) {
 	// 生成分析报告
 	report := so.insightsEngine.GenerateReport(7) // 分析过去7天的数据
 
+	// 載入最近一次優化結果，避免重複建議
+	so.lastResults = nil
+	if history, err := so.GetOptimizationHistory(); err == nil && len(history) > 0 {
+		so.lastResults = &history[len(history)-1]
+	}
+
 	// 应用优化策略
 	changes := so.applyOptimizations(report)
 
-	// 计算改进分数
+	// 計算改進分數（扣除重複建議）
 	improvementScore := so.calculateImprovementScore(report, changes)
 
 	// 生成优化结果
@@ -238,6 +245,23 @@ func (so *StrategyOptimizer) applyOptimizations(report *InsightsReport) []Applie
 	// 6. 优化循环检测配置
 	if change := so.optimizeLoopDetection(); change != nil {
 		changes = append(changes, *change)
+	}
+
+	// 去重：跳過與上次優化相同的建議
+	if so.lastResults != nil {
+		prevDescs := make(map[string]bool)
+		for _, c := range so.lastResults.AppliedChanges {
+			prevDescs[c.Description] = true
+		}
+		filtered := make([]AppliedChange, 0, len(changes))
+		for _, c := range changes {
+			if !prevDescs[c.Description] {
+				filtered = append(filtered, c)
+			} else {
+				log.Printf("[StrategyOptimizer] Skipping duplicate: %s", c.Description)
+			}
+		}
+		changes = filtered
 	}
 
 	return changes
