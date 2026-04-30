@@ -621,58 +621,58 @@ func (pm *PlanMode) IsTimedOut() bool {
 // 計劃文件操作
 // ============================================================================
 
-func handlePlanWrite(args map[string]interface{}) string {
+func handlePlanWrite(args map[string]interface{}) (string, bool) {
         globalPlanMode.mu.RLock()
         phase := globalPlanMode.Phase
         planPath := globalPlanMode.PlanFilePath
         globalPlanMode.mu.RUnlock()
 
         if phase == PlanPhaseInactive {
-                return "錯誤：Plan Mode 未激活。"
+                return "錯誤：Plan Mode 未激活。", false
         }
         if phase != PlanPhaseDesign {
-                return "錯誤：PlanWrite 僅在 Phase 2（設計）可用。當前階段不能寫入計劃文件。"
+                return "錯誤：PlanWrite 僅在 Phase 2（設計）可用。當前階段不能寫入計劃文件。", false
         }
 
         if planPath == "" {
-                return "錯誤：Plan Mode 未正確初始化。"
+                return "錯誤：Plan Mode 未正確初始化。", false
         }
 
         content, ok := args["content"].(string)
         if !ok || content == "" {
-                return "錯誤：缺少 content 參數。"
+                return "錯誤：缺少 content 參數。", false
         }
 
         dir := filepath.Dir(planPath)
         if err := os.MkdirAll(dir, 0755); err != nil {
-                return fmt.Sprintf("錯誤：無法創建計劃目錄: %v", err)
+                return fmt.Sprintf("錯誤：無法創建計劃目錄: %v", err), false
         }
 
         if err := os.WriteFile(planPath, []byte(content), 0644); err != nil {
-                return fmt.Sprintf("錯誤：無法寫入計劃文件: %v", err)
+                return fmt.Sprintf("錯誤：無法寫入計劃文件: %v", err), false
         }
 
-        return fmt.Sprintf("計劃已寫入 (%d 字符)", len(content))
+        return fmt.Sprintf("計劃已寫入 (%d 字符)", len(content)), true
 }
 
-func handlePlanRead(args map[string]interface{}) string {
+func handlePlanRead(args map[string]interface{}) (string, bool) {
         globalPlanMode.mu.RLock()
         planPath := globalPlanMode.PlanFilePath
         globalPlanMode.mu.RUnlock()
 
         if planPath == "" {
-                return "錯誤：Plan Mode 未激活。"
+                return "錯誤：Plan Mode 未激活。", false
         }
 
         data, err := os.ReadFile(planPath)
         if err != nil {
                 if os.IsNotExist(err) {
-                        return "計劃文件尚未創建。在 Phase 2 使用 PlanWrite 編寫計劃。"
+                        return "計劃文件尚未創建。在 Phase 2 使用 PlanWrite 編寫計劃。", true
                 }
-                return fmt.Sprintf("錯誤：無法讀取計劃文件: %v", err)
+                return fmt.Sprintf("錯誤：無法讀取計劃文件: %v", err), false
         }
 
-        return string(data)
+        return string(data), true
 }
 
 // ============================================================================

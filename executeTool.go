@@ -226,11 +226,13 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
 
         lineNum := int(lineNumFloat)
         var content string
+        var failed bool
         if lineNum == 0 {
                 // 创建空文件
                 file, err := os.Create(filename)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         file.Close()
                         content = "Successfully created empty file: " + filename
@@ -240,6 +242,7 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 err := AppendFileLine(filename, text)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = "Successfully appended to end of file"
                 }
@@ -248,11 +251,15 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 err := WriteFileLine(filename, lineNum, text)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = "Successfully wrote to line " + strconv.Itoa(lineNum)
                 }
         }
         fmt.Println(content)
+        if failed {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -282,6 +289,7 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         var content string
+        var failed bool
         if verbose {
                 // 获取文件信息
                 info, infoErr := os.Stat(filename)
@@ -312,6 +320,7 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
                 resultTOON, err := toon.Marshal(result)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = string(resultTOON)
                 }
@@ -320,11 +329,15 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
                 resultTOON, err := toon.Marshal(lines)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = string(resultTOON)
                 }
         }
         fmt.Println(TruncateString(content, 200))
+        if failed {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -361,6 +374,7 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         var content string
+        var failed bool
         if verbose {
                 // 获取文件信息
                 info, infoErr := os.Stat(filename)
@@ -393,6 +407,7 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 resultTOON, err := toon.Marshal(result)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = string(resultTOON)
                 }
@@ -401,11 +416,15 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 resultTOON, err := toon.Marshal(lines)
                 if err != nil {
                         content = "Error: " + err.Error()
+                        failed = true
                 } else {
                         content = string(resultTOON)
                 }
         }
         fmt.Println(TruncateString(content, 200))
+        if failed {
+                return content, TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 
@@ -562,12 +581,13 @@ func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
         var content string
         if err != nil {
                 content = "Error: " + err.Error()
+                fmt.Println(content)
+                return content, TaskStatusFailed
+        }
+        if appendMode {
+                content = "Successfully appended " + strconv.Itoa(len(lines)) + " lines to " + filename
         } else {
-                if appendMode {
-                        content = "Successfully appended " + strconv.Itoa(len(lines)) + " lines to " + filename
-                } else {
-                        content = "Successfully wrote " + strconv.Itoa(len(lines)) + " lines to " + filename
-                }
+                content = "Successfully wrote " + strconv.Itoa(len(lines)) + " lines to " + filename
         }
         fmt.Println(content)
         return content, TaskStatusSuccess
@@ -629,15 +649,16 @@ func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         err := WriteFileRange(filename, startLine, endLine, contentStr)
-        var content string
         if err != nil {
-                content = "Error: " + err.Error()
+                content := "Error: " + err.Error()
+                fmt.Println(content)
+                return content, TaskStatusFailed
+        }
+        var content string
+        if startLine == endLine {
+                content = "Successfully wrote to line " + strconv.Itoa(startLine)
         } else {
-                if startLine == endLine {
-                        content = "Successfully wrote to line " + strconv.Itoa(startLine)
-                } else {
-                        content = "Successfully wrote to lines " + strconv.Itoa(startLine) + "-" + strconv.Itoa(endLine)
-                }
+                content = "Successfully wrote to lines " + strconv.Itoa(startLine) + "-" + strconv.Itoa(endLine)
         }
         fmt.Println(content)
         return content, TaskStatusSuccess
@@ -1139,8 +1160,10 @@ func execBrowserNavigate(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         if err != nil {
-                content = "Error: " + err.Error()
-        } else if result != nil {
+                fmt.Println("Browser navigate failed:", action)
+                return "Error: " + err.Error(), TaskStatusFailed
+        }
+        if result != nil {
                 resultTOON, _ := toon.Marshal(result)
                 content = string(resultTOON)
         }
@@ -1707,7 +1730,7 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
                 items = append(items, item)
         }
         if !valid {
-                return content, TaskStatusSuccess
+                return content, TaskStatusFailed
         }
 
         // 支持 list_id 參數（Plan Mode 每階段使用不同列表）
@@ -2396,7 +2419,10 @@ func execSpawnBatch(ec *ToolExecContext) (string, TaskStatus) {
 // --- Other tool handlers ---
 
 func execConsolidateMemory(ec *ToolExecContext) (string, TaskStatus) {
-        content, _ := HandleConsolidateMemory(ec.ArgsMap)
+        content, err := HandleConsolidateMemory(ec.ArgsMap)
+        if err != nil {
+                return fmt.Sprintf("Error: %v", err), TaskStatusFailed
+        }
         return content, TaskStatusSuccess
 }
 

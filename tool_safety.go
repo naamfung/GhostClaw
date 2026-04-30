@@ -561,18 +561,26 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
         // Plan Mode 专用工具处理
         switch toolName {
         case "PlanWrite":
-                content := handlePlanWrite(argsMap)
-                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                content, ok := handlePlanWrite(argsMap)
+                status := TaskStatusSuccess
+                if !ok {
+                        status = TaskStatusFailed
+                }
+                emitToolCallTags(ch, toolName, argsMap, content, status)
                 return EnrichedMessage{
                         Content: content,
-                        Meta:    MessageMeta{Status: TaskStatusSuccess},
+                        Meta:    MessageMeta{Status: status},
                 }
         case "PlanRead":
-                content := handlePlanRead(argsMap)
-                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                content, ok := handlePlanRead(argsMap)
+                status := TaskStatusSuccess
+                if !ok {
+                        status = TaskStatusFailed
+                }
+                emitToolCallTags(ch, toolName, argsMap, content, status)
                 return EnrichedMessage{
                         Content: content,
-                        Meta:    MessageMeta{Status: TaskStatusSuccess},
+                        Meta:    MessageMeta{Status: status},
                 }
         case "EnterPlanMode":
                 // EnterPlanMode 仍然作為靜態 Core 工具存在。
@@ -599,10 +607,10 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // 因此 Plan Mode 激活時仍可到達此 handler。
                 if !globalPlanMode.IsActive() {
                         content := "Plan Mode 當前未激活。"
-                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
                         return EnrichedMessage{
                                 Content: content,
-                                Meta:    MessageMeta{Status: TaskStatusSuccess},
+                                Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
                 planContent := ExitPlanMode()

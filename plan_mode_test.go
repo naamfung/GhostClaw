@@ -623,7 +623,10 @@ func TestHandlePlanWrite_OnlyInPhase2(t *testing.T) {
 	EnterPlanMode("test")
 
 	// Phase 1: should fail
-	result := handlePlanWrite(map[string]interface{}{"content": "# Plan"})
+	result, ok := handlePlanWrite(map[string]interface{}{"content": "# Plan"})
+	if ok {
+		t.Error("expected false in Phase 1")
+	}
 	if !strings.Contains(result, "錯誤") || !strings.Contains(result, "Phase 2") {
 		t.Errorf("should reject plan_write in Phase 1: %s", result)
 	}
@@ -631,7 +634,10 @@ func TestHandlePlanWrite_OnlyInPhase2(t *testing.T) {
 	AdvancePhase() // 1 → 2
 
 	// Phase 2: should succeed
-	result = handlePlanWrite(map[string]interface{}{"content": "# My Plan"})
+	result, ok = handlePlanWrite(map[string]interface{}{"content": "# My Plan"})
+	if !ok {
+		t.Error("expected true in Phase 2")
+	}
 	if strings.Contains(result, "錯誤") {
 		t.Errorf("plan_write should succeed in Phase 2: %s", result)
 	}
@@ -647,7 +653,10 @@ func TestHandlePlanWrite_NoContent(t *testing.T) {
 	EnterPlanMode("test")
 	AdvancePhase() // 1 → 2
 
-	result := handlePlanWrite(map[string]interface{}{"content": ""})
+	result, ok := handlePlanWrite(map[string]interface{}{"content": ""})
+	if ok {
+		t.Error("expected false for missing content")
+	}
 	if !strings.Contains(result, "缺少 content") {
 		t.Errorf("should report missing content: %s", result)
 	}
@@ -656,7 +665,10 @@ func TestHandlePlanWrite_NoContent(t *testing.T) {
 func TestHandlePlanWrite_Inactive(t *testing.T) {
 	defer resetGlobalPlanMode()
 
-	result := handlePlanWrite(map[string]interface{}{"content": "# Plan"})
+	result, ok := handlePlanWrite(map[string]interface{}{"content": "# Plan"})
+	if ok {
+		t.Error("expected false when inactive")
+	}
 	if !strings.Contains(result, "未激活") {
 		t.Errorf("should report inactive: %s", result)
 	}
@@ -669,12 +681,18 @@ func TestHandlePlanWrite_PersistsAndReadable(t *testing.T) {
 	EnterPlanMode("test")
 	AdvancePhase() // 1 → 2
 
-	writeResult := handlePlanWrite(map[string]interface{}{"content": "## Context\nSome context\n\n## Approach\nStep 1\n\n## Verification\nTest it"})
+	writeResult, ok := handlePlanWrite(map[string]interface{}{"content": "## Context\nSome context\n\n## Approach\nStep 1\n\n## Verification\nTest it"})
+	if !ok {
+		t.Fatal("expected true for valid write")
+	}
 	if strings.Contains(writeResult, "錯誤") {
 		t.Fatalf("write failed: %s", writeResult)
 	}
 
-	readResult := handlePlanRead(map[string]interface{}{})
+	readResult, ok := handlePlanRead(map[string]interface{}{})
+	if !ok {
+		t.Fatal("expected true for valid read")
+	}
 	if !strings.Contains(readResult, "## Context") {
 		t.Errorf("read should return plan content: %s", readResult)
 	}
@@ -686,7 +704,10 @@ func TestHandlePlanWrite_PersistsAndReadable(t *testing.T) {
 func TestHandlePlanRead_Inactive(t *testing.T) {
 	defer resetGlobalPlanMode()
 
-	result := handlePlanRead(map[string]interface{}{})
+	result, ok := handlePlanRead(map[string]interface{}{})
+	if ok {
+		t.Error("expected false when inactive")
+	}
 	if !strings.Contains(result, "未激活") {
 		t.Errorf("should report inactive: %s", result)
 	}
@@ -704,7 +725,10 @@ func TestHandlePlanRead_NoFile(t *testing.T) {
 	globalPlanMode.mu.RUnlock()
 	os.Remove(planPath)
 
-	result := handlePlanRead(map[string]interface{}{})
+	result, ok := handlePlanRead(map[string]interface{}{})
+	if !ok {
+		t.Error("expected true for 'not yet created' (informational, not an error)")
+	}
 	if !strings.Contains(result, "尚未創建") {
 		t.Errorf("should report not yet created: %s", result)
 	}
@@ -815,19 +839,22 @@ func TestPrevPhase_PlanWriteAfterBacktrack(t *testing.T) {
 	EnterPlanMode("test")
 	AdvancePhase() // 1 → 2
 
-	handlePlanWrite(map[string]interface{}{"content": "Draft 1"})
+	_, _ = handlePlanWrite(map[string]interface{}{"content": "Draft 1"})
 
 	PrevPhase()     // back to 1
 	AdvancePhase()  // 1 → 2 again
 
 	// Should still be able to write in Phase 2 after backtracking
-	result := handlePlanWrite(map[string]interface{}{"content": "Draft 2"})
+	result, ok := handlePlanWrite(map[string]interface{}{"content": "Draft 2"})
+	if !ok {
+		t.Error("expected true for plan_write after backtracking")
+	}
 	if strings.Contains(result, "錯誤") {
 		t.Errorf("should allow plan_write after backtracking: %s", result)
 	}
 
 	// Read should return the latest content
-	content := handlePlanRead(map[string]interface{}{})
+	content, _ := handlePlanRead(map[string]interface{}{})
 	if !strings.Contains(content, "Draft 2") {
 		t.Errorf("should have latest content: %s", content)
 	}
