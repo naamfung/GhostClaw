@@ -245,10 +245,9 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
                         }
                 }
 
-                // 【Plan A】根據當前 Phase 物理移除禁止的工具
-                // 核心思路：模型看不到被禁止的工具就不會嘗試調用
+                // 根據當前 Phase 的 allow-list 物理移除不允許的工具
+                // 與 IsToolAllowedInPlanMode 用同一份 allow-list，確保一致性
                 phase := globalPlanMode.CurrentPhase()
-                phaseBlocked := getBlockedToolsForPlanPhase(phase)
 
                 filtered := make([]map[string]interface{}, 0, len(toolList))
                 for _, t := range toolList {
@@ -256,8 +255,10 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
                         if planToolNames[name] {
                                 continue // 動態工具已覆蓋，跳過同名靜態工具
                         }
-                        if phaseBlocked[name] {
-                                continue // 當前 Phase 禁止的工具
+                        // 改用 allow-list 檢查（與 IsToolAllowedInPlanMode 一致），
+                        // 避免 model 睇到但 runtime block 嘅不一致導致死循環
+                        if !globalPlanMode.IsToolAllowedInPlanMode(name) {
+                                continue
                         }
                         if strings.HasPrefix(name, "browser_") {
                                 continue // 瀏覽器工具在 Plan Mode 中不需要

@@ -57,6 +57,7 @@ type PlanMode struct {
         mu            sync.RWMutex
         TimedOut      bool      // 是否因超時而被強制退出
         DowngradeCount int      // 回溯次數計數器（每次 prev_phase +1）
+        stopTimeout    chan struct{} // 關閉時取消 timeout goroutine
 }
 
 var globalPlanMode = &PlanMode{
@@ -166,6 +167,25 @@ func EnterPlanMode(taskDesc string) string {
                 {ID: "3", Text: "Phase 3: 執行", Status: "Pending"},
         }, "plan")
 
+        // 啟動 timeout 監控 goroutine（總超時 20 分鐘後強制退出）
+        globalPlanMode.stopTimeout = make(chan struct{})
+        go func(stop <-chan struct{}) {
+                ticker := time.NewTicker(30 * time.Second)
+                defer ticker.Stop()
+                for {
+                        select {
+                        case <-stop:
+                                return
+                        case <-ticker.C:
+                                if timedOut, _, _ := globalPlanMode.CheckPhaseTimeout(); timedOut {
+                                        content := ForceExitPlanMode("超時強制退出")
+                                        log.Printf("[PlanMode] Timeout goroutine: force exited, plan content=%d bytes", len(content))
+                                        return
+                                }
+                        }
+                }
+        }(globalPlanMode.stopTimeout)
+
         log.Printf("[PlanMode] 進入 Plan Mode, Phase=1(探索), 任務: %.80s", taskDesc)
         return ""
 }
@@ -183,6 +203,12 @@ func exitPlanModeLocked() string {
 
         elapsed := time.Since(globalPlanMode.StartTime)
         log.Printf("[PlanMode] 退出 Plan Mode, 耗時 %v", elapsed)
+
+        // 停止 timeout goroutine
+        if globalPlanMode.stopTimeout != nil {
+                close(globalPlanMode.stopTimeout)
+                globalPlanMode.stopTimeout = nil
+        }
 
         globalPlanMode.Phase = PlanPhaseInactive
         globalPlanMode.PlanFilePath = ""
@@ -499,7 +525,7 @@ func GetPlanModeSystemPrompt() string {
 func explorePhasePrompt() string {
         return `## Phase 1: 探索
 
-目標：充分理解任務涉及的文件結構和依賴關係，並掌握可用的工具資源。
+目標：充分理解任務涉及的文件結構和依賴關係。
 
 操作指引：
 1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
@@ -507,24 +533,13 @@ func explorePhasePrompt() string {
 3. 對於複雜任務，使用 spawn 創建最多 3 個並行子代理探索不同方面
 4. 使用 todos 工具管理探索子任務
 
-工具探索（第五步 — 必須在資料收集之後、調用 next_phase 之前執行）：
-5. 使用 menu 工具瀏覽與任務最相關的工具分類，了解你可用的工具資源。
-   注意：此階段僅瀏覽（action="show"），不要使用 action="load" 加載工具。
-   進入 Phase 3（執行階段）後系統會自動解鎖所有工具，無需在此階段提前加載。
-   例如：
-   - menu() — 先查看所有工具分類
-   - menu(action="show", target="file") — 展開與任務相關的文件操作分類
-   - 可根據任務需求展開多個分類，了解完整畫像
-   目的：在進入設計階段前，對整體工具資源有清晰認知，以便制定更精準的執行計劃。
-
 探索要點：
 - 項目整體結構是什麼？
 - 需要修改哪些文件？每個文件的職責是什麼？
 - 有哪些依賴和約束？
 - 是否有類似的現有實現可以參考？
-- 當前任務最可能需要哪些工具分類？
 
-完成探索和工具加載後，調用 next_phase 進入設計階段。`
+完成探索後，調用 next_phase 進入設計階段。`
 }
 
 func designPhasePrompt() string {

@@ -631,6 +631,18 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // EnterPlanMode 仍然作為靜態 Core 工具存在。
                 // 當 Plan Mode 已激活時，權限閘（line 540）已攔截並返回友好提示，
                 // 此處僅在 Plan Mode 未激活時才會到達。
+
+                // 檢查是否有未完成的非 plan 相關 todos
+                if TODO.HasUnfinishedItems() {
+                        unfinishedSummary := TODO.GetUnfinishedSummary()
+                        content := fmt.Sprintf("無法進入 Plan Mode：你仍有未完成的待辦事項。\n\n%s\n\n請先完成或清理現有 todos，再考慮是否需要 Plan Mode。Plan Mode 主要用於需要先探索後設計的複雜任務——如果當前任務已明確，直接執行即可，無需規劃。", unfinishedSummary)
+                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
+                        return EnrichedMessage{
+                                Content: content,
+                                Meta:    MessageMeta{Status: TaskStatusFailed},
+                        }
+                }
+
                 taskDesc, _ := argsMap["task"].(string)
                 errMsg := EnterPlanMode(taskDesc)
                 if errMsg != "" {
@@ -641,7 +653,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
-                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。使用只讀工具探索專案文件，善用 Spawn 並行探索。完成后調用 NextPhase。"
+                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。\n\n當前階段僅可使用只讀工具（ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep, MemoryRecall, MemoryList）以及 Spawn、Todos。\n\n善用 Spawn 並行探索不同模塊。完成探索後調用 NextPhase 進入設計階段。"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
