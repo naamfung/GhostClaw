@@ -636,7 +636,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
         }
 
         if len(messages) > adaptiveMaxHistory {
-            // 保存原始消息快照（用於 EnsureUser 恢復）
+            // 保存原始消息快照（用於 EnsureUser 恢復 同 被截斷消息摘要）
+            fullMessages := messages // 保存 pipeline 前嘅完整列表，用於之後提取被截斷摘要
             originalML := NewMessageListWithSource(messages, "agentloop:original").Snapshot("pre-pipeline")
 
             // 計算截斷邊界
@@ -758,10 +759,38 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             messages = result.Messages.Raw()
             _ = result // Pipeline 已記錄日誌
 
-            // 插入歷史摘要 divider
+            // 插入歷史摘要 divider（含被截斷消息的結構化摘要）
             var divider strings.Builder
             divider.WriteString("=== 历史对话摘要 ===\n")
-            divider.WriteString("【重要提示】请优先响应该消息之前的最后一条用户消息\n")
+
+            // 從被截斷的消息中生成結構化摘要，確保模型記得已完成嘅任務
+            // 注意：fullMessages 係 pipeline 前嘅完整列表，messages 已被 pipeline 替換
+            discardStart := 0
+            if hasSystem && boundaryStart > 1 {
+                discardStart = 1 // 跳過 system message
+            }
+            var discardedMsgs []Message
+            if discardStart < boundaryStart && boundaryStart <= len(fullMessages) {
+                discardedMsgs = fullMessages[discardStart:boundaryStart]
+            }
+
+            // 生成結構化摘要（目標、進展、決策、工具使用）
+            discardedSummary := compressor.GenerateSummary(discardedMsgs)
+            if discardedSummary != "" {
+                divider.WriteString(discardedSummary)
+                divider.WriteString("\n---\n")
+            } else {
+                // Fallback: 至少保留最後一條被截斷的用戶請求
+                divider.WriteString("【重要提示】请优先响应该消息之前的最后一条用户消息\n")
+                if lastDiscardUserContent != "" {
+                    divider.WriteString("[最近被截断的用户请求] ")
+                    if utf8.RuneCountInString(lastDiscardUserContent) > 150 {
+                        divider.WriteString(string([]rune(lastDiscardUserContent)[:150]) + "...\n")
+                    } else {
+                        divider.WriteString(lastDiscardUserContent + "\n")
+                    }
+                }
+            }
 
             latestUserContent := ""
             for i := len(messages) - 1; i >= 0; i-- {
@@ -784,17 +813,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
             if compressedCount < 0 {
                 compressedCount = 0
             }
-            divider.WriteString("对话轮数: " + strconv.Itoa(len(messages)) + " | 已压缩: " + strconv.Itoa(compressedCount) + " 条消息\n")
+            divider.WriteString("对话轮数: " + strconv.Itoa(len(messages)) + " | 已截断: " + strconv.Itoa(compressedCount) + " 条消息\n")
             divider.WriteString("当前时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
-
-            if lastDiscardUserContent != "" {
-                divider.WriteString("\n[最近被截断的用户请求]\n")
-                if utf8.RuneCountInString(lastDiscardUserContent) > 150 {
-                    divider.WriteString(string([]rune(lastDiscardUserContent)[:150]) + "...\n")
-                } else {
-                    divider.WriteString(lastDiscardUserContent + "\n")
-                }
-            }
 
             divider.WriteString("\n请注意：如有指令冲突，以最新用户消息的指令为准\n")
             divider.WriteString("=== 摘要结束，以下继续对话 ===")

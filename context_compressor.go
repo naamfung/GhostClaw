@@ -47,7 +47,7 @@ func NewContextCompressor() *ContextCompressor {
         return &ContextCompressor{
                 thresholdPercent:         0.5,             // 50% 阈值
                 protectFirstN:            3,               // 保护前 3 条消息
-                tailTokenBudget:          20000,           // 尾部 20K token 预算
+                tailTokenBudget:          40000,           // 尾部 40K token 预算（確保近期對話完整連貫）
                 compressionCount:         0,
                 preserveRecentToolResults: 10,             // 保护最近 10 条工具结果
                 maxOldToolResultLength:   200,             // 旧工具结果截断为 200 字符
@@ -124,17 +124,13 @@ func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Mess
         // 防止返回共享的底層切片引用
         messages = append([]Message(nil), messages...)
 
-        if len(messages) <= maxHistory {
-                return messages
-        }
-
         // Stage 1: Trim old tool results (pure text replacement, no LLM)
+        // Always run Stage 1 — it reduces token usage by truncating old tool result
+        // content without changing message count or structure. This is safe and
+        // beneficial even when the message count is already within limits.
         messages = cc.trimOldToolResults(messages)
 
-        // After Stage 1, check again — maybe we're under the limit now
         if len(messages) <= maxHistory {
-                log.Printf("[ContextCompressor] Stage 1 sufficient: trimmed from original count to %d messages", len(messages))
-                cc.recordCompressionSuccess()
                 return messages
         }
 
@@ -213,6 +209,17 @@ func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Mess
                 len(messages), compressedML.Len(), cc.compressionCount, cc.summaryVersion)
 
         return compressedML.msgs
+}
+
+// GenerateSummary generates a structured summary from an arbitrary list of messages.
+// This is used to summarize discarded messages during history truncation,
+// ensuring the model retains key context (accomplishments, decisions, tool usage)
+// even when the detailed messages are no longer in the active history.
+func (cc *ContextCompressor) GenerateSummary(messages []Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	return cc.generateStructuredSummary(messages)
 }
 
 // CompressWithContextWindow compresses messages only if estimated tokens exceed contextWindow * thresholdPercent.
