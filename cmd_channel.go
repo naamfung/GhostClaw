@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +11,14 @@ import (
 type CmdChannel struct {
 	*BaseChannel
 	writer io.Writer
-	// 行级緩衝：用於處理跨 chunk 的行分割
-	lineBuf string
+	phase  int // 0=未開始, 1=thinking, 2=content
 }
+
+const (
+	phaseNone     = 0
+	phaseThinking = 1
+	phaseContent  = 2
+)
 
 // NewCmdChannel 创建命令行频道
 func NewCmdChannel() *CmdChannel {
@@ -35,40 +39,12 @@ var agenticTagMarkers = []string{
 	"<<<reasoning_content_end>>>",
 }
 
-// isAuditLine 检查单行是否为审计日志（调试用，CLI 不显示）
-func isAuditLine(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	return strings.HasPrefix(trimmed, "[AUDIT]")
-}
-
-// isAgenticLine 检查单行是否完全由 agentic 标签组成（整行过滤）
-func isAgenticLine(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return false
-	}
-	for _, marker := range agenticTagMarkers {
-		if trimmed == marker {
-			return true
-		}
-		if strings.HasPrefix(trimmed, "<<<TOOL_NAME:") && strings.HasSuffix(trimmed, ">>>") {
-			return true
-		}
-		if strings.HasPrefix(trimmed, "<<<reasoning_") {
-			return true
-		}
-	}
-	return false
-}
-
-// stripAgenticTags 从文本中移除所有 agentic 标记（处理 mid-line 情况）
-// 当模型文本和 agentic 标记被拼接在同一行时，只保留模型文本部分
+// stripAgenticTags 从文本中移除所有 agentic 标记
 func stripAgenticTags(text string) string {
 	result := text
 	for _, marker := range agenticTagMarkers {
 		result = strings.ReplaceAll(result, marker, "")
 	}
-	// 处理 <<<TOOL_NAME:xxx>>> 格式（动态工具名）
 	if idx := strings.Index(result, "<<<TOOL_NAME:"); idx >= 0 {
 		if endIdx := strings.Index(result[idx:], ">>>"); endIdx >= 0 {
 			result = result[:idx] + result[idx+endIdx+3:]
@@ -77,82 +53,55 @@ func stripAgenticTags(text string) string {
 	return result
 }
 
-// shouldFilterLine 检查单行是否应该被完全过滤（CLI 不显示）
-func shouldFilterLine(line string) bool {
-	return isAgenticLine(line) || isAuditLine(line)
-}
-
-// filterContent 逐行过滤内容，移除 agentic 标签和审计日志行
-// 使用缓冲区处理跨 chunk 的行分割
-func (c *CmdChannel) filterContent(content string) string {
-	c.lineBuf += content
-
-	var result strings.Builder
-	scanner := bufio.NewScanner(strings.NewReader(c.lineBuf))
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if shouldFilterLine(line) {
-			// 整行是 agentic 标签或 AUDIT 日志，完全丢弃
-			continue
-		}
-		// 行中可能包含 agentic 标记（与模型文本拼接在一起）
-		// 例如: "一些文本<<<AGENTIC_TOOL_CALL_START>>>"
-		cleaned := stripAgenticTags(line)
-		if cleaned != "" {
-			result.WriteString(cleaned)
-			result.WriteByte('\n')
-		}
-	}
-
-	// 获取未完成的尾部（最后一行可能不完整）
-	remaining := c.lineBuf
-	if idx := strings.LastIndex(c.lineBuf, "\n"); idx >= 0 {
-		remaining = c.lineBuf[idx+1:]
-	}
-	c.lineBuf = remaining
-
-	return result.String()
-}
-
-// WriteChunk 将数据块写入标准输出（经过流式替换处理）
-// CLI 不顯示 agentic 標籤（<<<AGENTIC_TOOL_CALL_START>>> 等），這些是前端專用的
-// CLI 不顯示 [AUDIT] 審計日誌
+// WriteChunk 将数据块写入标准输出
+//
+// 直接使用 ProcessChunkWithReplacement 輸出，不作額外積累或 \n 剝離。
+// 僅在思考/正文切換時加入 [思考]/[正文] 標記同 \r\n 分隔。
 func (c *CmdChannel) WriteChunk(chunk StreamChunk) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// 应用流式字符串替换
 	processed := c.ProcessChunkWithReplacement(chunk)
 
 	if processed.Error != "" {
-		fmt.Fprintf(c.writer, "Error: %s\n", processed.Error)
+		fmt.Fprintf(c.writer, "\r\nError: %s\r\n", processed.Error)
+		c.phase = phaseNone
 		return nil
 	}
-	if processed.Content != "" {
-		// 逐行過濾：移除 agentic 標籤行和 [AUDIT] 審計日誌行
-		filtered := c.filterContent(processed.Content)
-		if filtered != "" {
-			fmt.Fprint(c.writer, filtered)
-		}
-	}
+
+	var output strings.Builder
+
+	// 思考 → 直接流式輸出
 	if processed.ReasoningContent != "" {
-		fmt.Fprint(c.writer, processed.ReasoningContent)
-	}
-	if processed.Done {
-		// 處理緩衝區中剩餘的內容（可能是不完整的最後一行）
-		if c.lineBuf != "" {
-			if shouldFilterLine(c.lineBuf) {
-				c.lineBuf = ""
-			} else {
-				cleaned := stripAgenticTags(c.lineBuf)
-				if cleaned != "" {
-					fmt.Fprint(c.writer, cleaned)
-				}
-				c.lineBuf = ""
-			}
+		if c.phase == phaseContent {
+			output.WriteString("\r\n") // 結束正文區塊
 		}
-		fmt.Fprintln(c.writer)
+		if c.phase != phaseThinking {
+			output.WriteString("[思考] ")
+			c.phase = phaseThinking
+		}
+		output.WriteString(stripAgenticTags(processed.ReasoningContent))
+	}
+
+	// 正文 → 直接流式輸出
+	if processed.Content != "" {
+		if c.phase == phaseThinking {
+			output.WriteString("\r\n") // 結束思考區塊
+		}
+		if c.phase != phaseContent {
+			output.WriteString("[正文] ")
+			c.phase = phaseContent
+		}
+		output.WriteString(stripAgenticTags(processed.Content))
+	}
+
+	if processed.Done {
+		output.WriteString("\r\n")
+		c.phase = phaseNone
+	}
+
+	if output.Len() > 0 {
+		fmt.Fprint(c.writer, output.String())
 	}
 	return nil
 }

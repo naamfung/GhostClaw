@@ -2,6 +2,7 @@ package main
 
 import (
         "bufio"
+        "bytes"
         "context"
         "errors"
         "flag"
@@ -85,6 +86,10 @@ var (
         // true = CMD REPL 模式，日志静默（只显示模型对话流）
         // false = Log 模式，正常输出所有日志
         cmdModeActive atomic.Bool
+
+        // CMD 模式日誌檔案管理
+        cmdLogFile *os.File   // CMD 模式時嘅日誌檔案 handle
+        cmdLogPath string     // 日誌檔案路徑
 )
 
 // initUploadDir 初始化上传目录（在 main 中调用，确保 globalExecDir 已设置）
@@ -100,9 +105,126 @@ type cliLogWriter struct {
 
 func (w *cliLogWriter) Write(p []byte) (n int, err error) {
         if cmdModeActive.Load() {
-                return len(p), nil // 静默丢弃
+                // CMD 模式：寫入日誌檔案而非直接丟棄
+                if cmdLogFile != nil {
+                        cmdLogFile.Write(p)
+                }
+                return len(p), nil
         }
-        return w.underlying.Write(p)
+        // 確保 \n 被轉換為 \r\n，補償 raw mode 關閉 ONLCR 導致的光標漂移
+        // 在 BSD 終端（如 GhostBSD fish）上，raw mode 會關閉 OPOST，
+        // 令 \n 不再被核心翻譯成 \r\n，導致日誌行逐行向右偏移
+        return w.underlying.Write(bytes.ReplaceAll(p, []byte{'\n'}, []byte{'\r', '\n'}))
+}
+
+// cmdLogFilter 用於過濾第三方庫（如 GORM）直接寫入 stderr 的日誌
+// CMD 模式下靜默丟棄，Log 模式下原樣輸出
+type cmdLogFilter struct {
+        underlying io.Writer
+}
+
+func (f *cmdLogFilter) Write(p []byte) (n int, err error) {
+        if cmdModeActive.Load() {
+                // CMD 模式：寫入日誌檔案
+                if cmdLogFile != nil {
+                        cmdLogFile.Write(p)
+                }
+                return len(p), nil
+        }
+        return f.underlying.Write(p)
+}
+
+// openCmdLog 開啟 CMD 模式日誌檔案（覆寫模式）
+func openCmdLog() {
+        cmdLogPath = filepath.Join(globalDataDir, "ghostclaw.log")
+        f, err := os.OpenFile(cmdLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+        if err == nil {
+                cmdLogFile = f
+        }
+}
+
+// closeCmdLog 關閉 CMD 日誌檔案（保留不刪除）
+func closeCmdLog() {
+        if cmdLogFile != nil {
+                cmdLogFile.Close()
+                cmdLogFile = nil
+        }
+}
+
+// closeAndDeleteCmdLog 關閉並刪除 CMD 日誌檔案
+func closeAndDeleteCmdLog() {
+        if cmdLogFile != nil {
+                cmdLogFile.Close()
+                cmdLogFile = nil
+        }
+        if cmdLogPath != "" {
+                os.Remove(cmdLogPath)
+                cmdLogPath = ""
+        }
+}
+
+// tailAndDisplayCmdLog 從 CMD 日誌檔案尾部讀取最近 N 行並顯示到終端
+// 使用逆向分塊讀取，避免一次性加載大檔案
+func tailAndDisplayCmdLog(maxLines int) {
+        if cmdLogPath == "" {
+                return
+        }
+        f, err := os.Open(cmdLogPath)
+        if err != nil {
+                return
+        }
+        defer f.Close()
+
+        fi, err := f.Stat()
+        if err != nil || fi.Size() == 0 {
+                return
+        }
+
+        const bufSize = 4096
+        var lines []string
+        var remaining []byte
+        pos := fi.Size()
+
+        for pos > 0 && len(lines) < maxLines {
+                readSize := int64(bufSize)
+                if pos < readSize {
+                        readSize = pos
+                }
+                pos -= readSize
+
+                buf := make([]byte, readSize)
+                f.ReadAt(buf, pos)
+
+                chunk := append(buf, remaining...)
+                chunkLines := bytes.Split(chunk, []byte{'\n'})
+
+                if pos == 0 {
+                        for _, l := range chunkLines {
+                                if len(l) > 0 && len(lines) < maxLines {
+                                        lines = append([]string{string(l)}, lines...)
+                                }
+                        }
+                } else {
+                        remaining = chunkLines[0]
+                        for i := len(chunkLines) - 1; i > 0 && len(lines) < maxLines; i-- {
+                                if len(chunkLines[i]) > 0 {
+                                        lines = append([]string{string(chunkLines[i])}, lines...)
+                                }
+                        }
+                }
+        }
+
+        if len(lines) > 0 {
+                // 反轉為時間順序（最早 → 最新）
+                for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+                        lines[i], lines[j] = lines[j], lines[i]
+                }
+                fmt.Println("\n--- CMD 模式期間日誌（最近記錄）---")
+                for _, line := range lines {
+                        fmt.Println(line)
+                }
+                fmt.Println("--- 日誌顯示完畢 ---\n")
+        }
 }
 
 // runCMDMode CMD REPL 模式：与模型直接对话，日志静默
@@ -110,6 +232,11 @@ func (w *cliLogWriter) Write(p []byte) (n int, err error) {
 // /quit 從命令模式切回 日誌模式（释放终端），/exit 徹底退出程序
 func runCMDMode(ctx context.Context, session *GlobalSession) {
         cmdModeActive.Store(true)
+
+        // 開啟 CMD 模式日誌檔案（覆寫模式），所有 log 同 GORM 日誌會靜默寫入呢個檔案
+        openCmdLog()
+        defer closeCmdLog() // 確保任何退出路徑都會關閉檔案
+
         fmt.Print("\n\n")
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("  GhostClaw REPL 模式")
@@ -149,6 +276,8 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                         if err := session.SavePendingMessages(); err != nil {
                                 log.Printf("Failed to save pending messages: %v", err)
                         }
+                        // 關閉日誌檔案但保留（下次啟動 CMD 模式會覆寫）
+                        closeCmdLog()
                         os.Exit(0)
                 }
 
@@ -157,9 +286,15 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                         fmt.Println("\n↩ 切换到 Log 模式（终端仅显示日志）")
                         rl.Close()
                         cmdModeActive.Store(false)
-                        // 进入 Log 模式阻塞等待（不再占用 readline）
+
+                        // 關閉 CMD 日誌，回溯顯示最後 100 行，然後刪除檔案
+                        closeCmdLog()
+                        tailAndDisplayCmdLog(100)
+                        closeAndDeleteCmdLog()
+
+                        // 進入 Log 模式阻塞等待（不再占用 readline）
                         runLogMode(ctx, session)
-                        // 如果 Log 模式因 ctx 取消退出，整个函数返回
+                        // 如果 Log 模式因 ctx 取消退出，整個函數返回
                         return
                 }
 
@@ -182,6 +317,7 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                                 if err := session.SavePendingMessages(); err != nil {
                                         log.Printf("Failed to save pending messages: %v", err)
                                 }
+                                closeCmdLog()
                                 os.Exit(0)
                         }) {
                         continue

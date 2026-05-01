@@ -136,10 +136,15 @@ func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, 
 				if text, ok := cm["text"].(string); ok {
 					return text, nil
 				}
+				// DeepSeek thinking block (type: thinking)
+				if text, ok := cm["thinking"].(string); ok {
+					return text, nil
+				}
 			}
 		}
 	}
 
+	log.Printf("[SelfLearner] Unexpected response format, raw body: %s", string(body))
 	return "", fmt.Errorf("unexpected response format")
 }
 

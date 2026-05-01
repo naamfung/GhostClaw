@@ -15,6 +15,19 @@ import (
         "gorm.io/gorm/logger"
 )
 
+// newGormLogger 建立 GORM logger，透過 cmdLogFilter 自動在 CMD 模式下靜音
+func newGormLogger() logger.Interface {
+        return logger.New(
+                log.New(&cmdLogFilter{underlying: os.Stderr}, "\r\n", log.LstdFlags),
+                logger.Config{
+                        SlowThreshold:             200 * time.Millisecond,
+                        LogLevel:                  logger.Warn,
+                        IgnoreRecordNotFoundError: false,
+                        Colorful:                  false,
+                },
+        )
+}
+
 // Memories 表模型
 type Memories struct {
         ID        string    `gorm:"primaryKey;type:text"`
@@ -268,7 +281,7 @@ func InitDB(dataDir string) error {
         }
 
         db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-                Logger: logger.Default.LogMode(logger.Warn),
+                Logger: newGormLogger(),
         })
         if err != nil {
                 return err
@@ -616,7 +629,7 @@ func handleDBMalformedRuntime() {
 
         // 3. 重新打開數據庫連接
         db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-                Logger: logger.Default.LogMode(logger.Warn),
+                Logger: newGormLogger(),
         })
         if err != nil {
                 log.Printf("[DB] Runtime recovery: FAILED to reopen database: %v", err)
@@ -625,7 +638,7 @@ func handleDBMalformedRuntime() {
                 os.Remove(dbPath + "-wal")
                 os.Remove(dbPath + "-shm")
                 db, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-                        Logger: logger.Default.LogMode(logger.Warn),
+                        Logger: newGormLogger(),
                 })
                 if err != nil {
                         log.Printf("[DB] Runtime recovery: FAILED to create fresh database: %v", err)

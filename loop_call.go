@@ -88,11 +88,10 @@ func RunCallModel(ctx context.Context, messages *[]Message, ch Channel,
 		}
 
 		if chunk.Content != "" {
-			filteredContent := applyReplacements(chunk.Content)
 			if str, ok := respContent.(string); ok {
-				respContent = str + filteredContent
+				respContent = str + chunk.Content
 			} else {
-				respContent = filteredContent
+				respContent = chunk.Content
 			}
 		}
 		if chunk.ReasoningContent != "" {
@@ -163,6 +162,19 @@ func RunCallModel(ctx context.Context, messages *[]Message, ch Channel,
 			}
 			break
 		}
+	}
+
+	// 發送 final Done 信號，令 CMD 等頻道可以 flush 緩衝區並換行
+	ch.WriteChunk(StreamChunk{Done: true})
+
+	// 對完整累積內容行一次 applyReplacements，而非逐 chunk 處理
+	// 確保跨 chunk 邊界嘅 replacement key 都能正確匹配
+	if str, ok := respContent.(string); ok && str != "" {
+		respContent = applyReplacements(str)
+	}
+	// ReasoningContent 同理
+	if reasoningContent != "" {
+		reasoningContent = applyReplacements(reasoningContent)
 	}
 
 	if len(toolCallsMap) > 0 {
