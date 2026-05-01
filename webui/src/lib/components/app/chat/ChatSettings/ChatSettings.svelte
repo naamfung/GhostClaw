@@ -226,6 +226,25 @@
                                         key: SETTINGS_KEYS.MAX_AGENT_ITERATIONS,
                                         label: 'Agent Loop 最大迭代次数',
                                         type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.COMPRESSION_MODE,
+                                        label: '壓縮觸發模式',
+                                        type: SettingsFieldType.SELECT,
+                                        options: [
+                                                { value: 'token', label: 'Token 模式' },
+                                                { value: 'message', label: '消息計數模式' }
+                                        ]
+                                },
+                                {
+                                        key: SETTINGS_KEYS.COMPRESSION_THRESHOLD,
+                                        label: '壓縮閾值',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.SKILL_CLEANUP_THRESHOLD_DAYS,
+                                        label: 'Skill 清理天數',
+                                        type: SettingsFieldType.INPUT
                                 }
                         ]
                 },
@@ -399,6 +418,19 @@
                                         },
                                         MaxAgentIterations: Number(processedConfig.maxAgentIterations) || 0
                                 };
+                        }
+
+                        // Compression configuration
+                        if (processedConfig.compressionMode !== undefined || processedConfig.compressionThreshold !== undefined) {
+                                backendConfig.Compression = {
+                                        Mode: processedConfig.compressionMode || 'token',
+                                        Threshold: Number(processedConfig.compressionThreshold) || 0.8
+                                };
+                        }
+
+                        // Skill cleanup threshold
+                        if (processedConfig.skillCleanupThresholdDays !== undefined) {
+                                backendConfig.SkillCleanupThresholdDays = Number(processedConfig.skillCleanupThresholdDays) || 90;
                         }
 
                         await fetch('/api/config', {

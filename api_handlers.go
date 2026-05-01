@@ -98,6 +98,11 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                         "Plugin":  globalTimeoutConfig.Plugin,
                         "Browser": globalTimeoutConfig.Browser,
                 },
+                "Compression": map[string]interface{}{
+                        "Mode":      globalCompressionMode,
+                        "Threshold": globalCompressionThreshold,
+                },
+                "SkillCleanupThresholdDays": globalSkillCleanupThresholdDays,
         }
 
         json.NewEncoder(w).Encode(configData)
@@ -221,6 +226,26 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 }
                 if err := globalConfigManager.UpdateMaxAgentIterations(newConfig.Tools.MaxAgentIterations); err != nil {
                         log.Printf("Warning: failed to update max agent iterations: %v", err)
+                }
+        }
+
+        // 更新壓縮配置
+        if compRaw, ok := rawMap["Compression"]; ok {
+                if compMap, ok := compRaw.(map[string]interface{}); ok {
+                        mode, _ := compMap["Mode"].(string)
+                        threshold, _ := compMap["Threshold"].(float64)
+                        if err := globalConfigManager.UpdateCompressionConfig(mode, threshold); err != nil {
+                                log.Printf("Warning: failed to update compression config: %v", err)
+                        }
+                }
+        }
+
+        // 更新 Skill 清理閾值
+        if v, ok := rawMap["SkillCleanupThresholdDays"]; ok {
+                if days, ok := v.(float64); ok {
+                        if err := globalConfigManager.UpdateSkillCleanupThresholdDays(int(days)); err != nil {
+                                log.Printf("Warning: failed to update skill cleanup threshold: %v", err)
+                        }
                 }
         }
 
@@ -631,6 +656,15 @@ func (s *HTTPServer) listSkills(w http.ResponseWriter, _ *http.Request) {
 
         skills := globalSkillManager.ListSkills()
 
+        // 加载受保护状态 (from V2)
+        protectedMap := make(map[string]bool)
+        if globalSkillManagerV2 != nil {
+                protected, _ := globalSkillManagerV2.ListProtectedSkills()
+                for _, name := range protected {
+                        protectedMap[name] = true
+                }
+        }
+
         // 转换为简化格式
         result := make([]map[string]interface{}, 0, len(skills))
         for _, skill := range skills {
@@ -640,6 +674,7 @@ func (s *HTTPServer) listSkills(w http.ResponseWriter, _ *http.Request) {
                         "Description":  skill.Description,
                         "TriggerWords": skill.TriggerWords,
                         "Tags":         skill.Tags,
+                        "Protected":    protectedMap[skill.Name],
                 })
         }
 
@@ -714,6 +749,21 @@ func (s *HTTPServer) skillDetailHandler(w http.ResponseWriter, r *http.Request) 
                 return
         }
 
+        // Handle /api/skills/<name>/protect
+        if strings.HasSuffix(name, "/protect") {
+                name = strings.TrimSuffix(name, "/protect")
+                if name == "" {
+                        http.Error(w, `{"error": "技能名称不能为空"}`, http.StatusBadRequest)
+                        return
+                }
+                if r.Method == http.MethodPut || r.Method == http.MethodPatch {
+                        s.protectSkill(w, r, name)
+                        return
+                }
+                http.Error(w, `{"error": "方法不允许"}`, http.StatusMethodNotAllowed)
+                return
+        }
+
         switch r.Method {
         case http.MethodGet:
                 s.getSkill(w, r, name)
@@ -737,6 +787,13 @@ func (s *HTTPServer) getSkill(w http.ResponseWriter, _ *http.Request, name strin
         if !ok {
                 http.Error(w, `{"error": "技能不存在"}`, http.StatusNotFound)
                 return
+        }
+
+        // Populate protected status from V2
+        if globalSkillManagerV2 != nil {
+                if protected, err := globalSkillManagerV2.IsSkillProtected(name); err == nil {
+                        skill.Protected = protected
+                }
         }
 
         json.NewEncoder(w).Encode(skill)
@@ -808,6 +865,52 @@ func (s *HTTPServer) deleteSkill(w http.ResponseWriter, _ *http.Request, name st
 
         w.WriteHeader(http.StatusOK)
         json.NewEncoder(w).Encode(map[string]string{"message": "技能删除成功"})
+}
+
+// protectSkill 切换技能保護狀態
+// PUT /api/skills/:name/protect
+func (s *HTTPServer) protectSkill(w http.ResponseWriter, r *http.Request, name string) {
+        if globalSkillManagerV2 == nil {
+                http.Error(w, `{"error": "SkillManagerV2 未初始化"}`, http.StatusInternalServerError)
+                return
+        }
+
+        // Get current protected state from SkillManagerV2 DB
+        currentProtected, err := globalSkillManagerV2.IsSkillProtected(name)
+        if err != nil {
+                http.Error(w, `{"error": "技能不存在"}`, http.StatusNotFound)
+                return
+        }
+
+        // Read body for explicit protected value
+        var body struct {
+                Protected bool `json:"Protected"`
+        }
+        if r.Body != nil {
+                bodyBytes, _ := io.ReadAll(r.Body)
+                if len(bodyBytes) > 0 {
+                        json.Unmarshal(bodyBytes, &body)
+                }
+                r.Body.Close()
+        }
+
+        // Toggle or set explicitly
+        newProtected := !currentProtected
+        if body.Protected {
+                newProtected = true
+        }
+
+        if err := globalSkillManagerV2.SetSkillProtected(name, newProtected); err != nil {
+                http.Error(w, fmt.Sprintf(`{"error": "%v"}`, err), http.StatusInternalServerError)
+                return
+        }
+        // 重新加載缓存
+        globalSkillManager.Reload()
+
+        json.NewEncoder(w).Encode(map[string]interface{}{
+                "name":      name,
+                "protected": newProtected,
+        })
 }
 
 // saveSkillToFile 保存技能到文件

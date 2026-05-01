@@ -29,6 +29,7 @@ type SkillMeta struct {
 	UseCount     int       `json:"use_count"`
 	LastUsed     int64     `json:"last_used"`     // Unix timestamp
 	QualityScore float64   `json:"quality_score"`
+	Protected    bool      `json:"protected"`     // 受保護技能，自動清理會跳過
 	ContentHash  string    `json:"-"`
 	CreatedAt    int64     `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt    int64     `gorm:"autoUpdateTime" json:"updated_at"`
@@ -226,6 +227,7 @@ func (sm *SkillManagerV2) indexSkillFile(filePath string) error {
 		FileSize:     info.Size(),
 		ModTime:      info.ModTime().Unix(),
 		ContentHash:  contentHash,
+		Protected:    skill.Protected,
 	}
 
 	if result.Error == nil {
@@ -234,6 +236,9 @@ func (sm *SkillManagerV2) indexSkillFile(filePath string) error {
 		meta.UseCount = existing.UseCount
 		meta.LastUsed = existing.LastUsed
 		meta.QualityScore = existing.QualityScore
+		if !skill.Protected {
+			meta.Protected = existing.Protected
+		}
 	}
 
 	return sm.db.Save(&meta).Error
@@ -388,6 +393,11 @@ func (sm *SkillManagerV2) DeleteSkill(name string) error {
 		return fmt.Errorf("skill not found: %s", name)
 	}
 
+	// 受保護技能不可刪除
+	if meta.Protected {
+		return fmt.Errorf("skill is protected: %s (use /skill unprotect first)", name)
+	}
+
 	// 新格式：删除整个目录
 	skillDir := filepath.Dir(meta.FilePath)
 	if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
@@ -401,6 +411,72 @@ func (sm *SkillManagerV2) DeleteSkill(name string) error {
 	sm.cache.Remove(name)
 
 	return nil
+}
+
+// ProtectSkill 保護技能（標記為受保護，自動清理會跳過）
+func (sm *SkillManagerV2) ProtectSkill(name string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	result := sm.db.Model(&SkillMeta{}).Where("name = ?", name).Update("protected", true)
+	if result.Error != nil {
+		return fmt.Errorf("failed to protect skill: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("skill not found: %s", name)
+	}
+	return nil
+}
+
+// UnprotectSkill 取消保護技能
+func (sm *SkillManagerV2) UnprotectSkill(name string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	result := sm.db.Model(&SkillMeta{}).Where("name = ?", name).Update("protected", false)
+	if result.Error != nil {
+		return fmt.Errorf("failed to unprotect skill: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("skill not found: %s", name)
+	}
+	return nil
+}
+
+// SetSkillProtected 設置技能保護狀態
+func (sm *SkillManagerV2) SetSkillProtected(name string, protected bool) error {
+	if protected {
+		return sm.ProtectSkill(name)
+	}
+	return sm.UnprotectSkill(name)
+}
+
+// IsSkillProtected 檢查技能是否受保護
+func (sm *SkillManagerV2) IsSkillProtected(name string) (bool, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	var meta SkillMeta
+	if result := sm.db.Where("name = ?", name).First(&meta); result.Error != nil {
+		return false, result.Error
+	}
+	return meta.Protected, nil
+}
+
+// ListProtectedSkills 返回所有受保護的技能名稱列表
+func (sm *SkillManagerV2) ListProtectedSkills() ([]string, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	var metas []SkillMeta
+	if result := sm.db.Where("protected = ?", true).Find(&metas); result.Error != nil {
+		return nil, result.Error
+	}
+	names := make([]string, len(metas))
+	for i, m := range metas {
+		names[i] = m.Name
+	}
+	return names, nil
 }
 
 // CreateSkill 创建技能

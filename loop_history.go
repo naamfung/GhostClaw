@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"strconv"
 	"strings"
@@ -9,16 +10,18 @@ import (
 )
 
 // ============================================================================
-// loop_history.go — 自適應歷史消息管理（Pipeline 模式）
+// loop_history.go — 自適應歷史消息管理（三階段 LLM 壓縮）
 // ============================================================================
-// 從 AgentLoop L653-873 抽出：
-//   - 計算截斷邊界
-//   - Thinking block 保留
-//   - Pipeline 壓縮 + 修復 + 去重
-//   - 歷史摘要 divider 插入
+// 從 AgentLoop L653-873 抽出，重構為三階段 LLM 驅動壓縮：
+//   Phase 1: LLM 工具調用自然語言化（compactOldToolPairs）
+//   Phase 2: LLM 語義摘要（Compress, llmExtractStructuredData）
+//   Phase 3: 滑動窗口 + LLM 目標相關性判斷（classifyGoals + applySlidingWindow）
+//   Last Resort: Divider fallback
 
-// RunHistoryCompression performs adaptive history truncation and compression.
+// RunHistoryCompression performs adaptive history management.
+// Uses a three-phase LLM-driven approach with graceful fallbacks.
 // Returns the (possibly modified) messages slice.
+// Function signature is unchanged for backward compatibility.
 func RunHistoryCompression(messages []Message, effectiveModelID string, compressor *ContextCompressor) []Message {
 	modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
 	adaptiveMaxHistory := MaxHistoryMessages
@@ -27,28 +30,116 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 		adaptiveMaxHistory = CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, maxOutput)
 	}
 
+	// Compression trigger: token mode vs message count mode
+	switch globalCompressionMode {
+	case "token":
+		if modelCtxWindow <= 0 {
+			// Unknown model: fallback to message count
+			log.Printf("[AgentLoop] Token mode: unknown model (contextWindow=0), fallback to message count")
+			if len(messages) <= adaptiveMaxHistory {
+				return messages
+			}
+		} else {
+			totalTokens := compressor.estimateMessagesTokenCount(messages)
+			threshold := float64(modelCtxWindow) * globalCompressionThreshold
+			if float64(totalTokens) <= threshold {
+				return messages
+			}
+			log.Printf("[AgentLoop] Token trigger: %d tokens > %.0f threshold (window=%d, threshold=%.2f)",
+				totalTokens, threshold, modelCtxWindow, globalCompressionThreshold)
+		}
+	default: // "message" — 現有邏輯
+		if len(messages) <= adaptiveMaxHistory {
+			return messages
+		}
+	}
+
+	ctx := context.Background()
+	hasSystem := len(messages) > 0 && messages[0].Role == "system"
+	fullMessages := messages // keep reference for fallback summaries
+
+	// ======================================================================
+	// Phase 1: LLM tool pair compaction (natural language summarization)
+	// ======================================================================
+	messages = compressor.compactOldToolPairs(ctx, messages)
+
 	if len(messages) <= adaptiveMaxHistory {
+		log.Printf("[AgentLoop] Phase 1 (tool compaction): %d messages within limit %d", len(messages), adaptiveMaxHistory)
 		return messages
 	}
 
-	// 保存原始消息快照（用於 EnsureUser 恢復和被截斷消息摘要）
-	fullMessages := messages // 保存 pipeline 前嘅完整列表，用於之後提取被截斷摘要
+	// ======================================================================
+	// Phase 3: LLM goal classification + sliding window
+	// ======================================================================
+	classifyCtx, classifyCancel := context.WithTimeout(ctx, 65*time.Second)
+	classification := compressor.classifyGoals(classifyCtx, messages)
+	classifyCancel()
+
+	// Determine keep count for sliding window (aim for ~80% of budget)
+	keepCount := adaptiveMaxHistory * 80 / 100
+	if keepCount < 20 {
+		keepCount = 20
+	}
+
+	messages = compressor.applySlidingWindow(messages, classification, keepCount)
+
+	if len(messages) <= adaptiveMaxHistory {
+		log.Printf("[AgentLoop] Phase 3 (sliding window): %d messages within limit %d", len(messages), adaptiveMaxHistory)
+		return messages
+	}
+
+	// ======================================================================
+	// Phase 2: LLM semantic summary (Compress with LLM extraction)
+	// ======================================================================
 	originalML := NewMessageListWithSource(messages, "agentloop:original").Snapshot("pre-pipeline")
 
-	// 計算截斷邊界
-	hasSystem := len(messages) > 0 && messages[0].Role == "system"
+	result := NewPipeline(originalML).
+		Stage("compress", func(ml *MessageList) *MessageList {
+			compressed := compressor.Compress(ctx, ml.msgs, adaptiveMaxHistory)
+			resultML := NewMessageListWithSource(compressed, "pipeline:compress")
+			resultML.origin = ml.origin
+			return resultML
+		}).
+		Stage("repair", func(ml *MessageList) *MessageList {
+			return ml.RepairOrphans()
+		}).
+		Stage("dedup", func(ml *MessageList) *MessageList {
+			return ml.Deduplicate()
+		}).
+		Execute()
+
+	messages = result.Messages.Raw()
+
+	if len(messages) <= adaptiveMaxHistory {
+		log.Printf("[AgentLoop] Phase 2 (LLM semantic summary): %d messages within limit %d", len(messages), adaptiveMaxHistory)
+		return messages
+	}
+
+	// ======================================================================
+	// Last Resort: Divider fallback (legacy truncation + divider)
+	// ======================================================================
+	log.Printf("[AgentLoop] All LLM phases exhausted, falling back to divider")
+	return runDividerFallback(fullMessages, messages, adaptiveMaxHistory, hasSystem, ctx, compressor)
+}
+
+// runDividerFallback implements the legacy truncation + divider logic as last resort.
+// Used only when all three LLM phases fail to bring messages under the limit.
+func runDividerFallback(fullMessages, currentMessages []Message, adaptiveMaxHistory int, hasSystem bool, ctx context.Context, compressor *ContextCompressor) []Message {
+	// Calculate truncation boundary
 	budgetSlots := adaptiveMaxHistory
 	if hasSystem {
 		budgetSlots = adaptiveMaxHistory - 1
 	}
+
 	latestUserIndex := -1
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
+	for i := len(currentMessages) - 1; i >= 0; i-- {
+		if currentMessages[i].Role == "user" {
 			latestUserIndex = i
 			break
 		}
 	}
-	idealStart := len(messages) - budgetSlots
+
+	idealStart := len(currentMessages) - budgetSlots
 	if idealStart < 0 {
 		idealStart = 0
 	}
@@ -59,7 +150,7 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	searchWindow := 20
 	if idealStart > searchWindow {
 		for i := idealStart; i >= idealStart-searchWindow && i > 0; i-- {
-			if messages[i].Role == "user" && (i == 0 || messages[i-1].Role != "user") {
+			if currentMessages[i].Role == "user" && (i == 0 || currentMessages[i-1].Role != "user") {
 				boundaryStart = i
 				break
 			}
@@ -72,38 +163,37 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 		boundaryStart = 1
 	}
 
-	// 保存截斷前最後一條用戶請求（用於 divider 摘要）
+	// Get last discarded user content for reference
 	lastDiscardUserContent := ""
 	for i := 0; i < boundaryStart; i++ {
-		if messages[i].Role == "user" {
-			if content, ok := messages[i].Content.(string); ok && content != "" {
+		if currentMessages[i].Role == "user" {
+			if content, ok := currentMessages[i].Content.(string); ok && content != "" {
 				lastDiscardUserContent = content
 			}
 		}
 	}
 
-	// 搜尋被截斷部分中最後一個含 thinking block 的 assistant 訊息
+	// Preserve thinking blocks
 	var lastThinkingMsg Message
 	hasLastThinking := false
 	for i := boundaryStart - 1; i >= 0; i-- {
-		if messages[i].Role == "assistant" && (messages[i].ThinkingSignature != "" || messages[i].ReasoningContent != nil) {
-			lastThinkingMsg = messages[i]
+		if currentMessages[i].Role == "assistant" && (currentMessages[i].ThinkingSignature != "" || currentMessages[i].ReasoningContent != nil) {
+			lastThinkingMsg = currentMessages[i]
 			hasLastThinking = true
 			break
 		}
 	}
 
-	// 構建截斷後的消息列表
+	// Build truncated message list
 	var truncatedMsgs []Message
 	if hasSystem {
-		truncatedMsgs = make([]Message, 0, 1+len(messages)-boundaryStart)
-		truncatedMsgs = append(truncatedMsgs, messages[0])
-		truncatedMsgs = append(truncatedMsgs, messages[boundaryStart:]...)
+		truncatedMsgs = make([]Message, 0, 1+len(currentMessages)-boundaryStart)
+		truncatedMsgs = append(truncatedMsgs, currentMessages[0])
+		truncatedMsgs = append(truncatedMsgs, currentMessages[boundaryStart:]...)
 	} else {
-		truncatedMsgs = messages[boundaryStart:]
+		truncatedMsgs = currentMessages[boundaryStart:]
 	}
 
-	// 如果被截斷部分有 thinking block 而保留部分沒有，插入該訊息
 	if hasLastThinking {
 		keepHasThinking := false
 		for _, msg := range truncatedMsgs {
@@ -126,32 +216,11 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 			newTruncated = append(newTruncated, lastThinkingMsg)
 			newTruncated = append(newTruncated, truncatedMsgs[insertPos:]...)
 			truncatedMsgs = newTruncated
-			log.Printf("[AgentLoop] 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤，index=%d）", boundaryStart)
+			log.Printf("[AgentLoop] 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
 		}
 	}
 
-	// 使用 Pipeline 執行壓縮+修復+去重，自動驗證不變量
-	truncatedML := NewMessageListWithSource(truncatedMsgs, "agentloop:truncated")
-	truncatedML.origin = originalML
-
-	result := NewPipeline(truncatedML).
-		Stage("compress", func(ml *MessageList) *MessageList {
-			compressed := compressor.Compress(ml.msgs, adaptiveMaxHistory)
-			resultML := NewMessageListWithSource(compressed, "pipeline:compress")
-			resultML.origin = ml.origin
-			return resultML
-		}).
-		Stage("repair", func(ml *MessageList) *MessageList {
-			return ml.RepairOrphans()
-		}).
-		Stage("dedup", func(ml *MessageList) *MessageList {
-			return ml.Deduplicate()
-		}).
-		Execute()
-
-	messages = result.Messages.Raw()
-
-	// 插入歷史摘要 divider（含被截斷消息的結構化摘要）
+	// Build divider
 	var divider strings.Builder
 	divider.WriteString("[MEMORY_CONTEXT]\n")
 	divider.WriteString("[System note: 以下是已被截断的早期对话历史压缩摘要。")
@@ -159,18 +228,17 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	divider.WriteString("仅作理解对话背景之用，请以最新用户消息为准。]\n\n")
 	divider.WriteString("=== 已截断的对话历史摘要 ===\n")
 
-	// 從被截斷的消息中生成結構化摘要
+	// Try to generate summary from discarded messages
 	discardStart := 0
 	if hasSystem && boundaryStart > 1 {
-		discardStart = 1 // 跳過 system message
+		discardStart = 1
 	}
 	var discardedMsgs []Message
 	if discardStart < boundaryStart && boundaryStart <= len(fullMessages) {
 		discardedMsgs = fullMessages[discardStart:boundaryStart]
 	}
 
-	// 生成結構化摘要（目標、進展、決策、工具使用）
-	discardedSummary := compressor.GenerateSummary(discardedMsgs)
+	discardedSummary := compressor.GenerateSummary(ctx, discardedMsgs)
 	if discardedSummary != "" {
 		divider.WriteString(discardedSummary)
 		divider.WriteString("\n---\n")
@@ -187,9 +255,9 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	}
 
 	latestUserContent := ""
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			if content, ok := messages[i].Content.(string); ok && content != "" {
+	for i := len(truncatedMsgs) - 1; i >= 0; i-- {
+		if truncatedMsgs[i].Role == "user" {
+			if content, ok := truncatedMsgs[i].Content.(string); ok && content != "" {
 				latestUserContent = content
 				if utf8.RuneCountInString(latestUserContent) > 100 {
 					latestUserContent = string([]rune(latestUserContent)[:100]) + "..."
@@ -207,7 +275,7 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	if compressedCount < 0 {
 		compressedCount = 0
 	}
-	divider.WriteString("对话轮数: " + strconv.Itoa(len(messages)) + " | 已截断: " + strconv.Itoa(compressedCount) + " 条消息\n")
+	divider.WriteString("对话轮数: " + strconv.Itoa(len(truncatedMsgs)) + " | 已截断: " + strconv.Itoa(compressedCount) + " 条消息\n")
 	divider.WriteString("当前时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
 
 	divider.WriteString("\n如有指令冲突，以最新用户消息 [USR:LATEST] 的指令为准\n")
@@ -222,19 +290,18 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	}
 
 	insertIdx := 0
-	for i, msg := range messages {
+	for i, msg := range truncatedMsgs {
 		if msg.Role == "system" {
 			insertIdx = i + 1
 		} else {
 			break
 		}
 	}
-	newMsgs := make([]Message, 0, len(messages)+1)
-	newMsgs = append(newMsgs, messages[:insertIdx]...)
+	newMsgs := make([]Message, 0, len(truncatedMsgs)+1)
+	newMsgs = append(newMsgs, truncatedMsgs[:insertIdx]...)
 	newMsgs = append(newMsgs, dividerMsg)
-	newMsgs = append(newMsgs, messages[insertIdx:]...)
-	messages = newMsgs
+	newMsgs = append(newMsgs, truncatedMsgs[insertIdx:]...)
 
-	log.Printf("[AgentLoop] History truncated to %d messages (pipeline)", len(messages))
-	return messages
+	log.Printf("[AgentLoop] Divider fallback: %d messages (truncated from %d)", len(newMsgs), len(fullMessages))
+	return newMsgs
 }

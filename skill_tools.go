@@ -40,6 +40,10 @@ func handleSkillCommand(args []string, sm *SkillManager) (bool, string) {
 		return handleSkillCreate(args[1:], sm)
 	case "delete", "rm", "remove":
 		return handleSkillDelete(args[1:], sm)
+	case "protect":
+		return handleSkillProtect(args[1:], sm)
+	case "unprotect":
+		return handleSkillUnprotect(args[1:], sm)
 	case "reload":
 		return handleSkillReload(args[1:], sm)
 	case "search", "find":
@@ -202,6 +206,40 @@ func handleSkillDelete(args []string, sm *SkillManager) (bool, string) {
 	}
 
 	return true, fmt.Sprintf("✅ 已删除技能: %s", skillName)
+}
+
+// handleSkillProtect 保護技能（防止自動清理刪除）
+func handleSkillProtect(args []string, _ *SkillManager) (bool, string) {
+	if len(args) == 0 {
+		return true, "用法: /skill protect <技能名>"
+	}
+	if globalSkillManagerV2 == nil {
+		return true, "❌ SkillManagerV2 未初始化"
+	}
+
+	skillName := args[0]
+	if err := globalSkillManagerV2.ProtectSkill(skillName); err != nil {
+		return true, fmt.Sprintf("❌ 保護失敗: %v", err)
+	}
+
+	return true, fmt.Sprintf("🛡️ 已保護技能 %s（自動清理會跳過）", skillName)
+}
+
+// handleSkillUnprotect 取消保護技能
+func handleSkillUnprotect(args []string, _ *SkillManager) (bool, string) {
+	if len(args) == 0 {
+		return true, "用法: /skill unprotect <技能名>"
+	}
+	if globalSkillManagerV2 == nil {
+		return true, "❌ SkillManagerV2 未初始化"
+	}
+
+	skillName := args[0]
+	if err := globalSkillManagerV2.UnprotectSkill(skillName); err != nil {
+		return true, fmt.Sprintf("❌ 取消保護失敗: %v", err)
+	}
+
+	return true, fmt.Sprintf("🔓 已取消保護 %s", skillName)
 }
 
 // handleSkillReload 重新加载技能
@@ -737,6 +775,8 @@ func GetSkillCommandsHelp() string {
   /skill show <技能名>  显示技能详情
   /skill create <名称>  创建新技能模板
   /skill delete <名称>  删除技能
+  /skill protect <名称>  保護技能（防止自動清理刪除）
+  /skill unprotect <名称> 取消保護技能
   /skill reload         重新加载所有技能
   /skill search <关键词> 搜索技能
   /skill tag <标签>     按标签查找技能

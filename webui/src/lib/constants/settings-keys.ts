@@ -42,6 +42,11 @@ export const SETTINGS_KEYS = {
         SMART_SHELL_MAX_DIRECT_OUTPUT: 'smartShellMaxDirectOutput',
         // Agent Loop
         MAX_AGENT_ITERATIONS: 'maxAgentIterations',
+        // Compression
+        COMPRESSION_MODE: 'compressionMode',
+        COMPRESSION_THRESHOLD: 'compressionThreshold',
+        // Skill
+        SKILL_CLEANUP_THRESHOLD_DAYS: 'skillCleanupThresholdDays',
         // Security extra
         ALLOW_PRIVATE_IPS: 'allowPrivateIPs',
 } as const;

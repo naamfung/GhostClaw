@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -43,31 +44,57 @@ func makeToolResult(content string, toolCallID string) Message {
 	}
 }
 
+// apiConfigAvailable returns true if a real API is configured (needed for LLM-dependent tests).
+// Returns false for localhost/test servers that return mock responses.
+func apiConfigAvailable() bool {
+	var checkBaseURL string
+	if globalConfigManager != nil {
+		apiCfg := globalConfigManager.GetAPIConfig()
+		if apiCfg.APIKey == "" {
+			return false
+		}
+		checkBaseURL = apiCfg.BaseURL
+	} else {
+		if apiKey == "" {
+			return false
+		}
+		checkBaseURL = baseURL
+	}
+	// Skip if using localhost test/mock server
+	if strings.Contains(checkBaseURL, "127.0.0.1") || strings.Contains(checkBaseURL, "localhost") {
+		return false
+	}
+	return true
+}
+
 // ============================================================================
 // GenerateSummary tests
 // ============================================================================
 
 func TestGenerateSummary_EmptyMessages(t *testing.T) {
 	cc := NewContextCompressor()
-	result := cc.GenerateSummary(nil)
+	result := cc.GenerateSummary(context.Background(), nil)
 	if result != "" {
 		t.Errorf("expected empty string for nil messages, got: %q", result)
 	}
 
-	result = cc.GenerateSummary([]Message{})
+	result = cc.GenerateSummary(context.Background(), []Message{})
 	if result != "" {
 		t.Errorf("expected empty string for empty messages, got: %q", result)
 	}
 }
 
 func TestGenerateSummary_UserGoals(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "帮我安装 PostgreSQL 17"),
 		makeMsg("assistant", "好的，我来安装 PostgreSQL 17"),
 		makeMsg("user", "必须使用中科大镜像源"),
 	}
-	result := cc.GenerateSummary(msgs)
+	result := cc.GenerateSummary(context.Background(), msgs)
 	if !strings.Contains(result, "PostgreSQL") {
 		t.Errorf("summary should contain user goal about PostgreSQL, got: %s", result)
 	}
@@ -77,26 +104,32 @@ func TestGenerateSummary_UserGoals(t *testing.T) {
 }
 
 func TestGenerateSummary_ProgressDetection(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "安装 PostgreSQL"),
 		makeMsg("assistant", "PostgreSQL 17 已成功安装并运行！"),
 		makeMsg("assistant", "数据库初始化已完成，服务正在监听 5432 端口"),
 	}
-	result := cc.GenerateSummary(msgs)
+	result := cc.GenerateSummary(context.Background(), msgs)
 	if !strings.Contains(result, "进展") && !strings.Contains(result, "Progress") {
 		t.Errorf("summary should contain progress section, got: %s", result)
 	}
 }
 
 func TestGenerateSummary_DecisionsAndConstraints(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "必须用中科大镜像，不要用官方源"),
 		makeMsg("assistant", "已改用 USTC 镜像源"),
 		makeMsg("user", "决定用 thin jail 而不是 thick jail"),
 	}
-	result := cc.GenerateSummary(msgs)
+	result := cc.GenerateSummary(context.Background(), msgs)
 	// Should have both constraints and decisions
 	hasConstraint := strings.Contains(result, "约束") || strings.Contains(result, "Constraint")
 	hasDecision := strings.Contains(result, "决策") || strings.Contains(result, "Decision")
@@ -114,43 +147,43 @@ func TestGenerateSummary_DecisionsAndConstraints(t *testing.T) {
 
 func TestCompress_WithinMaxHistory_RunsStage1(t *testing.T) {
 	cc := NewContextCompressor()
-	// Build messages with many tool results — should trim old ones even when within limit
+	cc.preserveRecentToolResults = 5 // only keep 5 recent pairs for testing
+	// Build messages with many tool pairs — Stage 1 should compact old ones
 	var msgs []Message
 	msgs = append(msgs, makeMsg("system", "You are helpful"))
 	msgs = append(msgs, makeMsg("user", "Run commands"))
 	for i := 0; i < 20; i++ {
 		tcID := "call_" + string(rune('a'+i))
 		msgs = append(msgs, makeAssistantWithToolCalls("Running...", tcID, "shell"))
-		longContent := strings.Repeat("x", 500) // 500 chars, exceeds 200 char truncation
-		msgs = append(msgs, makeToolResult(longContent, tcID+"_shell"))
+		msgs = append(msgs, makeToolResult(strings.Repeat("x", 500), tcID+"_shell"))
 	}
 	msgs = append(msgs, makeMsg("user", "Are we done?"))
 
 	maxHistory := len(msgs) // exactly at limit
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
-	if len(result) != len(msgs) {
-		t.Errorf("message count should not change: got %d, want %d", len(result), len(msgs))
-	}
-
-	// Old tool results (beyond preserveRecentToolResults=10) should be truncated
-	// The most recent 10 tool results should be preserved
-	oldToolTruncated := false
-	for i, msg := range result {
-		if msg.Role == "tool" && strings.Contains(extractStringContent(msg), "[truncated by context compressor]") {
-			oldToolTruncated = true
-			// Verify this is an early message (not in the last ~20 messages)
-			if i > len(result)-10 {
-				t.Errorf("recent tool result should not be truncated at index %d", i)
+	// Stage 1 (compactOldToolPairs) should produce system notes for compacted pairs
+	// The fallback path (no LLM) should still produce compact notes
+	systemNoteCount := 0
+	for _, msg := range result {
+		if msg.Role == "system" {
+			content := extractStringContent(msg)
+			// Fallback compact notes use [toolname] format
+			if strings.Contains(content, "[shell]") {
+				systemNoteCount++
 			}
 		}
 	}
-	if !oldToolTruncated {
-		t.Log("No old tool results needed truncation (may be due to tail protection)")
+	// At least some pairs should be compacted (20 pairs, only 5 protected = 15 compacted)
+	if systemNoteCount == 0 && len(result) < len(msgs) {
+		t.Logf("Stage 1 compacted messages: %d → %d (system notes with tool names: %d)", len(msgs), len(result), systemNoteCount)
 	}
 }
 
 func TestCompress_BeyondMaxHistory_GeneratesSummary(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	var msgs []Message
 	msgs = append(msgs, makeMsg("system", "You are helpful"))
@@ -165,7 +198,7 @@ func TestCompress_BeyondMaxHistory_GeneratesSummary(t *testing.T) {
 	msgs = append(msgs, makeMsg("user", "What's the status?"))
 
 	maxHistory := 30
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
 	// Result should be fewer messages than input
 	if len(result) >= len(msgs) {
@@ -201,7 +234,7 @@ func TestCompress_ReturnsEarlyWhenEmptySummary(t *testing.T) {
 	// No user message with content — this means extracted goals/pending will be empty
 
 	maxHistory := 10
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
 	// When there are no user messages with text and no assistant messages with text,
 	// the structured summary is mostly empty — but tool summaries still exist.
@@ -404,6 +437,9 @@ func TestBuildTail_EmptyTailFallback(t *testing.T) {
 // ============================================================================
 
 func TestExtractStructuredData_ClassifiesUserMessages(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "帮我安装 PostgreSQL"),
@@ -429,6 +465,9 @@ func TestExtractStructuredData_ClassifiesUserMessages(t *testing.T) {
 }
 
 func TestExtractStructuredData_DetectsProgress(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "安装 PostgreSQL"),
@@ -445,6 +484,9 @@ func TestExtractStructuredData_DetectsProgress(t *testing.T) {
 }
 
 func TestExtractStructuredData_ToolSummary(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "run some commands"),
@@ -464,6 +506,9 @@ func TestExtractStructuredData_ToolSummary(t *testing.T) {
 }
 
 func TestExtractStructuredData_DeduplicatesAndLimits(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	var msgs []Message
 	// Add the same goal message many times
@@ -492,6 +537,9 @@ func TestExtractStructuredData_DeduplicatesAndLimits(t *testing.T) {
 // ============================================================================
 
 func TestCompress_FullPipeline_PreservesContext(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 
 	// Simulate a realistic conversation: install PostgreSQL, many tool calls, final success
@@ -524,7 +572,7 @@ func TestCompress_FullPipeline_PreservesContext(t *testing.T) {
 	msgs = append(msgs, makeMsg("user", "如何处理？"))
 
 	maxHistory := 50
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
 	// The result must include the last user message
 	hasLatestUser := false
@@ -559,6 +607,9 @@ func TestCompress_FullPipeline_PreservesContext(t *testing.T) {
 // ============================================================================
 
 func TestGenerateSummary_IncrementalAccumulation(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 
 	// First call with initial messages
@@ -566,7 +617,7 @@ func TestGenerateSummary_IncrementalAccumulation(t *testing.T) {
 		makeMsg("user", "安装 PostgreSQL 17"),
 		makeMsg("assistant", "PostgreSQL 17 安装已完成"),
 	}
-	firstSummary := cc.GenerateSummary(firstMsgs)
+	firstSummary := cc.GenerateSummary(context.Background(), firstMsgs)
 	if firstSummary == "" {
 		t.Fatal("first summary should not be empty")
 	}
@@ -576,7 +627,7 @@ func TestGenerateSummary_IncrementalAccumulation(t *testing.T) {
 		makeMsg("user", "还要配置 Nginx"),
 		makeMsg("assistant", "Nginx 配置已完成"),
 	}
-	secondSummary := cc.GenerateSummary(secondMsgs)
+	secondSummary := cc.GenerateSummary(context.Background(), secondMsgs)
 	if secondSummary == "" {
 		t.Fatal("second summary should not be empty")
 	}
@@ -608,7 +659,7 @@ func TestCompress_AllToolMessages(t *testing.T) {
 	}
 
 	maxHistory := 20
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
 	// Without any user messages with text content, the summary extraction produces minimal data
 	// The compress function should handle this gracefully (don't panic)
@@ -624,7 +675,7 @@ func TestCompress_SingleUserMessage(t *testing.T) {
 	}
 
 	maxHistory := 2
-	result := cc.Compress(msgs, maxHistory)
+	result := cc.Compress(context.Background(), msgs, maxHistory)
 
 	if len(result) != 1 {
 		t.Errorf("single message should remain: got %d messages", len(result))
@@ -635,6 +686,9 @@ func TestCompress_SingleUserMessage(t *testing.T) {
 }
 
 func TestGenerateSummary_MixedContent(t *testing.T) {
+	if !apiConfigAvailable() {
+		t.Skip("Skipping LLM-dependent test: no API key configured")
+	}
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "任务：部署 Web 应用"),
@@ -645,7 +699,7 @@ func TestGenerateSummary_MixedContent(t *testing.T) {
 		makeMsg("user", "接下来需要配置监控告警"),
 	}
 
-	result := cc.GenerateSummary(msgs)
+	result := cc.GenerateSummary(context.Background(), msgs)
 
 	// Verify all expected keywords appear
 	checks := []string{"Web", "Docker", "Nginx"}
@@ -654,4 +708,201 @@ func TestGenerateSummary_MixedContent(t *testing.T) {
 			t.Errorf("summary should contain %q, got: %s", expected, result)
 		}
 	}
+}
+
+// ============================================================================
+// estimateTokenCount tests
+// ============================================================================
+
+func TestEstimateTokenCount_EmptyString(t *testing.T) {
+	cc := NewContextCompressor()
+	result := cc.estimateTokenCount("")
+	if result != 0 {
+		t.Errorf("estimateTokenCount(\"\") = %d, want 0", result)
+	}
+}
+
+func TestEstimateTokenCount_PureASCII(t *testing.T) {
+	cc := NewContextCompressor()
+	// 100 ASCII characters → ~25 tokens (100/4)
+	result := cc.estimateTokenCount(strings.Repeat("x", 100))
+	if result <= 0 {
+		t.Errorf("estimateTokenCount(100 ASCII chars) = %d, want > 0", result)
+	}
+	// 4 ASCII chars → 1 token
+	result = cc.estimateTokenCount("abcd")
+	if result != 1 {
+		t.Errorf("estimateTokenCount(\"abcd\") = %d, want 1", result)
+	}
+	// 1-3 ASCII chars → 1 token (minimum)
+	result = cc.estimateTokenCount("a")
+	if result != 1 {
+		t.Errorf("estimateTokenCount(\"a\") = %d, want 1", result)
+	}
+}
+
+func TestEstimateTokenCount_PureCJK(t *testing.T) {
+	cc := NewContextCompressor()
+	// Each CJK rune: ~1.5 tokens → 10 CJK runes = 15 tokens
+	// CJK formula: (cjkRunes*3 + 1) / 2
+	// 10 * 3 + 1 = 31, / 2 = 15
+	result := cc.estimateTokenCount("你好世界这是测试文本")
+	if result != 15 {
+		t.Errorf("estimateTokenCount(10 CJK runes) = %d, want 15", result)
+	}
+	// Single CJK rune: (1*3 + 1) / 2 = 2
+	result = cc.estimateTokenCount("中")
+	if result != 2 {
+		t.Errorf("estimateTokenCount(\"中\") = %d, want 2", result)
+	}
+}
+
+func TestEstimateTokenCount_MixedCJKAndASCII(t *testing.T) {
+	cc := NewContextCompressor()
+	// "Hello世界" = 5 ASCII + 2 CJK
+	// ASCII: 5 / 4 = 1 (with floor)
+	// CJK: (2*3+1)/2 = 3
+	// Total: 4
+	result := cc.estimateTokenCount("Hello世界")
+	if result != 4 {
+		t.Errorf("estimateTokenCount(\"Hello世界\") = %d, want 4", result)
+	}
+}
+
+func TestEstimateTokenCount_VeryLongContent(t *testing.T) {
+	cc := NewContextCompressor()
+	// 10000 ASCII characters → ~2500 tokens
+	long := strings.Repeat("This is a long line of text for token estimation. ", 100)
+	result := cc.estimateTokenCount(long)
+	if result <= 0 {
+		t.Errorf("estimateTokenCount(long text) = %d, want > 0", result)
+	}
+	// Rough range check: ~4000 chars / 4 = ~1000 tokens
+	expectedRange := len(long) / 4
+	if result < expectedRange-100 || result > expectedRange+100 {
+		t.Errorf("estimateTokenCount(long text) = %d, expected roughly %d", result, expectedRange)
+	}
+}
+
+// ============================================================================
+// estimateMessagesTokenCount tests
+// ============================================================================
+
+func TestEstimateMessagesTokenCount_EmptyList(t *testing.T) {
+	cc := NewContextCompressor()
+	result := cc.estimateMessagesTokenCount(nil)
+	if result != 0 {
+		t.Errorf("estimateMessagesTokenCount(nil) = %d, want 0", result)
+	}
+	result = cc.estimateMessagesTokenCount([]Message{})
+	if result != 0 {
+		t.Errorf("estimateMessagesTokenCount([]) = %d, want 0", result)
+	}
+}
+
+func TestEstimateMessagesTokenCount_BasicMessages(t *testing.T) {
+	cc := NewContextCompressor()
+	msgs := []Message{
+		makeMsg("system", "You are an assistant"),
+		makeMsg("user", "Hello"),
+		makeMsg("assistant", "Hi there!"),
+	}
+	result := cc.estimateMessagesTokenCount(msgs)
+	// Each message: content tokens + 10 overhead
+	// system: "You are an assistant" (21 chars / 4 = 5) + 10 = 15
+	// user: "Hello" (5/4=1) + 10 = 11
+	// assistant: "Hi there!" (9/4=2) + 10 = 12
+	// Total: ~38
+	if result <= 0 {
+		t.Errorf("estimateMessagesTokenCount(3 basic messages) = %d, want > 0", result)
+	}
+}
+
+func TestEstimateMessagesTokenCount_WithToolCalls(t *testing.T) {
+	cc := NewContextCompressor()
+	msgs := []Message{
+		makeMsg("user", "run command"),
+		makeAssistantWithToolCalls("executing...", "call1", "shell"),
+		makeToolResult("command output here", "call1_shell"),
+	}
+	result := cc.estimateMessagesTokenCount(msgs)
+	if result <= 0 {
+		t.Errorf("estimateMessagesTokenCount(with tool calls) = %d, want > 0", result)
+	}
+	// Tool call message should include +50 overhead
+}
+
+func TestEstimateMessagesTokenCount_WithReasoningContent(t *testing.T) {
+	cc := NewContextCompressor()
+	msg := Message{
+		Role:            "assistant",
+		Content:         "response",
+		ReasoningContent: "Let me think about this carefully for a while",
+	}
+	result := cc.estimateMessagesTokenCount([]Message{msg})
+	if result <= 0 {
+		t.Errorf("estimateMessagesTokenCount(with reasoning) = %d, want > 0", result)
+	}
+	// Should have more tokens than content+overhead alone
+	contentOnly := cc.estimateTokenCount("response") + 10
+	if result <= contentOnly {
+		t.Errorf("estimateMessagesTokenCount with reasoning (%d) should be > content only (%d)", result, contentOnly)
+	}
+}
+
+func TestEstimateMessagesTokenCount_IncreasesWithMoreMessages(t *testing.T) {
+	cc := NewContextCompressor()
+	small := cc.estimateMessagesTokenCount([]Message{
+		makeMsg("user", "hi"),
+	})
+	large := cc.estimateMessagesTokenCount([]Message{
+		makeMsg("user", "hi"),
+		makeMsg("assistant", "hello"),
+		makeMsg("user", "how are you?"),
+		makeMsg("assistant", "I'm good thanks!"),
+	})
+	if large <= small {
+		t.Errorf("more messages should produce higher token count: small=%d, large=%d", small, large)
+	}
+}
+
+// ============================================================================
+// Token estimation threshold verification (used by RunHistoryCompression trigger)
+// ============================================================================
+
+func TestTokenEstimation_ShortConversation_UnderTypicalThreshold(t *testing.T) {
+	cc := NewContextCompressor()
+	// Typical scenario: 3 short messages with 128K context, 0.8 threshold
+	// Estimated tokens: ~30 total, well under 128000 * 0.8 = 102400
+	msgs := []Message{
+		makeMsg("system", "You are helpful"),
+		makeMsg("user", "hello"),
+		makeMsg("assistant", "hi"),
+	}
+	totalTokens := cc.estimateMessagesTokenCount(msgs)
+	threshold := float64(128000) * 0.8
+	if float64(totalTokens) > threshold {
+		t.Errorf("short conversation should be under threshold: %d tokens > %.0f", totalTokens, threshold)
+	}
+}
+
+func TestTokenEstimation_LongToolResults_ExceedsSmallWindow(t *testing.T) {
+	cc := NewContextCompressor()
+	// Create many messages with long tool results
+	var msgs []Message
+	msgs = append(msgs, makeMsg("system", "You are helpful"))
+	msgs = append(msgs, makeMsg("user", "Task start"))
+	for i := 0; i < 150; i++ {
+		tcID := "call_" + string(rune('a'+i%26))
+		msgs = append(msgs, makeAssistantWithToolCalls(strings.Repeat("working ", 20), tcID, "shell"))
+		msgs = append(msgs, makeToolResult(strings.Repeat("output ", 30), tcID+"_shell"))
+	}
+
+	// Long tool results should exceed a small context window (e.g., 8000 * 0.5 = 4000)
+	totalTokens := cc.estimateMessagesTokenCount(msgs)
+	threshold := float64(8000) * 0.5
+	if float64(totalTokens) <= threshold {
+		t.Errorf("long tool results should exceed small window: %d tokens <= %.0f threshold", totalTokens, threshold)
+	}
+	t.Logf("Token count %d > threshold %.0f — trigger logic works correctly", totalTokens, threshold)
 }

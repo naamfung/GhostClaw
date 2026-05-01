@@ -6,7 +6,8 @@
         import SkillEditor from './SkillEditor.svelte';
         import { DialogConfirmation } from '$lib/components/app/dialogs';
         import { onMount } from 'svelte';
-        import { Pencil, Trash2, Plus, Search, Wrench, ChevronLeft } from '@lucide/svelte';
+        import { Pencil, Trash2, Plus, Search, Wrench, ChevronLeft, Shield, ShieldOff } from '@lucide/svelte';
+        import { toast } from 'svelte-sonner';
 
         interface SkillListItem {
                 Name: string;
@@ -14,6 +15,7 @@
                 Description: string;
                 TriggerWords?: string[];
                 Tags?: string[];
+                Protected?: boolean;
         }
 
         let skills = $state<SkillListItem[]>([]);
@@ -71,6 +73,33 @@
                 showDeleteConfirm = true;
         }
 
+        async function handleToggleProtect(skill: SkillListItem) {
+                const newProtected = !skill.Protected;
+                try {
+                        const response = await fetch(
+                                `/api/skills/${encodeURIComponent(skill.Name)}/protect`,
+                                {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ Protected: newProtected })
+                                }
+                        );
+                        if (response.ok) {
+                                skill.Protected = newProtected;
+                                if (selectedSkill?.Name === skill.Name) {
+                                        selectedSkill.Protected = newProtected;
+                                }
+                                toast.success(newProtected ? `已保護 ${skill.DisplayName}` : `已取消保護 ${skill.DisplayName}`);
+                        } else {
+                                const error = await response.json();
+                                toast.error(error.error || '操作失败');
+                        }
+                } catch (err) {
+                        console.error('Toggle protect failed:', err);
+                        toast.error('切换保護狀態失敗');
+                }
+        }
+
         async function confirmDelete() {
                 if (!skillToDelete) return;
 
@@ -87,11 +116,11 @@
                                 }
                         } else {
                                 const error = await response.json();
-                                alert(error.error || '删除失败');
+                                toast.error(error.error || '删除失败');
                         }
                 } catch (error) {
                         console.error('删除技能失败:', error);
-                        alert('删除技能时发生错误');
+                        toast.error('删除技能时发生错误');
                 } finally {
                         showDeleteConfirm = false;
                         skillToDelete = null;
@@ -166,7 +195,12 @@
                                                         >
                                                                 <Wrench class="h-5 w-5 flex-shrink-0 text-muted-foreground" />
                                                                 <div class="flex-1 overflow-hidden">
-                                                                        <span class="truncate font-medium">{skill.DisplayName}</span>
+                                                                        <span class="truncate font-medium">
+                                                                                {skill.DisplayName}
+                                                                                {#if skill.Protected}
+                                                                                        <Shield class="ml-1 inline h-3 w-3 text-amber-500" />
+                                                                                {/if}
+                                                                        </span>
                                                                         <p class="truncate text-xs text-muted-foreground">{skill.Description}</p>
                                                                 </div>
                                                         </button>
@@ -199,6 +233,21 @@
                                                                         </div>
                                                                 </div>
                                                                 <div class="flex gap-2">
+                                                                        <Button
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                class={selectedSkill.Protected ? 'text-amber-500 border-amber-500' : ''}
+                                                                                title={selectedSkill.Protected ? '取消保護' : '保護此技能'}
+                                                                                onclick={() => handleToggleProtect(selectedSkill)}
+                                                                        >
+                                                                                {#if selectedSkill.Protected}
+                                                                                        <Shield class="mr-1 h-4 w-4" />
+                                                                                        已保護
+                                                                                {:else}
+                                                                                        <ShieldOff class="mr-1 h-4 w-4" />
+                                                                                        保護
+                                                                                {/if}
+                                                                        </Button>
                                                                         <Button variant="outline" size="sm" onclick={() => handleEdit(selectedSkill)}>
                                                                                 <Pencil class="mr-1 h-4 w-4" />
                                                                                 编辑

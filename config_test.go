@@ -183,6 +183,8 @@ func TestCreateDefaultConfig_DefaultValues(t *testing.T) {
 		{"Tools.SmartShell.SyncTimeout", cfg.Tools.SmartShell.SyncTimeout, 60},
 		{"Tools.SmartShell.UnknownTimeout", cfg.Tools.SmartShell.UnknownTimeout, 120},
 		{"Tools.SmartShell.DefaultWakeMins", cfg.Tools.SmartShell.DefaultWakeMins, 5},
+		{"Tools.CompressionMode", cfg.Tools.CompressionMode, "token"},
+		{"Tools.CompressionThreshold", int(cfg.Tools.CompressionThreshold * 100), 80},
 		{"BrowserConfig.UserMode", cfg.BrowserConfig.UserMode, true},
 		{"BrowserConfig.Headless", cfg.BrowserConfig.Headless, false},
 		{"BrowserConfig.DisableGPU", cfg.BrowserConfig.DisableGPU, false},
@@ -300,4 +302,194 @@ func TestAllModelsEmpty_Mixed(t *testing.T) {
 	if cm.allModelsEmpty(cfg) {
 		t.Error("allModelsEmpty() should be false when at least one model has a field set")
 	}
+}
+
+// ============================================================================
+// Compression defaults & applyDefaults clamping
+// ============================================================================
+
+func TestApplyDefaults_CompressionMode_EmptyStringDefaultsToToken(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.CompressionMode = ""
+	cfg.Tools.CompressionThreshold = 0.8 // valid threshold to avoid interference
+	cm.applyDefaults(cfg)
+	if cfg.Tools.CompressionMode != "token" {
+		t.Errorf("CompressionMode with empty string: got %q, want %q", cfg.Tools.CompressionMode, "token")
+	}
+}
+
+func TestApplyDefaults_CompressionThreshold_ZeroDefaultsTo08(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.CompressionMode = "token"
+	cfg.Tools.CompressionThreshold = 0
+	cm.applyDefaults(cfg)
+	if cfg.Tools.CompressionThreshold != 0.8 {
+		t.Errorf("CompressionThreshold with 0: got %v, want 0.8", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestApplyDefaults_CompressionThreshold_ClampedToMin(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.CompressionMode = "token"
+	cfg.Tools.CompressionThreshold = 0.05
+	cm.applyDefaults(cfg)
+	if cfg.Tools.CompressionThreshold != 0.1 {
+		t.Errorf("CompressionThreshold with 0.05: got %v, want 0.1", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestApplyDefaults_CompressionThreshold_ClampedToMax(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.CompressionMode = "token"
+	cfg.Tools.CompressionThreshold = 0.95
+	cm.applyDefaults(cfg)
+	if cfg.Tools.CompressionThreshold != 0.9 {
+		t.Errorf("CompressionThreshold with 0.95: got %v, want 0.9", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestApplyDefaults_CompressionThreshold_WithinRange_Unchanged(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.CompressionMode = "token"
+	cfg.Tools.CompressionThreshold = 0.5
+	cm.applyDefaults(cfg)
+	if cfg.Tools.CompressionThreshold != 0.5 {
+		t.Errorf("CompressionThreshold with 0.5: got %v, want 0.5", cfg.Tools.CompressionThreshold)
+	}
+}
+
+// ============================================================================
+// UpdateCompressionConfig validation
+// ============================================================================
+
+func TestUpdateCompressionConfig_ValidTokenMode(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateCompressionConfig("token", 0.6)
+	if err != nil {
+		t.Fatalf("UpdateCompressionConfig(token, 0.6) unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionMode != "token" {
+		t.Errorf("CompressionMode = %q, want %q", cfg.Tools.CompressionMode, "token")
+	}
+	if cfg.Tools.CompressionThreshold != 0.6 {
+		t.Errorf("CompressionThreshold = %v, want 0.6", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateCompressionConfig_ValidMessageMode(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateCompressionConfig("message", 0.3)
+	if err != nil {
+		t.Fatalf("UpdateCompressionConfig(message, 0.3) unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionMode != "message" {
+		t.Errorf("CompressionMode = %q, want %q", cfg.Tools.CompressionMode, "message")
+	}
+}
+
+func TestUpdateCompressionConfig_InvalidMode(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateCompressionConfig("invalid", 0.5)
+	if err == nil {
+		t.Error("UpdateCompressionConfig(invalid, ...) should return error")
+	}
+}
+
+func TestUpdateCompressionConfig_ThresholdBelowMin_Clamped(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateCompressionConfig("", 0.05)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.1 {
+		t.Errorf("CompressionThreshold with 0.05: got %v, want 0.1", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateCompressionConfig_ThresholdAboveMax_Clamped(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateCompressionConfig("", 0.99)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.9 {
+		t.Errorf("CompressionThreshold with 0.99: got %v, want 0.9", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateCompressionConfig_ThresholdZero_KeepsCurrent(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	// First, set a known threshold
+	cm.UpdateCompressionConfig("", 0.7)
+	// Then send zero threshold — should keep 0.7
+	err := cm.UpdateCompressionConfig("", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.7 {
+		t.Errorf("CompressionThreshold should stay 0.7 when 0 is passed, got %v", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateCompressionConfig_EmptyMode_KeepsCurrent(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	// First, set to "message"
+	cm.UpdateCompressionConfig("message", 0)
+	// Then send empty mode — should keep "message"
+	err := cm.UpdateCompressionConfig("", 0.5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionMode != "message" {
+		t.Errorf("CompressionMode should stay 'message' when empty string is passed, got %q", cfg.Tools.CompressionMode)
+	}
+}
+
+// setupTempConfigManager creates a ConfigManager with a temporary config file
+func setupTempConfigManager(t *testing.T) *ConfigManager {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	cm := &ConfigManager{
+		configPath: tmpDir + "/config.toon",
+		execDir:    tmpDir,
+	}
+	cm.config = cm.createDefaultConfig()
+	// Ensure compression defaults are set so tests start from a clean state
+	cm.config.Tools.CompressionMode = "token"
+	cm.config.Tools.CompressionThreshold = 0.8
+
+	return cm
+}
+
+// cleanupTempConfigManager syncs globals after a temp config manager test
+func cleanupTempConfigManager(cm *ConfigManager) {
+	// Reset globals to not interfere with other tests
+	globalCompressionMode = "token"
+	globalCompressionThreshold = 0.8
 }

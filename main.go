@@ -82,6 +82,10 @@ var (
         globalUploadDir        string
         globalConfig           Config // 全局配置对象
 
+        globalCompressionMode      string  // "token" | "message"
+        globalCompressionThreshold float64 // 0.1-0.9
+        globalSkillCleanupThresholdDays int // 30-365, default 90
+
         // cmdModeActive 控制日志是否输出到终端
         // true = CMD REPL 模式，日志静默（只显示模型对话流）
         // false = Log 模式，正常输出所有日志
@@ -223,7 +227,7 @@ func tailAndDisplayCmdLog(maxLines int) {
                 for _, line := range lines {
                         fmt.Println(line)
                 }
-                fmt.Println("--- 日誌顯示完畢 ---\n")
+                fmt.Println("--- 日誌顯示完畢 ---")
         }
 }
 

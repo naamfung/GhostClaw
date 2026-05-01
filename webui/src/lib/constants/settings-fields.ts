@@ -13,7 +13,9 @@ export const NUMERIC_FIELDS = [
         'smartShellUnknownTimeout',
         'smartShellDefaultWakeMins',
         'smartShellMaxDirectOutput',
-        'maxAgentIterations'
+        'maxAgentIterations',
+        'compressionThreshold',
+        'skillCleanupThresholdDays'
 ] as const;
 
 /**

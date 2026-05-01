@@ -25,8 +25,9 @@ type Skill struct {
         Tags         []string               `json:"Tags,omitempty"`
         FilePath     string                 `json:"-"` // 源文件路径
         LastModified time.Time              `json:"-"`
-        Frontmatter  map[string]interface{} `json:"-"`                     // YAML frontmatter
+        Frontmatter  map[string]interface{} `json:"-"` // YAML frontmatter
         LinkedFiles  map[string][]string    `json:"LinkedFiles,omitempty"` // 关联文件
+        Protected    bool                   `json:"Protected,omitempty"`   // 受保護狀態（從 DB 讀取，不寫入 YAML）
 }
 
 // SkillManager 技能管理器
@@ -123,6 +124,9 @@ func parseSkillFile(path string) (*Skill, error) {
                                                         skill.Tags = append(skill.Tags, tagStr)
                                                 }
                                         }
+                                }
+                                if protected, ok := skill.Frontmatter["protected"].(bool); ok && protected {
+                                        skill.Protected = true
                                 }
                         }
                         // 更新 content 为 frontmatter 之后的部分

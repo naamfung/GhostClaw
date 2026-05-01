@@ -9,6 +9,7 @@ export interface Skill {
 	SystemPrompt?: string;
 	OutputFormat?: string;
 	Examples?: string[];
+	Protected?: boolean;
 }
 
 export interface SkillsListResponse {
@@ -46,6 +47,17 @@ export class SkillsService {
 		return apiPost<{ message: string }>(`${this.baseUrl}/${name}`, skill, {
 			method: 'PUT'
 		});
+	}
+
+	/**
+	 * 切换技能保護狀態
+	 */
+	async toggleProtect(name: string, protect: boolean): Promise<{ name: string; protected: boolean }> {
+		return apiPost<{ name: string; protected: boolean }>(
+			`${this.baseUrl}/${name}/protect`,
+			{ Protected: protect },
+			{ method: 'PUT' }
+		);
 	}
 
 	/**

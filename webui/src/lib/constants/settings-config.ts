@@ -40,6 +40,11 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         smartShellMaxDirectOutput: 1000,
         // agent loop
         maxAgentIterations: 0,
+        // compression
+        compressionMode: 'token',
+        compressionThreshold: 0.8,
+        // skill
+        skillCleanupThresholdDays: 90,
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -92,6 +97,11 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         smartShellMaxDirectOutput: 'Shell 输出直接返回给模型的最大字符数。超过此值将保存为文件再返回。设为 0 使用默认值（1000）。Plan Mode 探索阶段自动提升至 2000。',
         // agent loop
         maxAgentIterations: 'Agent Loop 最大迭代次数。设为 0 则不限制（默认 100）。降低此值可防止模型无限制循环。',
+        // compression
+        compressionMode: '壓縮觸發模式。「Token 模式」根據估算 token 數判斷是否需要壓縮；「消息計數模式」根據消息數量判斷。',
+        compressionThreshold: 'Token 模式下觸發壓縮的閾值（0.1-0.9）。例如 0.8 表示 token 數超過 context window 嘅 80% 時觸發壓縮。',
+        // skill
+        skillCleanupThresholdDays: 'Skill 自動清理閾值（天）。長期未使用且使用次數少嘅 skill 超過此天數後會被自動刪除。範圍 30-365，預設 90。',
         // security extra
         allowPrivateIPs: '允许访问私有 IP 地址（如 192.168.x.x、10.x.x.x）。仅在内网开发环境中启用。',
 };

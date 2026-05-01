@@ -177,10 +177,13 @@ type MemoryConfig struct {
 
 // ToolsConfig 工具开关配置
 type ToolsConfig struct {
-        SmartShell         SmartShellConfig   `toon:"SmartShell" json:"SmartShell"`
-        Shell              ShellToolConfig    `toon:"Shell" json:"Shell"`
-        ShellDelayed       ShellDelayedConfig `toon:"ShellDelayed" json:"ShellDelayed"`
-        MaxAgentIterations int               `toon:"MaxAgentIterations,omitempty" json:"MaxAgentIterations,omitempty"` // Agent Loop 最大迭代次数（0=使用默认值100）
+        SmartShell           SmartShellConfig   `toon:"SmartShell" json:"SmartShell"`
+        Shell                ShellToolConfig    `toon:"Shell" json:"Shell"`
+        ShellDelayed         ShellDelayedConfig `toon:"ShellDelayed" json:"ShellDelayed"`
+        MaxAgentIterations         int     `toon:"MaxAgentIterations,omitempty" json:"MaxAgentIterations,omitempty"`                 // Agent Loop 最大迭代次数（0=使用默认值100）
+        CompressionMode            string  `toon:"CompressionMode,omitempty" json:"CompressionMode,omitempty"`                       // "token"（預設）或 "message"
+        CompressionThreshold       float64 `toon:"CompressionThreshold,omitempty" json:"CompressionThreshold,omitempty"`           // 0.1-0.9，預設 0.8
+        SkillCleanupThresholdDays  int     `toon:"SkillCleanupThresholdDays,omitempty" json:"SkillCleanupThresholdDays,omitempty"` // Skill 自動清理天數，預設 90，範圍 30-365
 }
 
 // ProfileConfig 个人资料配置

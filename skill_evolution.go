@@ -337,27 +337,42 @@ func (seo *SkillEvolutionOptimizer) GenerateCleanupSuggestions() ([]CleanupSugge
 	seo.db.Find(&skills)
 
 	now := time.Now().Unix()
+	// Use configurable threshold, default 90 days
+	cleanupThresholdDays := 90
+	if globalSkillCleanupThresholdDays > 0 {
+		cleanupThresholdDays = globalSkillCleanupThresholdDays
+	}
 
 	for _, skill := range skills {
-		// 检查是否需要清理
-		daysSinceLastUse := float64(now-skill.LastUsed) / 86400.0
+		// 受保護技能直接跳過
+		if skill.Protected {
+			continue
+		}
 
-		if skill.UseCount == 0 && daysSinceLastUse > 30 {
+		daysSinceLastUse := float64(now-skill.LastUsed) / 86400.0
+		daysSinceCreation := float64(now-skill.CreatedAt) / 86400.0
+
+		// Criterion 1: 從未使用且創建超過 30 日
+		if skill.UseCount == 0 && daysSinceCreation > 30 {
 			suggestions = append(suggestions, CleanupSuggestion{
 				SkillName: skill.Name,
 				Reason:    "从未使用且创建超过30天",
 				Action:    "delete",
 			})
 		} else if skill.QualityScore < 0.2 && skill.UseCount > 0 {
+			// Criterion 2: 低質量，僅建議改善（不刪除）
 			suggestions = append(suggestions, CleanupSuggestion{
 				SkillName: skill.Name,
 				Reason:    "质量评分过低",
 				Action:    "improve",
 			})
-		} else if daysSinceLastUse > 90 && skill.UseCount < 5 {
+		} else if skill.UseCount > 0 && daysSinceLastUse > float64(cleanupThresholdDays) && skill.UseCount < 5 && skill.QualityScore < 0.3 {
+			// Criterion 3: 曾經使用過 + 長期未使用 + 使用次數極少 + 質量評分低
+			// UseCount > 0 確保唔會誤判從未被用嘅 skill（LastUsed=0 導致 daysSinceLastUse 超大）
+			// QualityScore >= 0.3 嘅技能唔會被刪除，因為佢本身質量好
 			suggestions = append(suggestions, CleanupSuggestion{
 				SkillName: skill.Name,
-				Reason:    "长期未使用且使用次数极少",
+				Reason:    fmt.Sprintf("长期未使用(%d天)且使用次数极少(useCount=%d)且质量评分过低(%.2f<0.3)", int(daysSinceLastUse), skill.UseCount, skill.QualityScore),
 				Action:    "delete",
 			})
 		}

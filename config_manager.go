@@ -142,6 +142,9 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.MCP.SSEEndpoint = "/mcp/sse"
         config.MCP.HTTPEndpoint = "/mcp"
         config.Auth.TokenExpiry = 24
+        config.Tools.CompressionMode = "token"
+        config.Tools.CompressionThreshold = 0.8
+        config.Tools.SkillCleanupThresholdDays = 90
         config.Tools.SmartShell.SyncTimeout = 60
         config.Tools.SmartShell.UnknownTimeout = 120
         config.Tools.SmartShell.DefaultWakeMins = 5
@@ -259,6 +262,31 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
         }
         if config.Tools.SmartShell.DefaultWakeMins == 0 {
                 config.Tools.SmartShell.DefaultWakeMins = 5
+        }
+
+        // Compression 默认值
+        if config.Tools.CompressionMode == "" {
+                config.Tools.CompressionMode = "token"
+        }
+        if config.Tools.CompressionThreshold == 0 {
+                config.Tools.CompressionThreshold = 0.8
+        }
+        if config.Tools.CompressionThreshold < 0.1 {
+                config.Tools.CompressionThreshold = 0.1
+        }
+        if config.Tools.CompressionThreshold > 0.9 {
+                config.Tools.CompressionThreshold = 0.9
+        }
+
+        // Skill cleanup threshold 默认值
+        if config.Tools.SkillCleanupThresholdDays == 0 {
+                config.Tools.SkillCleanupThresholdDays = 90
+        }
+        if config.Tools.SkillCleanupThresholdDays < 30 {
+                config.Tools.SkillCleanupThresholdDays = 30
+        }
+        if config.Tools.SkillCleanupThresholdDays > 365 {
+                config.Tools.SkillCleanupThresholdDays = 365
         }
 
         // BrowserConfig 默认值
@@ -600,6 +628,54 @@ func (cm *ConfigManager) UpdateMaxAgentIterations(maxIter int) error {
         return cm.saveLocked()
 }
 
+// UpdateCompressionConfig 更新壓縮配置，保存
+func (cm *ConfigManager) UpdateCompressionConfig(mode string, threshold float64) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        // Validate mode
+        if mode != "" && mode != "token" && mode != "message" {
+                return fmt.Errorf("invalid compression mode: %s (must be \"token\" or \"message\")", mode)
+        }
+        // Validate threshold
+        if threshold != 0 {
+                if threshold < 0.1 {
+                        threshold = 0.1
+                }
+                if threshold > 0.9 {
+                        threshold = 0.9
+                }
+        }
+
+        if mode != "" {
+                cm.config.Tools.CompressionMode = mode
+        }
+        if threshold > 0 {
+                cm.config.Tools.CompressionThreshold = threshold
+        }
+
+        return cm.saveLocked()
+}
+
+// UpdateSkillCleanupThresholdDays 更新 Skill 自動清理天數，保存
+func (cm *ConfigManager) UpdateSkillCleanupThresholdDays(days int) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        if days == 0 {
+                return nil // 0 means keep current
+        }
+        if days < 30 {
+                days = 30
+        }
+        if days > 365 {
+                days = 365
+        }
+
+        cm.config.Tools.SkillCleanupThresholdDays = days
+        return cm.saveLocked()
+}
+
 // ReplaceConfig 替换整个配置对象（用于配置向导等场景），保存
 func (cm *ConfigManager) ReplaceConfig(config Config) error {
         cm.mu.Lock()
@@ -698,6 +774,9 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         DisableBrowserTools = cm.config.BrowserConfig.DisableBrowserTools
         globalTimeoutConfig = cm.config.Timeout
         globalToolsConfig = cm.config.Tools
+        globalCompressionMode = cm.config.Tools.CompressionMode
+        globalCompressionThreshold = cm.config.Tools.CompressionThreshold
+        globalSkillCleanupThresholdDays = cm.config.Tools.SkillCleanupThresholdDays
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）

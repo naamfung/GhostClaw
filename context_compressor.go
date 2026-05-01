@@ -1,9 +1,12 @@
 package main
 
 import (
+        "context"
+        "encoding/json"
         "fmt"
         "log"
         "strings"
+        "sync/atomic"
         "time"
         "unicode/utf8"
 )
@@ -19,14 +22,23 @@ type structuredSummary struct {
         ToolSummary []string // summary of tools used with outcomes
 }
 
+// GoalClassification holds LLM goal analysis results for sliding window decisions
+type GoalClassification struct {
+        HasMultipleGoals  bool     `json:"has_multiple_goals"`
+        EarliestGoal      string   `json:"earliest_goal"`
+        EarliestDone      bool     `json:"earliest_done"`
+        CurrentGoal       string   `json:"current_goal"`
+        KeyConstraints    []string `json:"key_constraints"`
+        CriticalEarlyInfo string   `json:"critical_early_info"`
+}
+
 // ContextCompressor 上下文压缩器
-// Implements a 4-stage compression algorithm:
-//   Stage 1: Trim old tool results (pure text processing, no LLM)
-//   Stage 2: Protect head messages
+// Implements a multi-stage compression algorithm:
+//   Stage 1: LLM tool pair compaction (natural language summarization)
+//   Stage 2: Protect head messages (system messages)
 //   Stage 3: Token budget tail (don't split tool_call/result pairs)
-//   Stage 4: LLM structured summary (heuristic extraction)
+//   Stage 4: Structured summary generation (LLM semantic extraction)
 type ContextCompressor struct {
-        thresholdPercent         float64       // 触发压缩的阈值（默认 50%）
         protectFirstN            int           // 保护前 N 条消息
         tailTokenBudget          int           // 尾部 token 预算
         previousSummary          string        // 上次摘要，用于迭代更新
@@ -40,12 +52,13 @@ type ContextCompressor struct {
         // Compression failure cooldown
         lastCompressionFailure      time.Time   // 上次压缩失败的时间
         compressionCooldownDuration time.Duration // 压缩失败冷却期（默认 600s）
+        // Recursive compression guard
+        inLLMCall                 atomic.Bool  // 防止 LLM 摘要調用觸發遞迴壓縮
 }
 
 // NewContextCompressor 创建新的上下文压缩器
 func NewContextCompressor() *ContextCompressor {
         return &ContextCompressor{
-                thresholdPercent:         0.5,             // 50% 阈值
                 protectFirstN:            3,               // 保护前 3 条消息
                 tailTokenBudget:          40000,           // 尾部 40K token 预算（確保近期對話完整連貫）
                 compressionCount:         0,
@@ -107,13 +120,19 @@ func extractStringContent(msg Message) string {
         }
 }
 
-// Compress 压缩消息列表 (4-stage algorithm)
-//   Stage 1: Trim old tool results (pure text processing, no LLM)
-//   Stage 2: Protect head messages (system + first N)
+// Compress 压缩消息列表 (multi-stage algorithm)
+//   Stage 1: LLM tool pair compaction (natural language summarization)
+//   Stage 2: Protect head messages (system messages)
 //   Stage 3: Build token-budget tail (don't split tool_call/result pairs)
-//   Stage 4: Generate structured summary of middle section (heuristic extraction)
+//   Stage 4: Generate structured summary of middle section (LLM semantic extraction)
 // maxHistory 為當前模型的動態最大歷史消息數，由 AgentLoop 傳入
-func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Message {
+func (cc *ContextCompressor) Compress(ctx context.Context, messages []Message, maxHistory int) []Message {
+        // Pre-check: recursive call guard
+        if cc.inLLMCall.Load() {
+                log.Printf("[ContextCompressor] Skipping compression: already inside an LLM call")
+                return messages
+        }
+
         // Pre-check: cooldown
         if cc.isInCooldown() {
                 log.Printf("[ContextCompressor] Skipping compression: in cooldown (expires in %v)",
@@ -124,11 +143,13 @@ func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Mess
         // 防止返回共享的底層切片引用
         messages = append([]Message(nil), messages...)
 
-        // Stage 1: Trim old tool results (pure text replacement, no LLM)
-        // Always run Stage 1 — it reduces token usage by truncating old tool result
-        // content without changing message count or structure. This is safe and
-        // beneficial even when the message count is already within limits.
-        messages = cc.trimOldToolResults(messages)
+        // Stage 1: LLM tool pair compaction (natural language summarization)
+        // Converts tool_use → tool_result pairs into natural language system notes.
+        // Falls back to structured truncation if LLM times out.
+        if ctx == nil {
+                ctx = context.Background()
+        }
+        messages = cc.compactOldToolPairs(ctx, messages)
 
         if len(messages) <= maxHistory {
                 return messages
@@ -154,8 +175,8 @@ func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Mess
                 return append(head, tail...)
         }
 
-        // Stage 4: Generate structured summary (heuristic extraction, no LLM)
-        summary := cc.generateStructuredSummary(middle)
+        // Stage 4: Generate structured summary (LLM semantic extraction, fallback)
+        summary := cc.generateStructuredSummary(ctx, middle)
 
         // Treat empty summary as compression failure
         if strings.TrimSpace(summary) == "" {
@@ -211,36 +232,216 @@ func (cc *ContextCompressor) Compress(messages []Message, maxHistory int) []Mess
         return compressedML.msgs
 }
 
+// ============================================================================
+// Phase 3: LLM Goal Classification & Sliding Window
+// ============================================================================
+
+// classifyGoals uses LLM to analyze dialogue goal structure for sliding window decisions.
+// Returns a GoalClassification. Falls back to HasMultipleGoals=false if LLM fails.
+func (cc *ContextCompressor) classifyGoals(ctx context.Context, messages []Message) *GoalClassification {
+        cc.inLLMCall.Store(true)
+        defer cc.inLLMCall.Store(false)
+
+        // Only analyze the first 40 messages (early dialogue)
+        sampleCount := 40
+        if len(messages) < sampleCount {
+                sampleCount = len(messages)
+        }
+        if sampleCount == 0 {
+                return &GoalClassification{HasMultipleGoals: false}
+        }
+
+        sampleMsgs := messages[:sampleCount]
+        messagesText := cc.serializeMessagesForLLM(sampleMsgs)
+        if strings.TrimSpace(messagesText) == "" {
+                return &GoalClassification{HasMultipleGoals: false}
+        }
+
+        prompt := fmt.Sprintf(`## 你的任務
+分析以下對話歷史中的任務目標結構。你僅有 60 秒處理，請簡潔回答，不要作長篇思考以免超時。
+
+## 需要回答
+1. 這段對話中是否存在多個互不相關的獨立任務？（是/否）
+2. 如果存在，最早的任務目標是什麼？是否已完成？
+3. 當前正在進行的任務目標是什麼？（簡述，20 字以內）
+4. 是否有跨任務的重要約束需要保留？（如語言偏好、輸出格式、角色設定等，列出關鍵詞）
+5. 早期消息中是否有對當前任務仍然關鍵的信息？如有請簡述。
+
+## 輸出格式
+嚴格 JSON，不要其他文字：
+{"has_multiple_goals": bool, "earliest_goal": "", "earliest_done": bool, "current_goal": "", "key_constraints": [], "critical_early_info": ""}
+
+## 對話歷史（僅分析前 40 條，後面都是最近消息，無需分析）
+%s`, messagesText)
+
+        apiType, baseURL, apiKey, modelID := cc.getAPIConfig()
+
+        llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+        defer cancel()
+
+        llmMessages := []Message{
+                {Role: "user", Content: prompt},
+        }
+
+        resp, err := CallModelSync(llmCtx, llmMessages, apiType, baseURL, apiKey, modelID, 0, 250, false, false)
+        if err != nil {
+                log.Printf("[ContextCompressor] classifyGoals LLM call failed: %v", err)
+                return &GoalClassification{HasMultipleGoals: false}
+        }
+
+        content, ok := resp.Content.(string)
+        if !ok || strings.TrimSpace(content) == "" {
+                log.Printf("[ContextCompressor] classifyGoals: empty response")
+                return &GoalClassification{HasMultipleGoals: false}
+        }
+
+        // Try to extract JSON from response
+        jsonStr := content
+        if start := strings.Index(content, "{"); start >= 0 {
+                if end := strings.LastIndex(content, "}"); end > start {
+                        jsonStr = content[start : end+1]
+                }
+        }
+
+        var classification GoalClassification
+        if err := json.Unmarshal([]byte(jsonStr), &classification); err != nil {
+                log.Printf("[ContextCompressor] classifyGoals JSON parse failed: %v (raw: %.200s...)", err, content)
+                return &GoalClassification{HasMultipleGoals: false}
+        }
+
+        return &classification
+}
+
+// applySlidingWindow keeps the most recent messages while preserving critical context.
+// Returns a new message slice based on the goal classification strategy.
+func (cc *ContextCompressor) applySlidingWindow(messages []Message, classification *GoalClassification, keepCount int) []Message {
+        if classification == nil {
+                classification = &GoalClassification{HasMultipleGoals: false}
+        }
+
+        msgCount := len(messages)
+        if msgCount <= keepCount {
+                return messages
+        }
+
+        // Determine strategy and keep range
+        var keepStart int
+
+        switch {
+        case !classification.HasMultipleGoals:
+                // Simple: keep most recent messages
+                keepStart = msgCount - keepCount
+
+        case classification.HasMultipleGoals && classification.EarliestDone:
+                // Old goal is done, keep recent + inject constraints
+                keepStart = msgCount - keepCount
+
+        case classification.HasMultipleGoals && !classification.EarliestDone && classification.CriticalEarlyInfo != "":
+                // Old goal still active with critical info — keep more + inject
+                extraKeep := 20
+                if keepCount+extraKeep > msgCount {
+                        extraKeep = msgCount - keepCount
+                }
+                keepStart = msgCount - keepCount - extraKeep
+
+        default:
+                // Conservative: keep more messages, no sliding
+                extraKeep := 20
+                if keepCount+extraKeep > msgCount {
+                        extraKeep = msgCount - keepCount
+                }
+                keepStart = msgCount - keepCount - extraKeep
+        }
+
+        if keepStart < 0 {
+                keepStart = 0
+        }
+
+        // Preserve system messages from the head
+        var headSystems []Message
+        for _, msg := range messages {
+                if msg.Role == "system" {
+                        headSystems = append(headSystems, msg)
+                } else {
+                        break
+                }
+        }
+
+        // Build kept messages (preserving tool_call/result pairs)
+        kept := messages[keepStart:]
+
+        // Ensure tool_call/result pair integrity — don't leave orphan tool results
+        // If the first message is a tool result without its parent assistant, remove it
+        for len(kept) > 0 && kept[0].Role == "tool" {
+                kept = kept[1:]
+        }
+
+        // Build result: head system messages + kept
+        result := make([]Message, 0, len(headSystems)+len(kept)+1)
+        result = append(result, headSystems...)
+
+        // Build SESSION_CONSTRAINTS note if needed
+        var constraintsNote string
+        if len(classification.KeyConstraints) > 0 || classification.CriticalEarlyInfo != "" {
+                var sb strings.Builder
+                sb.WriteString("[SESSION_CONSTRAINTS]\n")
+                sb.WriteString("以下為跨任務持續有效的信息，在當前及後續任務中均需遵守：\n")
+                for _, c := range classification.KeyConstraints {
+                        sb.WriteString(fmt.Sprintf("- %s\n", c))
+                }
+                if classification.CriticalEarlyInfo != "" {
+                        sb.WriteString(fmt.Sprintf("- %s\n", classification.CriticalEarlyInfo))
+                }
+                sb.WriteString("[/SESSION_CONSTRAINTS]")
+                constraintsNote = sb.String()
+        }
+
+        // Insert constraints note after head system messages
+        if constraintsNote != "" {
+                result = append(result, Message{
+                        Role:      "system",
+                        Content:   constraintsNote,
+                        Timestamp: time.Now().Unix(),
+                })
+        }
+
+        result = append(result, kept...)
+
+        // Ensure at least one user message exists
+        hasUser := false
+        for _, msg := range result {
+                if msg.Role == "user" {
+                        hasUser = true
+                        break
+                }
+        }
+        if !hasUser {
+                // Find the last user from original messages
+                for i := len(messages) - 1; i >= 0; i-- {
+                        if messages[i].Role == "user" {
+                                result = append(result, messages[i])
+                                break
+                        }
+                }
+        }
+
+        if len(result) < len(messages) {
+                log.Printf("[ContextCompressor] Phase 3 sliding window: %d → %d messages (strategy: goals=%v, earliestDone=%v)",
+                        len(messages), len(result), classification.HasMultipleGoals, classification.EarliestDone)
+        }
+
+        return result
+}
+
 // GenerateSummary generates a structured summary from an arbitrary list of messages.
 // This is used to summarize discarded messages during history truncation,
 // ensuring the model retains key context (accomplishments, decisions, tool usage)
 // even when the detailed messages are no longer in the active history.
-func (cc *ContextCompressor) GenerateSummary(messages []Message) string {
+func (cc *ContextCompressor) GenerateSummary(ctx context.Context, messages []Message) string {
 	if len(messages) == 0 {
 		return ""
 	}
-	return cc.generateStructuredSummary(messages)
-}
-
-// CompressWithContextWindow compresses messages only if estimated tokens exceed contextWindow * thresholdPercent.
-// This provides a more accurate trigger than message count alone.
-// maxHistory 為當前模型的動態最大歷史消息數
-func (cc *ContextCompressor) CompressWithContextWindow(messages []Message, contextWindow int, maxHistory int) []Message {
-        if contextWindow <= 0 {
-                return cc.Compress(messages, maxHistory)
-        }
-
-        totalTokens := cc.estimateMessagesTokenCount(messages)
-        threshold := float64(contextWindow) * cc.thresholdPercent
-
-        if float64(totalTokens) <= threshold {
-                return messages
-        }
-
-        log.Printf("[ContextCompressor] CompressWithContextWindow: %d tokens > %.0f threshold (window=%d)",
-                totalTokens, threshold, contextWindow)
-
-        return cc.Compress(messages, maxHistory)
+	return cc.generateStructuredSummary(ctx, messages)
 }
 
 // buildHead extracts the protected head messages.
@@ -453,7 +654,386 @@ func (cc *ContextCompressor) collectFocusMessages(messages []Message, headEnd, t
 }
 
 // ============================================================================
-// Stage 1: Trim Old Tool Results (pure text processing, no LLM)
+// Stage 1: Compact Old Tool Pairs (LLM natural language summarization)
+// ============================================================================
+// compactOldToolPairs scans for assistant(with ToolCalls) → tool(result) pairs
+// and batch-summarizes old ones via LLM into natural language system notes.
+// Falls back to structured truncation if LLM is unavailable or times out.
+
+// toolPair represents a single tool_call → tool_result pair
+type toolPair struct {
+        assistantIdx int     // index of the assistant message with tool_calls
+        toolIndices  []int   // indices of corresponding tool result messages
+        toolCallIDs  []string // tool call IDs from the assistant message
+}
+
+// compactOldToolPairs replaces old tool_use → tool_result pairs with natural
+// language system notes generated by LLM. Recent pairs and tail-associated
+// pairs are preserved as-is.
+func (cc *ContextCompressor) compactOldToolPairs(ctx context.Context, messages []Message) []Message {
+        if cc.preserveRecentToolResults <= 0 {
+                return messages
+        }
+
+        // Step 1: Identify all tool pairs (assistant with ToolCalls → tool results)
+        pairs := cc.identifyToolPairs(messages)
+        if len(pairs) == 0 {
+                return messages
+        }
+
+        // Step 2: Determine which pairs to protect
+        protectedSet := make(map[int]bool) // pair indices to protect
+        pairIndicesWithToolIndices := make(map[int][]int)
+
+        for i, pair := range pairs {
+                var allIndices []int
+                allIndices = append(allIndices, pair.assistantIdx)
+                allIndices = append(allIndices, pair.toolIndices...)
+                pairIndicesWithToolIndices[i] = allIndices
+        }
+
+        // Protect recent N pairs (by pair count, not message count)
+        if len(pairs) > cc.preserveRecentToolResults {
+                for i := len(pairs) - cc.preserveRecentToolResults; i < len(pairs); i++ {
+                        protectedSet[i] = true
+                }
+        } else {
+                // All pairs are recent, nothing to compact
+                return messages
+        }
+
+        // Protect pairs associated with the last 5 assistant messages in tail
+        tailAssistantCount := 0
+        for i := len(messages) - 1; i >= 0 && tailAssistantCount < 5; i-- {
+                if messages[i].Role == "assistant" && messages[i].ToolCalls != nil {
+                        tcIDs := cc.extractToolCallIDs(messages[i])
+                        // Find which pair(s) these tool calls belong to
+                        for pairIdx, pair := range pairs {
+                                for _, pairTCID := range pair.toolCallIDs {
+                                        for _, tailTCID := range tcIDs {
+                                                if pairTCID == tailTCID {
+                                                        protectedSet[pairIdx] = true
+                                                }
+                                        }
+                                }
+                        }
+                        tailAssistantCount++
+                }
+        }
+
+        // Step 3: Collect pairs to compact
+        var pairsToCompact []int
+        for i := range pairs {
+                if !protectedSet[i] {
+                        pairsToCompact = append(pairsToCompact, i)
+                }
+        }
+
+        if len(pairsToCompact) == 0 {
+                return messages
+        }
+
+        // Step 4: Batch process pairs through LLM (10 pairs per batch)
+        const batchSize = 10
+        compactNotes := make(map[int]string) // pair index → compact note
+
+        for start := 0; start < len(pairsToCompact); start += batchSize {
+                end := start + batchSize
+                if end > len(pairsToCompact) {
+                        end = len(pairsToCompact)
+                }
+                batch := pairsToCompact[start:end]
+
+                note, err := cc.compactToolPairsWithLLM(ctx, messages, pairs, batch)
+                if err != nil {
+                        log.Printf("[ContextCompressor] Stage 1 LLM compact failed: %v, using fallback", err)
+                        // Fallback for each pair in the batch
+                        for _, pairIdx := range batch {
+                                compactNotes[pairIdx] = cc.compactToolPairFallback(messages, pairs[pairIdx])
+                        }
+                        continue
+                }
+                // The LLM returns one note that may cover multiple pairs
+                compactNotes[batch[0]] = note
+                for i := 1; i < len(batch); i++ {
+                        compactNotes[batch[i]] = "" // subsequent pairs absorbed into first pair's note
+                }
+        }
+
+        // Step 5: Build new message list with compact notes replacing old tool pairs
+        return cc.applyCompactNotes(messages, pairs, protectedSet, compactNotes)
+}
+
+// identifyToolPairs scans messages and identifies all assistant→tool_result pairs
+func (cc *ContextCompressor) identifyToolPairs(messages []Message) []toolPair {
+        var pairs []toolPair
+
+        for i := 0; i < len(messages); i++ {
+                msg := messages[i]
+                if msg.Role != "assistant" || msg.ToolCalls == nil {
+                        continue
+                }
+
+                tcIDs := cc.extractToolCallIDs(msg)
+                if len(tcIDs) == 0 {
+                        continue
+                }
+
+                pair := toolPair{
+                        assistantIdx: i,
+                        toolCallIDs:  tcIDs,
+                }
+
+                // Find corresponding tool result messages (must immediately follow)
+                for j := i + 1; j < len(messages); j++ {
+                        if messages[j].Role == "tool" && cc.isToolCallIDInList(messages[j].ToolCallID, tcIDs) {
+                                pair.toolIndices = append(pair.toolIndices, j)
+                        } else if messages[j].Role != "tool" {
+                                break
+                        }
+                }
+
+                if len(pair.toolIndices) > 0 {
+                        pairs = append(pairs, pair)
+                }
+        }
+
+        return pairs
+}
+
+// compactToolPairsWithLLM sends a batch of tool pairs to LLM for summarization
+func (cc *ContextCompressor) compactToolPairsWithLLM(ctx context.Context, messages []Message, pairs []toolPair, batchIndices []int) (string, error) {
+        cc.inLLMCall.Store(true)
+        defer cc.inLLMCall.Store(false)
+
+        // Build prompt with serialized pairs
+        var sb strings.Builder
+        for _, pairIdx := range batchIndices {
+                if pairIdx >= len(pairs) {
+                        continue
+                }
+                pair := pairs[pairIdx]
+                sb.WriteString(fmt.Sprintf("--- 操作 %d ---\n", pairIdx))
+                if pair.assistantIdx < len(messages) {
+                        assistantMsg := messages[pair.assistantIdx]
+                        // Extract tool call info
+                        sb.WriteString("工具調用: ")
+                        tcNames := cc.extractToolCallNamesFromMessage(assistantMsg)
+                        sb.WriteString(strings.Join(tcNames, ", "))
+                        sb.WriteString("\n")
+                }
+                for _, toolIdx := range pair.toolIndices {
+                        if toolIdx < len(messages) {
+                                content := extractStringContent(messages[toolIdx])
+                                // Truncate very long tool results for the prompt (keep enough for LLM to extract key info)
+                                if utf8.RuneCountInString(content) > 1000 {
+                                        runes := []rune(content)
+                                        content = string(runes[:1000]) + "..."
+                                }
+                                sb.WriteString(fmt.Sprintf("結果: %s\n", content))
+                        }
+                }
+                sb.WriteString("\n")
+        }
+
+        prompt := fmt.Sprintf(`## 你的任務
+你係一個記憶壓縮器。以下係 agent 執行過嘅工具操作記錄。
+你要為 agent 撰寫**有價值嘅記憶筆記**，等佢之後可以靠呢啲筆記回憶起做過乜、學到乜。
+
+## 核心原則：呢啲筆記係 agent 僅存嘅記憶
+- 以下工具記錄即將被永久丟棄，你寫嘅筆記係 agent 唯一可以保留嘅信息
+- 如果筆記寫得含糊，agent 就會永久遺失嗰啲信息
+- 所以：**關鍵信息絕不可以省略**，必須完整提取到筆記入面
+
+## 規則
+- 唔好提工具名稱（如 SmartShell, ReadFileLine），工具名冇意義
+- **必須保留實際內容**：讀取檔案就要記低檔案入面嘅關鍵代碼/邏輯/結構係乜，唔好只寫「了解了某文件」
+  - 例子錯：❌ 「查閱了 main.go，了解了 AgentLoop 結構」
+  - 例子啱：✅ 「main.go 中 AgentLoop 主循環用 for + select 監聽 ctx.Done() 同 msgChan，每次迭代檢查 MaxIterations 上限」
+- **必須保留具體結果**：編譯就要記低係成功定失敗、有冇 warning/error；搜索就要記低搵到幾多結果、關鍵匹配係乜
+  - 例子錯：❌ 「編譯成功，無錯誤」
+  - 例子啱：✅ 「go build ./... 編譯通過，無 warning，二進制輸出 15MB」
+- 每條筆記一句話，不超過 120 字（關鍵信息優先，寧可稍長都唔好遺漏）
+- 連續相關的操作合併為一條筆記
+- 只輸出筆記文字，不要 JSON，不要 Markdown
+
+## 時間限制
+60 秒內完成，直接寫筆記，唔好長篇思考。
+
+## 工具操作記錄
+%s`, sb.String())
+
+        // Get API config
+        apiType, baseURL, apiKey, modelID := cc.getAPIConfig()
+
+        llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+        defer cancel()
+
+        llmMessages := []Message{
+                {Role: "user", Content: prompt},
+        }
+
+        resp, err := CallModelSync(llmCtx, llmMessages, apiType, baseURL, apiKey, modelID, 0, 800, false, false)
+        if err != nil {
+                return "", fmt.Errorf("LLM call failed: %w", err)
+        }
+
+        if resp.Content == nil {
+                return "", fmt.Errorf("LLM returned empty content")
+        }
+
+        content, ok := resp.Content.(string)
+        if !ok || strings.TrimSpace(content) == "" {
+                return "", fmt.Errorf("LLM content is empty or not a string")
+        }
+
+        return strings.TrimSpace(content), nil
+}
+
+// compactToolPairFallback generates a structured compact note without LLM
+func (cc *ContextCompressor) compactToolPairFallback(messages []Message, pair toolPair) string {
+        var sb strings.Builder
+
+        if pair.assistantIdx < len(messages) {
+                assistantMsg := messages[pair.assistantIdx]
+                tcNames := cc.extractToolCallNamesFromMessage(assistantMsg)
+                for _, name := range tcNames {
+                        sb.WriteString(fmt.Sprintf("[%s] ", name))
+                }
+        }
+
+        for i, toolIdx := range pair.toolIndices {
+                if toolIdx >= len(messages) {
+                        continue
+                }
+                content := extractStringContent(messages[toolIdx])
+                runes := []rune(content)
+                // Truncate tool result
+                if len(runes) > 200 {
+                        content = string(runes[:200]) + "..."
+                }
+                if i > 0 {
+                        sb.WriteString(" | ")
+                }
+                sb.WriteString(content)
+        }
+
+        result := strings.TrimSpace(sb.String())
+        if result == "" {
+                result = "Tool operation completed."
+        }
+        return result
+}
+
+// extractToolCallNamesFromMessage extracts tool function names from a message's ToolCalls
+func (cc *ContextCompressor) extractToolCallNamesFromMessage(msg Message) []string {
+        var names []string
+        if msg.ToolCalls == nil {
+                return names
+        }
+
+        if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
+                for _, tc := range tcSlice {
+                        if tcMap, ok := tc.(map[string]interface{}); ok {
+                                if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                        if name, ok := function["name"].(string); ok {
+                                                names = append(names, name)
+                                        }
+                                }
+                        }
+                }
+                return names
+        }
+
+        if tcMapSlice, ok := msg.ToolCalls.([]map[string]interface{}); ok {
+                for _, tcMap := range tcMapSlice {
+                        if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                if name, ok := function["name"].(string); ok {
+                                        names = append(names, name)
+                                }
+                        }
+                }
+        }
+        return names
+}
+
+// applyCompactNotes builds a new message list with tool pairs replaced by compact notes
+func (cc *ContextCompressor) applyCompactNotes(messages []Message, pairs []toolPair, protectedSet map[int]bool, compactNotes map[int]string) []Message {
+        // Determine which message indices to keep vs replace
+        replaceRanges := make(map[int]string) // startIdx → compact note
+        skipIndices := make(map[int]bool)
+
+        for pairIdx, pair := range pairs {
+                if protectedSet[pairIdx] {
+                        continue // keep as-is
+                }
+                note, hasNote := compactNotes[pairIdx]
+                if !hasNote || note == "" {
+                        continue // no compact note generated, keep original
+                }
+
+                // Mark this pair's indices for replacement
+                replaceRanges[pair.assistantIdx] = note
+                skipIndices[pair.assistantIdx] = true
+                for _, toolIdx := range pair.toolIndices {
+                        skipIndices[toolIdx] = true
+                }
+        }
+
+        // Build new message list
+        result := make([]Message, 0, len(messages))
+        pendingNote := ""
+
+        for i, msg := range messages {
+                if skipIndices[i] {
+                        // Check if this is the assistant index where we insert the note
+                        if note, ok := replaceRanges[i]; ok {
+                                pendingNote = note
+                        }
+                        continue
+                }
+
+                // Insert compact note as system message before the next kept message
+                if pendingNote != "" {
+                        result = append(result, Message{
+                                Role:      "system",
+                                Content:   pendingNote,
+                                Timestamp: time.Now().Unix(),
+                        })
+                        pendingNote = ""
+                }
+
+                result = append(result, msg)
+        }
+
+        // Flush any remaining pending note
+        if pendingNote != "" {
+                result = append(result, Message{
+                        Role:      "system",
+                        Content:   pendingNote,
+                        Timestamp: time.Now().Unix(),
+                })
+        }
+
+        compacted := len(messages) - len(result)
+        if compacted > 0 {
+                log.Printf("[ContextCompressor] Stage 1: compacted %d tool pair messages into natural language notes", compacted)
+        }
+
+        return result
+}
+
+// getAPIConfig retrieves the current API configuration
+func (cc *ContextCompressor) getAPIConfig() (string, string, string, string) {
+        if globalConfigManager != nil {
+                apiCfg := globalConfigManager.GetAPIConfig()
+                return apiCfg.APIType, apiCfg.BaseURL, apiCfg.APIKey, apiCfg.Model
+        }
+        return apiType, baseURL, apiKey, modelID
+}
+
+// ============================================================================
+// Stage 1 Fallback: Trim Old Tool Results (保留作為應急方案)
 // ============================================================================
 
 // trimOldToolResults truncates old tool-role messages that are beyond the
@@ -607,14 +1187,14 @@ func (cc *ContextCompressor) recordCompressionFailure() {
 // Rich Structured Summary Generation
 // ============================================================================
 
-// generateStructuredSummary 生成结构化摘要（支持增量更新）
-func (cc *ContextCompressor) generateStructuredSummary(messages []Message) string {
+// generateStructuredSummary 生成结构化摘要（支持增量更新，LLM semantic extraction）
+func (cc *ContextCompressor) generateStructuredSummary(ctx context.Context, messages []Message) string {
         if len(messages) == 0 {
                 return cc.previousSummary
         }
 
-        // Extract structured information from messages
-        extracted := cc.extractStructuredData(messages)
+        // Extract structured information from messages via LLM
+        extracted := cc.llmExtractStructuredData(ctx, messages)
 
         // Merge with previous summary if available (iterative update)
         merged := cc.mergeWithPrevious(extracted)
@@ -632,99 +1212,162 @@ func (cc *ContextCompressor) generateStructuredSummary(messages []Message) strin
 }
 
 // extractStructuredData 从消息列表中提取结构化数据
+// extractStructuredData is deprecated; use llmExtractStructuredData instead.
+// Kept for backward compatibility as a thin wrapper.
 func (cc *ContextCompressor) extractStructuredData(messages []Message) *structuredSummary {
-        s := &structuredSummary{}
+        return cc.llmExtractStructuredData(context.Background(), messages)
+}
 
-        // Track tool call outcomes: toolName -> list of short outcome descriptions
-        toolOutcomes := make(map[string][]string)
+// llmExtractStructuredData uses LLM to extract structured information from messages.
+// Falls back to an empty structuredSummary if LLM fails or times out.
+func (cc *ContextCompressor) llmExtractStructuredData(ctx context.Context, messages []Message) *structuredSummary {
+        cc.inLLMCall.Store(true)
+        defer cc.inLLMCall.Store(false)
+
+        // Serialize messages for the LLM prompt
+        messagesText := cc.serializeMessagesForLLM(messages)
+        if strings.TrimSpace(messagesText) == "" {
+                return &structuredSummary{}
+        }
+
+        prompt := fmt.Sprintf(`## 你的任務
+分析以下對話片段，提取結構化信息。
+
+## 時間限制
+你僅有 60 秒處理，請在規定時間內完成任務，不要作長篇大論的思考，以免超時終止。
+
+## 提取內容
+1. goals: 用戶提出的任務/目標（已完成或進行中，最多 5 項，每項 ≤120 字）
+2. constraints: 用戶設定的限制條件（語言偏好、格式要求、禁止事項等，最多 5 項）
+3. progress: assistant 已完成的具體工作（最多 5 項，每項 ≤150 字）
+4. decisions: 做出的重要選擇（最多 5 項，每項 ≤120 字）
+5. pending: 尚未完成的待辦事項（最多 5 項，每項 ≤120 字）
+6. tool_usage: 使用了哪些工具及其結果摘要（最多 10 項，每項 ≤150 字）
+
+## 輸出格式
+嚴格 JSON，不要 Markdown 代碼塊，不要其他文字：
+{"goals": [...], "constraints": [...], "progress": [...], "decisions": [...], "pending": [...], "tool_usage": [...]}
+
+如果某類別沒有內容，返回空陣列 []。
+
+## 對話片段
+---
+%s
+---`, messagesText)
+
+        apiType, baseURL, apiKey, modelID := cc.getAPIConfig()
+
+        llmCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+        defer cancel()
+
+        llmMessages := []Message{
+                {Role: "user", Content: prompt},
+        }
+
+        resp, err := CallModelSync(llmCtx, llmMessages, apiType, baseURL, apiKey, modelID, 0, 600, false, false)
+        if err != nil {
+                log.Printf("[ContextCompressor] llmExtractStructuredData LLM call failed: %v", err)
+                return &structuredSummary{}
+        }
+
+        content, ok := resp.Content.(string)
+        if !ok || strings.TrimSpace(content) == "" {
+                log.Printf("[ContextCompressor] llmExtractStructuredData: empty response")
+                return &structuredSummary{}
+        }
+
+        // Parse JSON response
+        var raw struct {
+                Goals       []string `json:"goals"`
+                Constraints []string `json:"constraints"`
+                Progress    []string `json:"progress"`
+                Decisions   []string `json:"decisions"`
+                Pending     []string `json:"pending"`
+                ToolUsage   []string `json:"tool_usage"`
+        }
+
+        // Try to extract JSON from response (model may wrap in markdown)
+        jsonStr := content
+        if start := strings.Index(content, "{"); start >= 0 {
+                if end := strings.LastIndex(content, "}"); end > start {
+                        jsonStr = content[start : end+1]
+                }
+        }
+
+        if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+                log.Printf("[ContextCompressor] llmExtractStructuredData JSON parse failed: %v (raw: %.200s...)", err, content)
+                return &structuredSummary{}
+        }
+
+        // Apply limits
+        if len(raw.Goals) > 5 {
+                raw.Goals = raw.Goals[:5]
+        }
+        if len(raw.Constraints) > 5 {
+                raw.Constraints = raw.Constraints[:5]
+        }
+        if len(raw.Progress) > 5 {
+                raw.Progress = raw.Progress[:5]
+        }
+        if len(raw.Decisions) > 5 {
+                raw.Decisions = raw.Decisions[:5]
+        }
+        if len(raw.Pending) > 5 {
+                raw.Pending = raw.Pending[:5]
+        }
+        if len(raw.ToolUsage) > 10 {
+                raw.ToolUsage = raw.ToolUsage[:10]
+        }
+
+        return &structuredSummary{
+                Goals:       raw.Goals,
+                Constraints: raw.Constraints,
+                Progress:    raw.Progress,
+                Decisions:   raw.Decisions,
+                Pending:     raw.Pending,
+                ToolSummary: raw.ToolUsage,
+        }
+}
+
+// serializeMessagesForLLM converts messages to a compact text representation for LLM prompts
+func (cc *ContextCompressor) serializeMessagesForLLM(messages []Message) string {
+        var sb strings.Builder
+        maxChars := 20000 // Prevent overly large prompts
+        totalChars := 0
 
         for _, msg := range messages {
-                switch msg.Role {
-                case "user":
-                        content := extractStringContent(msg)
-                        if content == "" {
-                                continue
-                        }
-                        // Heuristic classification of user messages
-                        lowerContent := strings.ToLower(content)
-                        if containsAny(lowerContent, "不要", "不能", "不允许", "限制", "必须", "禁止", "约束", "要求",
-                                "don't", "must not", "cannot", "only", "never", "constraint", "require", "limit") {
-                                s.Constraints = append(s.Constraints, truncateString(content, 120))
-                        } else if containsAny(lowerContent, "决定", "选择", "用这个", "就用", "确认", "好的用",
-                                "decided", "go with", "use this", "confirmed") {
-                                s.Decisions = append(s.Decisions, truncateString(content, 120))
-                        } else if containsAny(lowerContent, "还没", "待办", "接下来", "还需要", "下一步", "pending",
-                                "todo", "next", "still need", "remaining") {
-                                s.Pending = append(s.Pending, truncateString(content, 120))
+                content := extractStringContent(msg)
+                if content == "" && msg.ToolCalls == nil {
+                        continue
+                }
+
+                line := fmt.Sprintf("[%s] ", msg.Role)
+                if content != "" {
+                        runes := []rune(content)
+                        if len(runes) > 300 {
+                                line += string(runes[:300]) + "..."
                         } else {
-                                s.Goals = append(s.Goals, truncateString(content, 120))
+                                line += content
                         }
+                }
+                if msg.ToolCalls != nil {
+                        names := cc.extractToolCallNamesFromMessage(msg)
+                        if len(names) > 0 {
+                                line += fmt.Sprintf(" [tools: %s]", strings.Join(names, ", "))
+                        }
+                }
 
-                case "assistant":
-                        content := extractStringContent(msg)
-                        if content != "" {
-                                // Detect progress indicators in assistant responses
-                                lowerContent := strings.ToLower(content)
-                                if containsAny(lowerContent, "已完成", "完成", "成功", "done", "completed",
-                                        "finished", "successfully", "created", "wrote", "built", "implemented") {
-                                        s.Progress = append(s.Progress, truncateString(content, 150))
-                                }
-                        }
+                sb.WriteString(line)
+                sb.WriteString("\n")
 
-                        // Extract tool calls
-                        cc.extractToolCallsFromMessage(msg, toolOutcomes)
-
-                case "tool":
-                        // Tool results can indicate progress
-                        content := extractStringContent(msg)
-                        if content == "" {
-                                continue
-                        }
-                        // Infer tool name from ToolCallID context (if available)
-                        toolName := inferToolName(msg)
-                        if len(content) > 20 {
-                                toolOutcomes[toolName] = append(toolOutcomes[toolName], truncateString(content, 100))
-                        }
+                totalChars += len(line)
+                if totalChars > maxChars {
+                        sb.WriteString("... [剩余消息已截断]\n")
+                        break
                 }
         }
 
-        // Deduplicate and limit goals
-        s.Goals = deduplicateStrings(s.Goals)
-        if len(s.Goals) > 5 {
-                s.Goals = s.Goals[:5]
-        }
-
-        s.Constraints = deduplicateStrings(s.Constraints)
-        if len(s.Constraints) > 5 {
-                s.Constraints = s.Constraints[:5]
-        }
-
-        s.Progress = deduplicateStrings(s.Progress)
-        if len(s.Progress) > 5 {
-                s.Progress = s.Progress[:5]
-        }
-
-        s.Decisions = deduplicateStrings(s.Decisions)
-        if len(s.Decisions) > 5 {
-                s.Decisions = s.Decisions[:5]
-        }
-
-        s.Pending = deduplicateStrings(s.Pending)
-        if len(s.Pending) > 5 {
-                s.Pending = s.Pending[:5]
-        }
-
-        // Build tool summary
-        for toolName, outcomes := range toolOutcomes {
-                count := len(outcomes)
-                summary := fmt.Sprintf("%s (called %d times)", toolName, count)
-                if len(outcomes) > 0 {
-                        summary += fmt.Sprintf(": %s", outcomes[len(outcomes)-1])
-                }
-                s.ToolSummary = append(s.ToolSummary, truncateString(summary, 150))
-        }
-
-        return s
+        return sb.String()
 }
 
 // extractToolCallsFromMessage extracts tool call names from a message
@@ -759,26 +1402,6 @@ func (cc *ContextCompressor) extractToolCallsFromMessage(msg Message, toolOutcom
         }
 }
 
-// inferToolName attempts to infer a tool name from tool result content
-func inferToolName(msg Message) string {
-        content := extractStringContent(msg)
-        if msg.ToolCallID != "" {
-                // Try to extract from content markers like [COMPLETED | Tool: xxx]
-                markers := []string{"[COMPLETED | Tool: ", "[OPERATION FAILED] ", "[Tool: "}
-                for _, marker := range markers {
-                        idx := strings.Index(content, marker)
-                        if idx >= 0 {
-                                rest := content[idx+len(marker):]
-                                endIdx := strings.Index(rest, "]")
-                                if endIdx > 0 {
-                                        return rest[:endIdx]
-                                }
-                        }
-                }
-        }
-        return "unknown_tool"
-}
-
 // ============================================================================
 // Iterative Summary Update
 // ============================================================================
@@ -807,37 +1430,24 @@ func (cc *ContextCompressor) mergeWithPrevious(extracted *structuredSummary) *st
         // Decisions: accumulate
         merged.Decisions = mergeStringSlices(cc.lastSummary.Decisions, extracted.Decisions, 5)
 
-        // Pending: merge, but remove items that appear in progress (they're done)
-        pendingSet := make(map[string]bool)
-        for _, p := range extracted.Pending {
-                pendingSet[p] = true
-        }
-        for _, p := range cc.lastSummary.Pending {
-                // Check if this pending item has been addressed by progress
-                if !isAddressedIn(p, extracted.Progress) {
-                        pendingSet[p] = true
+        // Pending: merge and deduplicate
+        merged.Pending = mergeStringSlices(cc.lastSummary.Pending, extracted.Pending, 5)
+
+        // Tool Summary: merge and deduplicate
+        toolMap := make(map[string]bool)
+        for _, ts := range cc.lastSummary.ToolSummary {
+                key := strings.TrimSpace(ts)
+                if key != "" {
+                        toolMap[key] = true
                 }
         }
-        for p := range pendingSet {
-                merged.Pending = append(merged.Pending, p)
-        }
-        if len(merged.Pending) > 5 {
-                merged.Pending = merged.Pending[:5]
-        }
-
-        // Tool Summary: merge tool call counts
-        toolMap := make(map[string]string)
-        // Parse previous tool summaries
-        for _, ts := range cc.lastSummary.ToolSummary {
-                name := parseToolNameFromSummary(ts)
-                toolMap[name] = ts
-        }
-        // New tool summaries override old ones (they have more up-to-date counts)
         for _, ts := range extracted.ToolSummary {
-                name := parseToolNameFromSummary(ts)
-                toolMap[name] = ts
+                key := strings.TrimSpace(ts)
+                if key != "" {
+                        toolMap[key] = true
+                }
         }
-        for _, ts := range toolMap {
+        for ts := range toolMap {
                 merged.ToolSummary = append(merged.ToolSummary, ts)
         }
         if len(merged.ToolSummary) > 10 {
@@ -952,16 +1562,6 @@ func (cc *ContextCompressor) renderStructuredSummary(s *structuredSummary) strin
 // Helper Functions
 // ============================================================================
 
-// containsAny checks if the content string contains any of the given substrings
-func containsAny(content string, substrings ...string) bool {
-        for _, sub := range substrings {
-                if strings.Contains(content, sub) {
-                        return true
-                }
-        }
-        return false
-}
-
 // truncateString truncates a string to maxLen characters, appending "..." if truncated
 func truncateString(s string, maxLen int) string {
         if len(s) <= maxLen {
@@ -1021,63 +1621,6 @@ func mergeStringSlices(previous, current []string, maxLen int) []string {
         }
 
         return result
-}
-
-// isAddressedIn checks if a pending item appears to have been addressed by any progress item
-// Uses simple substring matching
-func isAddressedIn(pendingItem string, progressItems []string) bool {
-        pendingLower := strings.ToLower(pendingItem)
-        // Extract key nouns from pending item (simple heuristic: split and take words > 2 chars)
-        words := strings.Fields(pendingLower)
-        for _, word := range words {
-                if len(word) <= 2 {
-                        continue
-                }
-                // Skip common stop words
-                if isStopWord(word) {
-                        continue
-                }
-                for _, progress := range progressItems {
-                        if strings.Contains(strings.ToLower(progress), word) {
-                                return true
-                        }
-                }
-        }
-        return false
-}
-
-// isStopWord returns true for common stop words that shouldn't be used for matching
-func isStopWord(word string) bool {
-        stopWords := map[string]bool{
-                "the": true, "and": true, "for": true, "are": true, "but": true,
-                "not": true, "you": true, "all": true, "can": true, "had": true,
-                "her": true, "was": true, "one": true, "our": true, "out": true,
-                "has": true, "have": true, "been": true, "will": true, "with": true,
-                "this": true, "that": true, "from": true, "they": true,
-                "的": true, "了": true, "在": true, "是": true, "我": true,
-                "有": true, "和": true, "就": true, "不": true, "人": true,
-                "都": true, "一": true, "一个": true, "上": true, "也": true,
-                "到": true, "说": true, "要": true, "去": true, "你": true,
-                "会": true, "着": true, "没有": true, "看": true, "好": true,
-                "自己": true, "这": true, "他": true, "她": true, "它": true,
-        }
-        return stopWords[word]
-}
-
-// parseToolNameFromSummary extracts the tool name from a tool summary string
-// e.g., "shell (called 3 times): ..." -> "Shell"
-func parseToolNameFromSummary(summary string) string {
-        summary = strings.TrimSpace(summary)
-        parenIdx := strings.Index(summary, " (")
-        if parenIdx > 0 {
-                return summary[:parenIdx]
-        }
-        // If no parenthesis, take first word
-        parts := strings.Fields(summary)
-        if len(parts) > 0 {
-                return parts[0]
-        }
-        return summary
 }
 
 // messagesContainThinkingBlock 檢查消息列表中是否有 assistant 訊息包含 thinking block
