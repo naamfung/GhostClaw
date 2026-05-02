@@ -3,6 +3,7 @@ package main
 import (
         "context"
         "encoding/json"
+        "fmt"
         "net/http"
         "net/http/httptest"
         "os"
@@ -48,15 +49,29 @@ func TestMain(m *testing.M) {
                 http.NotFound(w, r)
         }))
 
-        // 覆盖全局 API 配置
-        apiType = "openai"
-        baseURL = mockServer.URL
-        apiKey = "test-key"
-        modelID = "test-model"
-        temperature = 0.0
-        maxTokens = 100
-        stream = false
-        thinking = false
+        // 初始化 ConfigManager，與正常運行時加載配置流程一致
+        tmpDir, err := os.MkdirTemp("", "ghostclaw-test-*")
+        if err != nil {
+                panic(fmt.Sprintf("failed to create temp dir: %v", err))
+        }
+        defer os.RemoveAll(tmpDir)
+
+        cm := &ConfigManager{
+                configPath: tmpDir + "/config.toon",
+                execDir:    tmpDir,
+        }
+        cfg := cm.createDefaultConfig()
+        // 將默認模型指向 mock server，避免請求到外部 API
+        defaultModel := cfg.Models[DEFAULT_MODEL_ID]
+        defaultModel.BaseURL = mockServer.URL
+        defaultModel.APIKey = "test-key"
+        defaultModel.Temperature = 0.0
+        defaultModel.MaxTokens = 100
+        defaultModel.Stream = false
+        defaultModel.Thinking = false
+        cm.config = cfg
+        cm.syncGlobals()
+        globalConfigManager = cm
         IsDebug = false // 关闭调试日志，加速测试
 
         // 运行所有测试
@@ -208,10 +223,11 @@ func TestCronManager_ConcurrentControl(t *testing.T) {
         }))
         defer countServer.Close()
 
-        // 保存原 baseURL，恢复
-        oldBaseURL := baseURL
-        defer func() { baseURL = oldBaseURL }()
-        baseURL = countServer.URL
+        // 保存原 baseURL 并覆盖为 countServer（与正常运行时一样通过 ConfigManager 控制）
+        defaultModel := globalConfigManager.GetConfig().Models[DEFAULT_MODEL_ID]
+        oldBaseURL := defaultModel.BaseURL
+        defaultModel.BaseURL = countServer.URL
+        defer func() { defaultModel.BaseURL = oldBaseURL }()
 
         // 添加任务
         err = cm.AddJob(&CronJob{
