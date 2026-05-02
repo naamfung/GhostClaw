@@ -317,6 +317,7 @@ func (sc *SlackChannel) handleSocketMessage(msg *SlackSocketMessage) {
                 func() {
                         session.CancelTask()
                 },
+                nil, // pauseFunc: 使用默認行為
                 func() {
                         // /quit: 在 Bot 频道中无实际连接可断开，仅记录
                         log.Println("[Slack] /quit received (no connection to close in bot mode)")

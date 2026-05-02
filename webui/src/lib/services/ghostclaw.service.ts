@@ -168,14 +168,15 @@ class GhostClawWebSocketService {
         }
 
         /**
-         * Send stop command to cancel current task without disconnecting
-         * This allows the connection to remain open for future messages (e.g., wake notifications)
+         * Send pause command to interrupt current task without cancelling it.
+         * The model will receive the user's next message and continue the task.
+         * This keeps the connection open — use /stop manually for hard cancel.
          */
         sendStop(): void {
                 if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
                         return;
                 }
-                const msg: GhostClawWSMessage = { content: '/stop' };
+                const msg: GhostClawWSMessage = { content: '/pause' };
                 this.ws.send(JSON.stringify(msg));
         }
 

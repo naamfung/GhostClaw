@@ -314,6 +314,7 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                                         globalCancel = nil
                                 }
                         },
+                        nil, // pauseFunc: 使用默認行為
                         nil, // quitFunc: 在终端 REPL 中 /quit 已直接处理，不会走到这里
                         func() {
                                 fmt.Println("青山不改，绿水长流，有缘再会！")

@@ -123,6 +123,7 @@ func (p *EmailPoller) handleEmail(msg *imap.Message) {
                 func() {
                         session.CancelTask()
                 },
+                nil, // pauseFunc: 使用默認行為
                 func() {
                         // /quit: 在邮件频道中无实际连接可断开，仅记录
                         log.Println("[Email] /quit received (no connection to close)")

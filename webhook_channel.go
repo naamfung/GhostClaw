@@ -350,6 +350,7 @@ func (wc *WebhookChannel) handleWebhook(w http.ResponseWriter, r *http.Request) 
                 func() {
                         session.CancelTask()
                 },
+                nil, // pauseFunc: 使用默認行為
                 func() {
                         // /quit: 在 Webhook 频道中无实际连接可断开，仅记录
                         log.Println("[Webhook] /quit received (no connection to close)")

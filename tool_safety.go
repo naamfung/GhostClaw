@@ -573,6 +573,12 @@ func IsReadOnlyTool(toolName string) bool {
 // emitToolCallTags 向前端发送完整的工具调用 agentic tags（用于早期返回路径）
 // 确保所有工具执行路径（包括安全检查拒绝、Plan Mode 拦截等）都能在网页端显示为工具块
 func emitToolCallTags(ch Channel, toolName string, argsMap map[string]interface{}, content string, status TaskStatus) {
+        // 檢查任務是否已被取消：若已取消則不應再向前端推送工具結果
+        // 避免用戶在 /stop 之後仍然看到 SSH 錯誤等後續輸出
+        session := GetGlobalSession()
+        if session.IsTaskCancelled() {
+                return
+        }
         argsJSON, _ := json.Marshal(argsMap)
         sendToolCallStart(ch, toolName, string(argsJSON))
         if content != "" {

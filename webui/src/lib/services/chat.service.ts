@@ -330,13 +330,13 @@ export class ChatService {
                         return;
                 }
 
-                // Handle stop signal - send /stop command to terminate model operation
+                // Handle stop signal - send /pause command to interrupt model operation
                 // Note: AbortSignal is Web standard API, but semantically it's a "stop" action
                 if (signal) {
                         signal.addEventListener('abort', () => {
-                                // 发送 /stop 终止模型当前操作，但不断开连接
-                                // 用户仍可继续与模型交流
-                                wsManager.send('/stop');
+                                // 發送 /pause 中斷模型當前操作，但不取消任務
+                                // 用戶仍可繼續與模型交流
+                                wsManager.send('/pause');
                                 const stopError = new Error('Request stopped');
                                 stopError.name = 'AbortError'; // Keep standard error name for compatibility
                                 onError?.(stopError);

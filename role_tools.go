@@ -14,7 +14,9 @@ type CommandResult struct {
         Response string // 响应文本
         IsExit   bool   // 是否需要退出程序（/exit）
         IsQuit   bool   // 是否需要断开连接/切换模式（/quit）
-        IsStop   bool   // 是否需要停止当前任务
+        IsStop  bool   // 是否需要停止当前任务（硬取消）
+        IsPause bool   // 是否需要中斷當前任務（軟暫停，接收輸入後繼續）
+        PauseMsg string // 中斷時注入的用戶消息
 }
 
 // ProcessSlashCommand 统一处理斜杠命令
@@ -45,6 +47,10 @@ func ProcessSlashCommand(input string, rm *RoleManager, am *ActorManager, stage 
 
         case "stop":
                 return CommandResult{Handled: true, Response: "任务已取消", IsStop: true}
+        case "pause", "interrupt":
+                // /pause [message]: 中斷當前任務串流但唔取消，模型繼續任務時會收到訊息
+                // 若無任務運行中則為空操作
+                return CommandResult{Handled: true, Response: "任务已中断", IsPause: true, PauseMsg: args}
 
         case "role":
                 return CommandResult{Handled: true, Response: HandleRoleCommand(args, rm, am, stage)}

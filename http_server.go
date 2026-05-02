@@ -147,10 +147,15 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                 log.Printf("[WS] connID=%s: connection fully closed", connID)
         }()
 
-        // 判斷此連接是否為重新連接（已有其他活躍連接）
+        // 判斷此連接是否需要狀態恢復（isReconnect）：
+        //   - 已有其他活躍訂閱者 → 多 tab 重連場景
+        //   - 當前有任務在執行 → 重新連線且任務進行中，前端需恢復「停止」按鈕
+        //   僅靠 subscriber count 不足：前一連接完全斷開後計數歸零再重連會被誤判為新連接
+        taskRunning := session.IsTaskRunning()
         session.subscribersMu.RLock()
-        isReconnect := len(session.subscribers) > 1 // >1 因為 Subscribe 已將自身加入
+        hasOtherSubs := len(session.subscribers) > 1 // >1 因為 Subscribe 已將自身加入
         session.subscribersMu.RUnlock()
+        isReconnect := hasOtherSubs || taskRunning
 
         wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
         history := session.GetHistory()
@@ -184,6 +189,9 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                         },
                         func() {
                                 session.CancelTask()
+                        },
+                        func(msg string) {
+                                session.InterruptTask(msg)
                         },
                         func() {
                                 // /quit: 关闭 WebSocket 连接，后台任务不受影响

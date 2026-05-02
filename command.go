@@ -14,6 +14,13 @@ func ApplyCommandResult(result CommandResult, session *GlobalSession) {
 	if result.IsStop && session != nil {
 		session.CancelTask()
 	}
+	if result.IsPause && session != nil {
+		msg := result.PauseMsg
+		if msg == "" {
+			msg = "已中斷。請繼續。"
+		}
+		session.InterruptTask(msg)
+	}
 	if result.IsQuit {
 		log.Println("[Command] /quit: disconnecting")
 		if session != nil {
@@ -37,10 +44,11 @@ func ApplyCommandResult(result CommandResult, session *GlobalSession) {
 // HandleSlashCommandWithDefaults 处理斜杠命令，并执行默认行为
 // responder: 发送响应文本的函数
 // stopFunc:  取消任务的函数（可为 nil，此时使用 session.CancelTask）
+// pauseFunc: 中斷任務的函數（可為 nil，此時使用 session.InterruptTask）
 // quitFunc:  断开连接/切换模式的函数（可为 nil，此时仅记录日志）
 // exitFunc:  退出程序的函数（可为 nil，此时使用 os.Exit）
 // 返回 true 表示命令已处理
-func HandleSlashCommandWithDefaults(line string, responder func(string), stopFunc func(), quitFunc func(), exitFunc func()) bool {
+func HandleSlashCommandWithDefaults(line string, responder func(string), stopFunc func(), pauseFunc func(string), quitFunc func(), exitFunc func()) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, "/") {
 		return false
@@ -59,6 +67,17 @@ func HandleSlashCommandWithDefaults(line string, responder func(string), stopFun
 			stopFunc()
 		} else {
 			GetGlobalSession().CancelTask()
+		}
+	}
+	if result.IsPause {
+		msg := result.PauseMsg
+		if msg == "" {
+			msg = "已中斷。請繼續。" // 默認中斷訊息
+		}
+		if pauseFunc != nil {
+			pauseFunc(msg)
+		} else {
+			GetGlobalSession().InterruptTask(msg)
 		}
 	}
 	if result.IsQuit {

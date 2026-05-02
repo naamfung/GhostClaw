@@ -335,6 +335,14 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 	for {
 		iteration++
 
+		// ---- 中斷檢查：取出 /pause 設置的中斷訊息並注入為用戶輸入 ----
+		if interruptMsg := GetGlobalSession().takeInterruptMsg(); interruptMsg != "" {
+			messages = append(messages, Message{Role: "user", Content: interruptMsg})
+			ch.WriteChunk(StreamChunk{Content: "\n[任務已中斷，接收用戶輸入]\n", Done: true})
+			// 繼續循環：模型將看到新的用戶訊息並繼續任務
+			continue
+		}
+
 		// ---- 安全檢查 (P0: CRITICAL) ----
 		if stop, err := RunSafetyCheck(ctx, ch, iteration); stop {
 			if err != nil {
@@ -353,11 +361,21 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		messages = RunHistoryCompression(messages, config.EffectiveModelID, config.Compressor)
 
 		// ---- CallModel (P2: NORMAL) ----
-		callResult, err := RunCallModel(ctx, &messages, ch,
+		// 建立一個可被 /pause 中斷的 context，但保留原始 task ctx 用於取消檢測
+		callCtx, callCancel := context.WithCancel(ctx)
+		GetGlobalSession().setInterruptCancel(callCancel)
+		callResult, err := RunCallModel(callCtx, &messages, ch,
 			config.EffectiveAPIType, config.EffectiveBaseURL, config.EffectiveAPIKey,
 			config.EffectiveModelID, config.EffectiveTemperature, config.EffectiveMaxTokens,
 			stream, thinking, config.CurrentRole, iteration)
+		callCancel() // 清理，避免洩漏
+		GetGlobalSession().setInterruptCancel(nil)
 		if err != nil {
+			// 區分「中斷」vs「取消」：若原始 task ctx 未被取消，就係 /pause 中斷
+			if ctx.Err() == nil {
+				// /pause 中斷：不返回錯誤，interruptMsg 會在下一輪迭代頂部被注入
+				continue
+			}
 			return messages, err
 		}
 		if callResult.LastTokenUsage != nil {

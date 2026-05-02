@@ -32,6 +32,14 @@ type GlobalSession struct {
         TaskCtx       context.Context
         TaskCancel    context.CancelFunc
 
+        // 中斷（pause）機制：取消 CallModel 但不取消任務
+        //   - interruptCancel 對應當前 CallModel 的 cancel func
+        //   - /pause 命令會同時設置 interruptMsg 並調用 interruptCancel
+        //   - AgentLoop 檢測到中斷後注入 interruptMsg，創建新的 CallModel cancel
+        interruptCancel context.CancelFunc
+        interruptMsg    string
+        interruptMu     sync.Mutex
+
         OutputQueue   chan StreamChunk       // 用于向后兼容
         InputQueue    chan string            // 输入消息队列，用于存储待处理的消息（包括唤醒通知）
         InputMessages []string               // 输入消息列表，用于存储待处理的消息（自动增长）
@@ -272,6 +280,58 @@ func (s *GlobalSession) IsTaskRunning() bool {
         s.mu.RLock()
         defer s.mu.RUnlock()
         return s.TaskRunning
+}
+
+// IsTaskCancelled 檢查任務上下文是否已被取消（用於抑制 /stop 之後的殘留工具輸出）
+func (s *GlobalSession) IsTaskCancelled() bool {
+        s.mu.RLock()
+        defer s.mu.RUnlock()
+        if s.TaskCtx == nil {
+                return true // 沒有活躍任務視為已取消
+        }
+        select {
+        case <-s.TaskCtx.Done():
+                return true
+        default:
+                return false
+        }
+}
+
+// InterruptTask 中斷當前 CallModel 串流但不取消任務。
+// 模型會在下一輪迭代中接收 msg 作為用戶輸入並繼續任務。
+// 若無活躍任務則為空操作。
+func (s *GlobalSession) InterruptTask(msg string) {
+        s.interruptMu.Lock()
+        s.interruptMsg = msg
+        cancel := s.interruptCancel
+        s.interruptMu.Unlock()
+        if cancel != nil {
+                log.Printf("[GlobalSession] InterruptTask: interrupting current LLM call (msg=%q)", msg)
+                cancel()
+        }
+}
+
+// getInterruptCancel 返回當前中斷 cancel func（由 AgentLoop 在每次 CallModel 前設置）
+func (s *GlobalSession) getInterruptCancel() context.CancelFunc {
+        s.interruptMu.Lock()
+        defer s.interruptMu.Unlock()
+        return s.interruptCancel
+}
+
+// setInterruptCancel 設置當前 CallModel 的中斷 cancel（由 AgentLoop 在每次 CallModel 前調用）
+func (s *GlobalSession) setInterruptCancel(cancel context.CancelFunc) {
+        s.interruptMu.Lock()
+        defer s.interruptMu.Unlock()
+        s.interruptCancel = cancel
+}
+
+// takeInterruptMsg 取出並清空中斷訊息（由 AgentLoop 在每次迭代頂部調用）
+func (s *GlobalSession) takeInterruptMsg() string {
+        s.interruptMu.Lock()
+        defer s.interruptMu.Unlock()
+        msg := s.interruptMsg
+        s.interruptMsg = ""
+        return msg
 }
 
 // ProcessUserInput 处理用户输入并触发模型调用

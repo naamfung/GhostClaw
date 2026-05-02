@@ -233,6 +233,7 @@ func (tc *TelegramChannel) handleTextMessage(c tele.Context) error {
                 func() {
                         session.CancelTask()
                 },
+                nil, // pauseFunc: 使用默認行為
                 func() {
                         // /quit: 在 Telegram Bot 频道中无实际连接可断开，仅记录
                         log.Println("[Telegram] /quit received (no connection to close in bot mode)")
