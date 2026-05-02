@@ -208,6 +208,9 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                                 }
                                 os.Exit(0)
                         }) {
+                        // 命令已處理：發送 TaskRunning: false 令前端清除 loading 狀態
+                        // 避免 /new /stop 等命令後按鈕永遠停留在「停止」而「Processing...」一直閃爍
+                        wsChannel.WriteChunk(StreamChunk{TaskRunning: false})
                         continue
                 }
                 // 将用户输入添加到输入消息列表中（自动增长，不会满）
