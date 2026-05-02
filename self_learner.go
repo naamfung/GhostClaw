@@ -122,8 +122,13 @@ func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, 
 	if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]interface{}); ok {
 			if msg, ok := choice["message"].(map[string]interface{}); ok {
-				if content, ok := msg["content"].(string); ok {
+				if content, ok := msg["content"].(string); ok && content != "" {
 					return content, nil
+				}
+				// DeepSeek 模型有時將文本放在 reasoning_content 而非 content
+				// （即使 thinking=false，模型仍可能產生 reasoning_content）
+				if reasoning, ok := msg["reasoning_content"].(string); ok && reasoning != "" {
+					return reasoning, nil
 				}
 			}
 		}
