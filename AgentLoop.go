@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 const MaxHistoryMessages = 128
@@ -372,12 +373,37 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		callCancel() // 清理，避免洩漏
 		GetGlobalSession().setInterruptCancel(nil)
 		if err != nil {
-			// 區分「中斷」vs「取消」：若原始 task ctx 未被取消，就係 /pause 中斷
-			if ctx.Err() == nil {
-				// /pause 中斷：不返回錯誤，interruptMsg 會在下一輪迭代頂部被注入
-				continue
+			// 對錯誤進行分類，決定是否重試
+			classified := ClassifyError(err)
+
+			// 1) 致命錯誤（402 餘額不足、401/403 認證失敗等）：即停，唔好 retry
+			if classified.IsFatal {
+				log.Printf("[AgentLoop] Fatal error, stopping: %v", classified)
+				return messages, err
 			}
-			return messages, err
+
+			// 2) Task context 已被取消（用戶 /stop）→ 直接返回
+			if ctx.Err() != nil {
+				return messages, err
+			}
+
+			// 3) 非致命錯誤：繼續 retry，但加 progressive backoff
+			//    延遲由 error classifier 提供（指數退避），上限 60s
+			backoffDelay := classified.RetryAfter
+			if backoffDelay == 0 {
+				backoffDelay = 2 * time.Second
+			}
+			if backoffDelay > 60*time.Second {
+				backoffDelay = 60 * time.Second
+			}
+			log.Printf("[AgentLoop] Non-fatal error, retrying after %v: %v", backoffDelay, err)
+
+			select {
+			case <-ctx.Done():
+				return messages, ctx.Err()
+			case <-time.After(backoffDelay):
+			}
+			continue
 		}
 		if callResult.LastTokenUsage != nil {
 			lastTokenUsage = callResult.LastTokenUsage

@@ -18,16 +18,17 @@ import (
 type ErrorType int
 
 const (
-        ErrorUnknown       ErrorType = iota // 未知/未分类错误
-        ErrorRateLimit                       // 429 请求频率超限
-        ErrorAuthentication                  // 401/403 认证/授权失败
-        ErrorContextLength                   // 上下文超出模型长度限制
-        ErrorInvalidRequest                  // 400 请求格式错误（参数不合法）
-        ErrorServerError                     // 500-599 服务端内部错误
-        ErrorTimeout                         // 请求超时
-        ErrorConnection                      // 网络/连接错误
-        ErrorModelNotFound                   // 模型不存在/不支持
-        ErrorContentFilter                   // 触发内容审核/过滤
+        ErrorUnknown         ErrorType = iota // 未知/未分类错误
+        ErrorRateLimit                         // 429 请求频率超限
+        ErrorAuthentication                    // 401/403 认证/授权失败
+        ErrorContextLength                     // 上下文超出模型长度限制
+        ErrorInvalidRequest                    // 400 请求格式错误（参数不合法）
+        ErrorServerError                       // 500-599 服务端内部错误
+        ErrorTimeout                           // 请求超时
+        ErrorConnection                        // 网络/连接错误
+        ErrorModelNotFound                     // 模型不存在/不支持
+        ErrorContentFilter                     // 触发内容审核/过滤
+        ErrorPaymentRequired                   // 402 余额不足 / 需要付费
 )
 
 // ErrorTypeString 返回错误类型的人类可读名称（中文）
@@ -53,6 +54,8 @@ func ErrorTypeString(t ErrorType) string {
                 return "模型未找到"
         case ErrorContentFilter:
                 return "内容过滤"
+        case ErrorPaymentRequired:
+                return "余额不足"
         default:
                 return "未知类型"
         }
@@ -201,6 +204,11 @@ func (ec *ErrorClassifier) ClassifyHTTPError(statusCode int, body string) *Class
         var message string
 
         switch {
+        case statusCode == 402:
+                // HTTP 402 Payment Required：余额不足/付费问题
+                errorType = ErrorPaymentRequired
+                message = fmt.Sprintf("余额不足 (HTTP 402): %s", truncateString(body, 200))
+
         case statusCode == 429:
                 errorType = ErrorRateLimit
                 message = "请求频率超限 (HTTP 429)"
@@ -263,7 +271,8 @@ func (ec *ErrorClassifier) ClassifyHTTPError(statusCode int, body string) *Class
                         message = bodyMsg
                 }
                 // 速率限制错误（某些 API 可能不返回 429）
-                if bodyType == ErrorRateLimit && errorType != ErrorRateLimit {
+                // 但不覆盖已识别的支付错误（402 余额不足），避免把「欠费」误判为「限流」
+                if bodyType == ErrorRateLimit && errorType != ErrorRateLimit && errorType != ErrorPaymentRequired {
                         errorType = ErrorRateLimit
                         message = bodyMsg
                 }
@@ -289,8 +298,8 @@ func (ec *ErrorClassifier) buildClassifiedError(errorType ErrorType, statusCode 
                 result.IsFatal = false
                 result.RetryAfter = ec.GetRetryDelay(errors.New(message))
 
-        case ErrorAuthentication:
-                // 认证错误：不可重试（除非有密钥轮换机制），标记为致命
+        case ErrorAuthentication, ErrorPaymentRequired:
+                // 认证/付费错误：不可重试，标记为致命（应终止 Agent 循环）
                 result.Retryable = false
                 result.IsFatal = true
 
@@ -570,6 +579,23 @@ func classifyByBody(body string) (ErrorType, string) {
         for _, pattern := range modelNotFoundPatterns {
                 if strings.Contains(lowerBody, pattern) {
                         return ErrorModelNotFound, fmt.Sprintf("模型未找到: %s", truncateString(body, 200))
+                }
+        }
+
+        // ---- 余额不足 / 付费 ----
+        paymentPatterns := []string{
+                "insufficient balance",
+                "payment required",
+                "no balance",
+                "no credit",
+                "billing error",
+                "payment_error",
+                "insufficient_quota",
+                "quota exceeded",
+        }
+        for _, pattern := range paymentPatterns {
+                if strings.Contains(lowerBody, pattern) {
+                        return ErrorPaymentRequired, fmt.Sprintf("余额不足/付费问题: %s", truncateString(body, 200))
                 }
         }
 
