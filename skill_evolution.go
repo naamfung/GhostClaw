@@ -306,16 +306,16 @@ func calculateContextMatch(context string, name, displayName, description string
 	for _, tag := range tags {
 		if strings.Contains(context, strings.ToLower(tag)) {
 			matches += 2
-			totalChecks += 2
 		}
+		totalChecks += 2
 	}
 
 	// 检查触发词匹配
 	for _, trigger := range triggers {
 		if strings.Contains(context, strings.ToLower(trigger)) {
 			matches += 3
-			totalChecks += 3
 		}
+		totalChecks += 3
 	}
 
 	if totalChecks == 0 {

@@ -114,7 +114,7 @@ func init() {
 Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
 ⚠️ INTERACTIVE COMMANDS: ssh, scp, rsync, sudo, su, vim, top etc. may require interactive input and will trigger a confirmation request.`,
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -155,7 +155,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         reg("WriteFileLine",
-                "Write or insert content at a specific line in a file.\n\nLineNum > 0: overwrite line LineNum. LineNum = 0: create empty file. LineNum = -1: append to end. LineNum < -1: insert BEFORE line |LineNum|, shifting existing lines down (e.g., -5 inserts before line 5).",
+                "Overwrite, insert, or append a single line in a file.\n\n- LineNum > 0: Overwrite line LineNum with content.\n- LineNum = 0: Create an empty file (content is ignored).\n- LineNum = -1: Append content to the end of the file.\n- LineNum < -1: Insert content as a new line BEFORE position |LineNum|, shifting existing lines down. Example: LineNum=-5 inserts before line 5.",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -166,11 +166,11 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                 },
                                 "LineNum": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "Target line number. Positive = overwrite that line. 0 = create empty file. -1 = append to end. < -1 = insert a new line BEFORE |LineNum| (e.g., -5 inserts before line 5, shifting content down).",
+                                        "description": "Determines the operation mode. > 0: overwrite line LineNum. 0: create empty file. -1: append to end. < -1: insert before |LineNum| (e.g., -5 inserts before line 5).",
                                 },
                                 "content": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "The content to write or insert at the specified position.",
+                                        "description": "The content to write. In overwrite mode: replaces the target line. In insert mode: becomes the new line. In append mode: added to the end.",
                                 },
                         },
                         "required":             []string{"filename", "LineNum", "content"},
@@ -222,7 +222,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("AppendToFile",
                 "Append content to the end of a file.",
-                "file", "extended",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -244,8 +244,8 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         reg("WriteFileRange",
-                "Write to or insert into a specific range of lines in a file.\n\nStartLine >= 1: overwrite lines StartLine..EndLine with content (EndLine defaults to StartLine if not specified). StartLine < 0: insert content BEFORE line |StartLine|, shifting existing lines down (EndLine is ignored).",
-                "file", "extended",
+                "Overwrite a range of lines, or insert multiple lines, in a file.\n\nOverwrite mode (StartLine >= 1):\n  Replace lines StartLine through EndLine with content. EndLine defaults to StartLine if not specified. Each line in content replaces one line in the range.\n\nInsert mode (StartLine < 0):\n  Insert all lines of content BEFORE position |StartLine|, shifting existing lines down. EndLine is ignored in this mode. Example: StartLine=-10 inserts before line 10.",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -255,15 +255,15 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                 },
                                 "StartLine": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "Target line number. Positive = start of overwrite range (1-based). Negative = insert BEFORE |StartLine|, shifting lines down (e.g., -10 inserts before line 10). Cannot be 0.",
+                                        "description": "Determines the operation mode. >= 1: overwrite range starting at this line. < 0: insert all lines BEFORE position |StartLine|. Cannot be 0.",
                                 },
                                 "EndLine": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "Ending line number (1-based) for overwrite mode only. Ignored in insert mode. Defaults to StartLine if not specified.",
+                                        "description": "Overwrite mode only: the last line of the overwrite range (inclusive). Ignored in insert mode. Defaults to StartLine.",
                                 },
                                 "content": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "The content to write or insert. Each line in the content will replace/insert one line.",
+                                        "description": "The content to write. Overwrite mode: each line replaces one line in the range. Insert mode: each line becomes a new line inserted at the target position.",
                                 },
                         },
                         "required":             []string{"filename", "StartLine", "content"},
@@ -321,7 +321,7 @@ OpenCLI provides better session persistence and more reliable web automation.
 Example OpenCLI alternative:
 - shell: "opencli search <keyword>" (if adapter available)
 - shell: "opencli open https://www.baidu.com/s?wd=<keyword>"`,
-                "web", "expert",
+                "web", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -342,7 +342,7 @@ OpenCLI provides better session persistence, cookie reuse, and more reliable web
 Example OpenCLI alternative:
 - shell: "opencli open <url>"
 - shell: "opencli <adapter> <command>" (e.g., "opencli hackernews top --limit 5")`,
-                "web", "expert",
+                "web", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1196,7 +1196,7 @@ validate + 可选冒烟测试。
         // ========== 插件管理工具 ==========
         reg("PluginList",
                 "列出所有已加载的插件及其提供的函数。",
-                "plugin", "extended",
+                "plugin", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1204,7 +1204,7 @@ validate + 可选冒烟测试。
 
         reg("PluginCreate",
                 "Create a new empty plugin skeleton. This creates a folder with the plugin name and a Lua entry file containing a basic template. Use this to start developing a new plugin.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1222,7 +1222,7 @@ validate + 可选冒烟测试。
 
         reg("PluginLoad",
                 "Load a new plugin from Lua code. The plugin will be saved in its own folder under plugins directory.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1240,7 +1240,7 @@ validate + 可选冒烟测试。
 
         reg("PluginUnload",
                 "Unload a plugin by name (removes from memory only, files remain).",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1254,7 +1254,7 @@ validate + 可选冒烟测试。
 
         reg("PluginReload",
                 "Reload a specific plugin from disk (useful after code update). This only reloads one plugin at a time, not all plugins.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1268,7 +1268,7 @@ validate + 可选冒烟测试。
 
         reg("PluginCall",
                 "调用已加载插件中的函数。先用 PluginList 查看可用函数。args 中的 items 需要指定类型信息。",
-                "plugin", "extended",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1291,7 +1291,7 @@ validate + 可选冒烟测试。
 
         reg("PluginCompile",
                 "Compile Lua code to bytecode (syntax check). If successful, no error; if compilation fails, returns error details. Use this to verify plugin code before loading.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1309,7 +1309,7 @@ validate + 可选冒烟测试。
 
         reg("PluginDelete",
                 "Permanently delete a plugin (removes its folder and all files). Use this to completely remove a plugin.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1323,7 +1323,7 @@ validate + 可选冒烟测试。
 
         reg("PluginApis",
                 "List plugin system internal API documentation for model reference.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1331,7 +1331,7 @@ validate + 可选冒烟测试。
 
         reg("PluginDetail",
                 "Get detailed information about a specific plugin, including its functions, source code, and metadata.",
-                "plugin", "expert",
+                "plugin", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1350,7 +1350,7 @@ validate + 可选冒烟测试。
         // ========== Cron 管理工具 ==========
         reg("CronAdd",
                 "添加定时任务。到指定时间自动执行一条自然语言指令。参数错误时会返回正确格式，请按格式重新调用。",
-                "schedule", "extended",
+                "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1380,7 +1380,7 @@ validate + 可选冒烟测试。
 
         reg("CronRemove",
                 "删除一个定时任务。先用 CronList 确认任务名称。",
-                "schedule", "extended",
+                "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1394,7 +1394,7 @@ validate + 可选冒烟测试。
 
         reg("CronList",
                 "列出所有已配置的定时任务（名称、排程、状态）。无参数。",
-                "schedule", "extended",
+                "schedule", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1402,7 +1402,7 @@ validate + 可选冒烟测试。
 
         reg("CronStatus",
                 "查询指定定时任务的详细状态（下次执行时间、最近执行结果等）。",
-                "schedule", "expert",
+                "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1560,7 +1560,7 @@ validate + 可选冒烟测试。
         // ========== 技能管理工具 ==========
         reg("SkillList",
                 "列出所有可用的技能，支持分页、过滤、搜索和排序。技能采用层次化目录结构，存储在skills/分类/技能名/SKILL.md格式。",
-                "skill", "extended",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1603,7 +1603,7 @@ validate + 可选冒烟测试。
 
         reg("SkillCreate",
                 "创建一个新的技能，采用层次化目录结构，自动生成SKILL.md文件和相关子目录。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1644,7 +1644,7 @@ validate + 可选冒烟测试。
 
         reg("SkillDelete",
                 "删除指定的技能，包括其目录结构和所有关联文件。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1658,7 +1658,7 @@ validate + 可选冒烟测试。
 
         reg("SkillGet",
                 "获取指定技能的详细信息，包括YAML frontmatter和关联文件。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1672,7 +1672,7 @@ validate + 可选冒烟测试。
 
         reg("SkillReload",
                 "重新加载所有技能，包括新的层次化结构和关联文件。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1681,7 +1681,7 @@ validate + 可选冒烟测试。
 
         reg("SkillLoad",
                 "激活指定技能，使其在后续对话中生效。需要先通过 SkillList 查看可用技能名称。",
-                "skill", "extended",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1695,7 +1695,7 @@ validate + 可选冒烟测试。
 
         reg("SkillUpdate",
                 "更新技能的部分内容，支持YAML frontmatter和关联文件。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1736,7 +1736,7 @@ validate + 可选冒烟测试。
 
         reg("SkillSuggest",
                 "根据当前对话上下文智能推荐相关技能，返回技能名称、描述和匹配理由。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1754,7 +1754,7 @@ validate + 可选冒烟测试。
 
         reg("SkillStats",
                 "获取技能系统的统计信息，包括层次化结构和关联文件统计。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1763,7 +1763,7 @@ validate + 可选冒烟测试。
 
         reg("SkillEvaluate",
                 "评估指定技能的质量，返回结构化评分（含准确性、完整性、实用性等维度）。需要先通过 SkillList 查看可用技能名称。",
-                "skill", "expert",
+                "skill", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1777,7 +1777,7 @@ validate + 可选冒烟测试。
 
         reg("ActorIdentitySet",
                 "设置演员的 IDENTITY.md 文件。将内容写入 profiles/actors/<actor_name>/IDENTITY.md。",
-                "profile", "expert",
+                "profile", "extended",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1795,7 +1795,7 @@ validate + 可选冒烟测试。
 
         reg("ActorIdentityClear",
                 "删除演员的 IDENTITY.md 文件（profiles/actors/<actor_name>/IDENTITY.md）。",
-                "profile", "expert",
+                "profile", "extended",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1809,7 +1809,7 @@ validate + 可选冒烟测试。
 
         reg("ProfileReload",
                 "强制重新从磁盘加载所有 profile 文件（USER.md, SOUL.md, AGENT.md, TOOLS.md, actors/*/IDENTITY.md）。",
-                "profile", "expert",
+                "profile", "extended",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -1858,7 +1858,7 @@ validate + 可选冒烟测试。
         // ========== 文本替换工具（类 sed）==========
         reg("TextReplace",
                 "强大的文本替换工具，类似 sed 命令。支持字符串替换、正则表达式、行范围限制、多文件操作等。可用于文本处理、内容重构、批量修改等场景。",
-                "file", "extended",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1981,7 +1981,7 @@ validate + 可选冒烟测试。
         // ========== 文本转换工具 ==========
         reg("TextTransform",
                 "文本转换工具，支持大小写转换、行排序、去重、反转、添加行号等操作。",
-                "file", "extended",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2012,7 +2012,7 @@ validate + 可选冒烟测试。
 
         // ========== 后台任务管理工具 ==========
         reg("ShellDelayed", "Execute a shell command in background with NO timeout. Use this for long-running commands that may take minutes or hours.\n\n✅ USE THIS FOR:\n• Package managers: apt/yum/dnf/pacman (Linux), pkg (FreeBSD/GhostBSD)\n• System updates: apt update, yum update, pkg update, freebsd-update, portsnap\n• Compilation: make, cmake, npm install, pip install, cargo build, go build\n• Network transfers: ssh, scp, rsync, sftp, wget, curl, git clone\n• Docker: docker build, docker-compose build\n• Archives: tar, unzip, 7z (large files)\n• Media encoding: ffmpeg, handbrake\n• Backups, long scripts, any command > 60 seconds\n\n❌ DO NOT USE THIS FOR: quick commands like ls, cat, mkdir - use 'shell' instead.\n\n⏱️ The command runs in background. You specify when to wake up (1-1440 minutes).\n\n🚫 DO NOT POLL: After starting the task, DO NOT call ShellDelayed_check repeatedly. The system will automatically notify you when the task completes or wake time arrives.",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2033,7 +2033,7 @@ validate + 可选冒烟测试。
                 })
 
         reg("ShellDelayedCheck", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2047,7 +2047,7 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedTerminate",
                 "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 ShellDelayed_list 获取任务ID。",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2065,14 +2065,14 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedList",
                 "列出所有后台任务，显示任务ID、命令、状态和运行时长。无参数。",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
                 })
 
         reg("ShellDelayedWait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2090,7 +2090,7 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedRemove",
                 "从任务列表中移除已完成或已终止的任务。运行中的任务需要先终止才能移除。",
-                "core", "core",
+                "core", "expert",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2104,7 +2104,7 @@ validate + 可选冒烟测试。
 
         // ========== 子代理工具 ==========
         reg("Spawn", "创建一个后台子代理执行独立任务。子代理有自己的上下文，可以独立完成复杂任务，完成后会通知你。\n\n✅ 适用场景：\n- 需要独立执行的复杂任务\n- 不需要用户交互的后台任务\n- 可以并行执行的任务\n\n❌ 限制：\n- 子代理不能创建新的子代理\n- 子代理不能发送消息给用户\n- 最多执行 15 次工具调用迭代",
-                "Spawn", "expert",
+                "Spawn", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2122,7 +2122,7 @@ validate + 可选冒烟测试。
 
         reg("SpawnCheck",
                 "检查子代理任务的执行状态和结果。返回 exit_code、stdout、stderr 和运行时长。",
-                "Spawn", "expert",
+                "Spawn", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2136,7 +2136,7 @@ validate + 可选冒烟测试。
 
         reg("SpawnList",
                 "列出所有子代理任务，显示任务ID、状态、命令和运行时间。",
-                "Spawn", "expert",
+                "Spawn", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -2144,7 +2144,7 @@ validate + 可选冒烟测试。
 
         reg("SpawnCancel",
                 "取消正在运行的子代理任务。任务终止后可用 SpawnCheck 查看已产出的部分结果。",
-                "Spawn", "expert",
+                "Spawn", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2260,7 +2260,7 @@ validate + 可选冒烟测试。
                 • 常量: PI, E
 
                 ⚠️ 每次调用创建独立的沙箱环境，不会保留上一次的变量定义。`,
-                "misc", "expert",
+                "misc", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2291,7 +2291,7 @@ validate + 可选冒烟测试。
 
         reg("ExitPlanMode",
                 "強制退出 Plan Mode（跳過剩餘階段）。正常流程應使用 NextPhase 逐步推進。強制退出會丟失未完成的階段。",
-                "plan", "expert",
+                "plan", "extended",
                 map[string]interface{}{
                         "type":                 "object",
                         "properties":           map[string]interface{}{},

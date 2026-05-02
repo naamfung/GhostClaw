@@ -135,7 +135,7 @@ func GetConciseModeInstructions() string {
 - 简单直接优于过早抽象。
 - 输出保持简短直接。如果可以用一个工具完成，就不要用三个。
 - 遇到工具调用失败时，尝试最简单的替代方案，不要反复重试相同操作。
-- 需要更多工具时，使用 menu 工具：menu(action="list") 查看可用分类，menu(action="load", target="<分类名>") 加载。`
+- 当你需要的操作在当前工具列表中找不到对应工具时，使用 Menu 工具浏览更多可用工具：menu() 或 menu(action="root") 查看全部分类 → menu(action="show", target="<分类名>") 展开分类 → menu(action="load", target="<分类名>") 加载到会话。`
 }
 
 // GetCompactBehaviorRules 返回精简版行为规则（~200 tokens vs 原版 ~1500 tokens）
@@ -145,7 +145,8 @@ func GetCompactBehaviorRules() string {
 2. 调用工具前先检查历史记录，避免重复调用相同的工具和参数。
 3. 遇到 [OPERATION CANCELLED BY USER] 标记时立即停止当前操作。
 4. 完成任务后简要汇报结果即可，不要长篇总结。
-5. 如果连续两次工具调用返回相同错误，尝试不同的方法而不是重试。`
+5. 如果连续两次工具调用返回相同错误，尝试不同的方法而不是重试。
+6. 当需要的操作在当前可见工具中找不到时，使用 menu() 查看并加载更多工具分类。`
 }
 
 // NewIdentitySection 创建角色身份 section（Priority 0，始终包含）

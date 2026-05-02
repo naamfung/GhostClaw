@@ -934,3 +934,89 @@ func TestApplyDefaults_SkillCleanupThresholdDays_WithinRange_Unchanged(t *testin
 		t.Errorf("SkillCleanupThresholdDays with 60: got %d, want 60", cfg.Tools.SkillCleanupThresholdDays)
 	}
 }
+
+// ============================================================================
+// calculateContextMatch tests
+// ============================================================================
+
+func TestCalculateContextMatch_NameMatch(t *testing.T) {
+	// "python coding" contains "python" → name +3/3; dispName "Python Helper" no match 0/2; desc no match 0/2
+	score := calculateContextMatch("python coding", "python", "Python Helper", "helps with python", nil, nil)
+	expected := 3.0 / 7.0 // ≈ 0.428
+	if score != expected {
+		t.Errorf("expected %v, got %v", expected, score)
+	}
+}
+
+func TestCalculateContextMatch_FullMatch(t *testing.T) {
+	// All fields match — context contains name + displayName + description substrings
+	score := calculateContextMatch("use python helper for helps with python tasks",
+		"python", "Python Helper", "helps with python", nil, nil)
+	// name 3/3 + dispName 2/2 + desc 2/2 = 7/7 = 1.0
+	if score != 1.0 {
+		t.Errorf("full match should be 1.0, got %v", score)
+	}
+}
+
+func TestCalculateContextMatch_IrrelevantTagsLowerScore(t *testing.T) {
+	// Skill with no tags
+	scoreNoTags := calculateContextMatch("python script", "python", "Python", "python helper", nil, nil)
+	// Same skill but with many irrelevant tags — should score LOWER
+	scoreManyTags := calculateContextMatch("python script", "python", "Python", "python helper",
+		[]string{"ruby", "java", "golang", "rust", "c++"}, nil)
+
+	if scoreManyTags >= scoreNoTags {
+		t.Errorf("many irrelevant tags should lower score: noTags=%.3f, manyTags=%.3f", scoreNoTags, scoreManyTags)
+	}
+}
+
+func TestCalculateContextMatch_RelevantTagsRaiseScore(t *testing.T) {
+	scoreNoTags := calculateContextMatch("deploy web app", "deployment", "Deploy", "deployment guide", nil, nil)
+	scoreWithTags := calculateContextMatch("deploy web app", "deployment", "Deploy", "deployment guide",
+		[]string{"web", "deploy", "server"}, nil)
+
+	if scoreWithTags <= scoreNoTags {
+		t.Errorf("matching tags should raise score: noTags=%.3f, withTags=%.3f", scoreNoTags, scoreWithTags)
+	}
+}
+
+func TestCalculateContextMatch_TriggerWordsWeightedHigher(t *testing.T) {
+	// Trigger words have weight 3 vs tags weight 2
+	scoreWithTag := calculateContextMatch("need to process images", "image_processor", "Image Processor", "processes images",
+		[]string{"image"}, nil)
+	scoreWithTrigger := calculateContextMatch("need to process images", "image_processor", "Image Processor", "processes images",
+		nil, []string{"image"})
+
+	if scoreWithTrigger <= scoreWithTag {
+		t.Errorf("trigger words (weight 3) should score higher than tags (weight 2): tag=%.3f, trigger=%.3f",
+			scoreWithTag, scoreWithTrigger)
+	}
+}
+
+func TestCalculateContextMatch_NoMatch(t *testing.T) {
+	score := calculateContextMatch("python script", "ruby", "Ruby Helper", "helps with ruby",
+		[]string{"gems", "rails"}, []string{"rubycode"})
+	// Only totalChecks accumulates (name no match 0/3 + dispName 0/2 + desc 0/2 + 2 tags 0/2 each + 1 trigger 0/3)
+	// = 0 / (3+2+2+2+2+3) = 0/14 = 0
+	if score != 0 {
+		t.Errorf("no match should be zero: got %v", score)
+	}
+}
+
+func TestCalculateContextMatch_EmptyInputs(t *testing.T) {
+	// strings.Contains("", "") = true in Go, so empty name/dispName/desc all match empty context
+	score := calculateContextMatch("", "", "", "", nil, nil)
+	// name 3/3 + dispName 2/2 + desc 2/2 = 7/7 = 1.0
+	if score != 1.0 {
+		t.Errorf("empty inputs: expected 1.0 (empty matches empty), got %v", score)
+	}
+}
+
+func TestCalculateContextMatch_EmptyContextWithName(t *testing.T) {
+	// Empty context doesn't match a real name
+	score := calculateContextMatch("", "python", "Python", "python help", nil, nil)
+	// name 0/3 + dispName 0/2 + desc 0/2 = 0/7 = 0
+	if score != 0 {
+		t.Errorf("empty context should not match real name: got %v", score)
+	}
+}

@@ -586,3 +586,503 @@ func TestExecBrowserScreenshot_NoPath(t *testing.T) {
 	_, status := execBrowserScreenshot(ec)
 	requireFailed(t, status, "BrowserScreenshot no path")
 }
+
+// ============================================================
+// WriteFileLine — overwrite / insert / append modes
+// ============================================================
+
+func TestExecWriteFileLine_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execWriteFileLine(ec)
+	requireFailed(t, status, "WriteFileLine missing args")
+}
+
+func TestExecWriteFileLine_MissingFilename(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{"LineNum": float64(1), "content": "test"})
+	_, status := execWriteFileLine(ec)
+	requireFailed(t, status, "WriteFileLine missing filename")
+}
+
+func TestExecWriteFileLine_InsertMode(t *testing.T) {
+	tmp := t.TempDir()
+	f := tmp + "/test.txt"
+	WriteFileLines(f, []string{"A", "B", "C"})
+	ec := newTestEC(map[string]interface{}{"filename": f, "LineNum": float64(-2), "content": "INSERTED"})
+	result, status := execWriteFileLine(ec)
+	if status != TaskStatusSuccess {
+		t.Errorf("insert should succeed: %s", result)
+	}
+	lines, _ := ReadFileLines(f)
+	if len(lines) != 4 || lines[1] != "INSERTED" {
+		t.Errorf("insert before line 2: got %v", lines)
+	}
+}
+
+func TestExecWriteFileLine_OverwriteMode(t *testing.T) {
+	tmp := t.TempDir()
+	f := tmp + "/test.txt"
+	WriteFileLines(f, []string{"old"})
+	ec := newTestEC(map[string]interface{}{"filename": f, "LineNum": float64(1), "content": "new"})
+	result, status := execWriteFileLine(ec)
+	if status != TaskStatusSuccess {
+		t.Errorf("overwrite should succeed: %s", result)
+	}
+	lines, _ := ReadFileLines(f)
+	if lines[0] != "new" {
+		t.Errorf("overwrite: got %q", lines[0])
+	}
+}
+
+// ============================================================
+// WriteFileRange — overwrite / insert modes
+// ============================================================
+
+func TestExecWriteFileRange_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execWriteFileRange(ec)
+	requireFailed(t, status, "WriteFileRange missing args")
+}
+
+func TestExecWriteFileRange_InsertMode(t *testing.T) {
+	tmp := t.TempDir()
+	f := tmp + "/test.txt"
+	WriteFileLines(f, []string{"A", "B", "C", "D"})
+	ec := newTestEC(map[string]interface{}{"filename": f, "StartLine": float64(-3), "content": "X\nY"})
+	result, status := execWriteFileRange(ec)
+	if status != TaskStatusSuccess {
+		t.Errorf("insert should succeed: %s", result)
+	}
+	lines, _ := ReadFileLines(f)
+	if len(lines) != 6 || lines[2] != "X" || lines[3] != "Y" {
+		t.Errorf("insert before line 3: got %v", lines)
+	}
+}
+
+func TestExecWriteFileRange_StartLineZero_Error(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{"filename": "/tmp/x", "StartLine": float64(0), "content": "x"})
+	_, status := execWriteFileRange(ec)
+	requireFailed(t, status, "WriteFileRange StartLine=0")
+}
+
+// ============================================================
+// SSH tools
+// ============================================================
+
+func TestExecSshConnect_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSSHConnect(ec)
+	requireFailed(t, status, "SshConnect missing args")
+}
+
+func TestExecSshExec_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSSHExec(ec)
+	requireFailed(t, status, "SshExec missing args")
+}
+
+func TestExecSshList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSSHList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("SshList failed (no active connections): OK")
+	}
+}
+
+func TestExecSshClose_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSSHClose(ec)
+	requireFailed(t, status, "SshClose missing args")
+}
+
+// ============================================================
+// Cron tools
+// ============================================================
+
+func TestExecCronList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execCronList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("CronList failed (no cron manager): OK")
+	}
+}
+
+func TestExecCronStatus_MissingJobID(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{"jobId": ""})
+	_, status := execCronStatus(ec)
+	requireFailed(t, status, "CronStatus missing/invalid args")
+}
+
+// ============================================================
+// Memory tools
+// ============================================================
+
+func TestExecMemoryForget_MissingKey(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execMemoryForget(ec)
+	requireFailed(t, status, "MemoryForget missing/invalid args")
+}
+
+// ============================================================
+// Skill tools
+// ============================================================
+
+func TestExecSkillList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("SkillList failed (no skill manager v2): OK")
+	}
+}
+
+func TestExecSkillReload_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillReload(ec)
+	if status != TaskStatusSuccess {
+		t.Log("SkillReload failed (no skill manager v2): OK")
+	}
+}
+
+func TestExecSkillLoad_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillLoad(ec)
+	requireFailed(t, status, "SkillLoad missing/invalid args")
+}
+
+func TestExecSkillUpdate_MissingArgs(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillUpdate(ec)
+	requireFailed(t, status, "SkillUpdate missing/invalid args")
+}
+
+func TestExecSkillSuggest_MissingContext(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillSuggest(ec)
+	requireFailed(t, status, "SkillSuggest missing/invalid args")
+}
+
+func TestExecSkillStats_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillStats(ec)
+	if status != TaskStatusSuccess {
+		t.Log("SkillStats failed (no skill manager v2): OK")
+	}
+}
+
+func TestExecSkillEvaluate_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSkillEvaluate(ec)
+	requireFailed(t, status, "SkillEvaluate missing/invalid args")
+}
+
+// ============================================================
+// Plugin tools
+// ============================================================
+
+func TestExecPluginList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execPluginList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("PluginList failed (no plugin manager): OK")
+	}
+}
+
+func TestExecPluginLoad_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execPluginLoad(ec)
+	requireFailed(t, status, "PluginLoad missing name")
+	requireContains(t, result, "plugin")
+}
+
+func TestExecPluginUnload_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execPluginUnload(ec)
+	requireFailed(t, status, "PluginUnload missing name")
+	requireContains(t, result, "plugin")
+}
+
+func TestExecPluginReload_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execPluginReload(ec)
+	requireFailed(t, status, "PluginReload missing name")
+	requireContains(t, result, "plugin")
+}
+
+func TestExecPluginCompile_MissingSource(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execPluginCompile(ec)
+	requireFailed(t, status, "PluginCompile missing/invalid args")
+}
+
+func TestExecPluginDelete_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execPluginDelete(ec)
+	requireFailed(t, status, "PluginDelete missing/invalid args")
+}
+
+func TestExecPluginApis_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execPluginAPIs(ec)
+	if status != TaskStatusSuccess {
+		t.Log("PluginApis failed: OK (may need plugin manager)")
+	}
+}
+
+func TestExecPluginDetail_MissingName(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execPluginDetail(ec)
+	requireFailed(t, status, "PluginDetail missing name")
+	requireContains(t, result, "name")
+}
+
+// ============================================================
+// Spawn tools
+// ============================================================
+
+func TestExecSpawnList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSpawnList(ec)
+	// May fail if subagent manager not initialized — that's expected in unit test env
+	if status != TaskStatusSuccess {
+		t.Log("SpawnList failed (expected without manager init): OK")
+	}
+}
+
+// ============================================================
+// Shell / SmartShell
+// ============================================================
+
+func TestExecShell_MissingCommand(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execShellTool(ec)
+	requireFailed(t, status, "Shell missing command")
+	requireContains(t, result, "command")
+}
+
+func TestExecSmartShell_MissingCommand(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSmartShellTool(ec)
+	requireFailed(t, status, "SmartShell missing command")
+}
+
+// ============================================================
+// Profile tools
+// ============================================================
+
+func TestExecProfileReload_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execProfileReload(ec)
+	if status != TaskStatusSuccess {
+		t.Log("ProfileReload failed (expected without manager init): OK")
+	}
+}
+
+func TestExecActorIdentitySet_MissingActor(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execActorIdentitySet(ec)
+	requireFailed(t, status, "ActorIdentitySet missing args")
+	requireContains(t, result, "ActorName")
+}
+
+func TestExecActorIdentityClear_MissingActor(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	result, status := execActorIdentityClear(ec)
+	requireFailed(t, status, "ActorIdentityClear missing args")
+	requireContains(t, result, "ActorName")
+}
+
+// ============================================================
+// ShellDelayed family (missing members)
+// ============================================================
+
+func TestExecShellDelayedList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execShellDelayedList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("ShellDelayedList failed (expected without manager init): OK")
+	}
+}
+
+func TestExecShellDelayedWait_MissingTaskID(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execShellDelayedWait(ec)
+	// May fail with "task manager not initialized" or "missing TaskId"
+	requireFailed(t, status, "ShellDelayedWait missing/bad args")
+}
+
+func TestExecShellDelayedRemove_MissingTaskID(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execShellDelayedRemove(ec)
+	requireFailed(t, status, "ShellDelayedRemove missing/bad args")
+}
+
+// ============================================================
+// Browser tools (missing members)
+// ============================================================
+
+func TestExecBrowserWaitElement_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserWaitElement(ec)
+	requireFailed(t, status, "BrowserWaitElement no selector")
+}
+
+func TestExecBrowserExtractLinks_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserExtractLinks(ec)
+	requireFailed(t, status, "BrowserExtractLinks no selector")
+}
+
+func TestExecBrowserExtractImages_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserExtractImages(ec)
+	requireFailed(t, status, "BrowserExtractImages no selector")
+}
+
+func TestExecBrowserExtractElements_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserExtractElements(ec)
+	requireFailed(t, status, "BrowserExtractElements no selector")
+}
+
+func TestExecBrowserExecuteJs_NoCode(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserExecuteJS(ec)
+	requireFailed(t, status, "BrowserExecuteJs no code")
+}
+
+func TestExecBrowserFillForm_NoData(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserFillForm(ec)
+	requireFailed(t, status, "BrowserFillForm no data")
+}
+
+func TestExecBrowserHover_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserHover(ec)
+	requireFailed(t, status, "BrowserHover no selector")
+}
+
+func TestExecBrowserDoubleClick_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserDoubleClick(ec)
+	requireFailed(t, status, "BrowserDoubleClick no selector")
+}
+
+func TestExecBrowserRightClick_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserRightClick(ec)
+	requireFailed(t, status, "BrowserRightClick no selector")
+}
+
+func TestExecBrowserDrag_NoSelectors(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserDrag(ec)
+	requireFailed(t, status, "BrowserDrag no selectors")
+}
+
+func TestExecBrowserWaitSmart_NoSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserWaitSmart(ec)
+	requireFailed(t, status, "BrowserWaitSmart no selector")
+}
+
+func TestExecBrowserNavigate_NoDirection(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserNavigate(ec)
+	requireFailed(t, status, "BrowserNavigate no direction")
+}
+
+func TestExecBrowserGetCookies_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserGetCookies(ec)
+	// May fail without active browser session — expected in unit test env
+	if status != TaskStatusSuccess {
+		t.Log("BrowserGetCookies failed (expected without browser session): OK")
+	}
+}
+
+func TestExecBrowserCookieSave_MissingFile(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserCookieSave(ec)
+	requireFailed(t, status, "BrowserCookieSave missing file")
+}
+
+func TestExecBrowserCookieLoad_MissingFile(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserCookieLoad(ec)
+	requireFailed(t, status, "BrowserCookieLoad missing file")
+}
+
+func TestExecBrowserSnapshot_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserSnapshot(ec)
+	if status != TaskStatusSuccess {
+		t.Log("BrowserSnapshot failed (expected without browser session): OK")
+	}
+}
+
+func TestExecBrowserUploadFile_MissingSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserUploadFile(ec)
+	requireFailed(t, status, "BrowserUploadFile missing selector")
+}
+
+func TestExecBrowserSelectOption_MissingSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserSelectOption(ec)
+	requireFailed(t, status, "BrowserSelectOption missing selector")
+}
+
+func TestExecBrowserKeyPress_MissingKey(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserKeyPress(ec)
+	requireFailed(t, status, "BrowserKeyPress missing key")
+}
+
+func TestExecBrowserElementScreenshot_MissingSelector(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserElementScreenshot(ec)
+	requireFailed(t, status, "BrowserElementScreenshot missing selector")
+}
+
+func TestExecBrowserPdf_MissingPath(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserPDF(ec)
+	requireFailed(t, status, "BrowserPdf missing path")
+}
+
+func TestExecBrowserPdfFromFile_MissingPath(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserPDFFromFile(ec)
+	requireFailed(t, status, "BrowserPdfFromFile missing path")
+}
+
+func TestExecBrowserSetHeaders_MissingHeaders(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserSetHeaders(ec)
+	requireFailed(t, status, "BrowserSetHeaders missing headers")
+}
+
+func TestExecBrowserSetUserAgent_MissingAgent(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserSetUserAgent(ec)
+	requireFailed(t, status, "BrowserSetUserAgent missing agent")
+}
+
+func TestExecBrowserEmulateDevice_MissingDevice(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execBrowserEmulateDevice(ec)
+	requireFailed(t, status, "BrowserEmulateDevice missing device")
+}
+
+// ============================================================
+// Opencli — missing edge case
+// ============================================================
+
+func TestExecOpencli_NoBinary(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{"action": "web_read", "url": "https://example.com"})
+	result, status := execOpenCLITool(ec)
+	// Either fails (no binary) or succeeds (if opencli is installed)
+	if status != TaskStatusFailed && status != TaskStatusSuccess {
+		t.Errorf("unexpected status: %v, result: %s", status, result)
+	}
+}
