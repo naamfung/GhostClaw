@@ -61,7 +61,20 @@ Thumbs.db
 # Memory folder (private data)
 memory/
 pending_messages/
-data/
+data/*
+!data/skills/
+!data/roles/
+!data/plugins/
+!data/profiles/
+
+# Exclude opencli extension binaries from tracking
+data/skills/opencli/opencli-extension/
+data/skills/opencli/opencli-extension.zip
+
+# Exclude skill test data
+data/skills/test_skill/references/
+data/skills/test_skill/scripts/
+data/skills/test_skill/templates/
 
 # Environment variables
 .env
