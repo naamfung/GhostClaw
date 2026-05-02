@@ -280,9 +280,7 @@ func RunConfigWizard(existingConfig Config) ConfigWizardResult {
         if config.DefaultRole == "" {
                 config.DefaultRole = "coder"
         }
-        if config.MaxRequestSizeBytes == 0 {
-                config.MaxRequestSizeBytes = 256 * 1024
-        }
+        // MaxRequestSizeBytes 保留 0（不硬編碼），由 CallModel 根據 context window 動態計算
 
         // 保存配置
         fmt.Println()
