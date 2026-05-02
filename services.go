@@ -741,7 +741,7 @@ func Search(sessionID, keyword string) (results []SearchResult, err error) {
         // 百度是重度 JS 渲染頁面，#content_left 可能 load 事件之後才出現
         waitIdleFunc := page.MustWaitRequestIdle()
         waitIdleFunc()
-        if err := page.WaitDOMStable(5*time.Second, 0.1); err != nil {
+        if err := page.WaitDOMStable(15*time.Second, 0.1); err != nil {
                 log.Printf("[Search] WaitDOMStable: %v", err)
         }
 
@@ -832,7 +832,7 @@ func Visit(sessionID, url string) (result *VisitResult, err error) {
         // 替換 MustWaitLoad() + time.Sleep(2s)，現代 SPA 頁面在 load 事件後才開始 AJAX 加載內容
         waitIdleFunc := page.MustWaitRequestIdle()
         waitIdleFunc()
-        if err := page.WaitDOMStable(3*time.Second, 0.1); err != nil {
+        if err := page.WaitDOMStable(15*time.Second, 0.1); err != nil {
                 log.Printf("[Visit] WaitDOMStable: %v", err)
         }
 

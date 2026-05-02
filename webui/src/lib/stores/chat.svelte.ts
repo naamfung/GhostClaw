@@ -688,7 +688,12 @@ class ChatStore {
                                 timings?: ChatMessageTimings,
                                 toolCallContent?: string
                         ) => {
-                                this.setStreamingActive(false);
+                                // 注意：不在此清除 isLoading / isStreamingActive！
+                                // AgentLoop 一個任務內會多次調用 CallModel，每次 CallModel
+                                // 結束都觸發 onComplete。若在此清除會導致：
+                                //   1. 按鈕由「停止」跳回「發送」→ 用戶以為任務結束
+                                //   2. auto-scroll interval 停止 → 後續輸出不再滾屏
+                                // 只有 onTaskRunning(false) 才是真正任務結束，由佢負責清除。
                                 // 使用分离收集的内容构建最终结果
                                 const combinedContent = hasStreamedChunks
                                         ? buildCombinedContent()
@@ -712,7 +717,6 @@ class ChatStore {
                                 conversationsStore.updateMessageAtIndex(idx, uiUpdate);
                                 await conversationsStore.updateCurrentNode(assistantMessage.id);
                                 if (onComplete) await onComplete(combinedContent);
-                                this.setChatLoading(assistantMessage.convId, false);
                                 this.clearChatStreaming(assistantMessage.convId);
                                 this.setProcessingState(assistantMessage.convId, null);
                                 if (isRouterMode()) modelsStore.fetchRouterModels().catch(console.error);

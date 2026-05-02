@@ -84,13 +84,15 @@ func getOrCreatePage(sessionID, pageID, url string) (*rod.Page, *BrowserSession,
                 }
         }
 
-        // 设置超时
+        // 设置超时：不在此 cancel，交由 page.Context 內部管理。
+        // defer cancel() 會在函數返回後立即取消 context，導致 caller 後續對
+        // page 的任何操作（如 WaitDOMStable）都失敗並返回 "context canceled"。
         timeout := globalTimeoutConfig.Browser
         if timeout <= 0 {
                 timeout = DefaultBrowserTimeout
         }
         ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-        defer cancel()
+        _ = cancel // 保留變量避免編譯錯誤，但不在此取消
         page = page.Context(ctx)
 
         return page, sess, nil
