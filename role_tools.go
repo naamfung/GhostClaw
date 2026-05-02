@@ -139,20 +139,48 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("Token 估算: ~%d tokens\n", totalTokens))
         }
 
-        // 4. 动态截断阈值
+        // 4. 上下文截斷資訊
         _, _, _, effectiveModelID, _, _, _, _ := getEffectiveAPIConfig()
         modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
         maxOutput := getMaxOutputTokens(effectiveModelID)
-        adaptiveMaxHistory := CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, maxOutput)
         sb.WriteString(fmt.Sprintf("模型 Context 窗口: %d tokens\n", modelCtxWindow))
-        sb.WriteString(fmt.Sprintf("动态截断阈值: %d 条消息\n", adaptiveMaxHistory))
-        remaining := adaptiveMaxHistory - len(history)
-        if len(history) >= adaptiveMaxHistory {
-                sb.WriteString("  ⚠️  已超出阈值，下次 AgentLoop 将触发截断\n")
-        } else if remaining <= 10 {
-                sb.WriteString(fmt.Sprintf("  ⚠️  距离阈值仅剩 %d 条消息\n", remaining))
+
+        // 顯示實際使用的壓縮模式
+        modeLabel := "Token 模式"
+        if globalCompressionMode == "message" {
+                modeLabel = "消息數模式"
+        }
+        sb.WriteString(fmt.Sprintf("截斷模式: %s\n", modeLabel))
+
+        if globalCompressionMode == "message" {
+                adaptiveMaxHistory := CalculateAdaptiveMaxHistory(modelCtxWindow, 0, 0, maxOutput)
+                sb.WriteString(fmt.Sprintf("消息數上限: %d 条\n", adaptiveMaxHistory))
+                remaining := adaptiveMaxHistory - len(history)
+                if len(history) >= adaptiveMaxHistory {
+                        sb.WriteString("  ⚠️  已超出消息數上限，下次 AgentLoop 将触发截断\n")
+                } else if remaining <= 10 {
+                        sb.WriteString(fmt.Sprintf("  ⚠️  距離上限僅剩 %d 条消息\n", remaining))
+                } else {
+                        sb.WriteString(fmt.Sprintf("  距離上限还有 %d 条消息\n", remaining))
+                }
         } else {
-                sb.WriteString(fmt.Sprintf("  距离阈值还有 %d 条消息\n", remaining))
+                // Token 模式：根據壓縮閾值顯示狀態
+                threshold := globalCompressionThreshold
+                if threshold <= 0 {
+                        threshold = 0.8
+                }
+                sb.WriteString(fmt.Sprintf("壓縮觸發閾值: %.0f%% 窗口用量\n", threshold*100))
+                if modelCtxWindow > 0 {
+                        usagePct := float64(totalTokens) / float64(modelCtxWindow) * 100
+                        sb.WriteString(fmt.Sprintf("當前用量: ~%.1f%% (%dk / %dk tokens)\n", usagePct, totalTokens/1000, modelCtxWindow/1000))
+                        if usagePct >= threshold*100 {
+                                sb.WriteString("  ⚠️  已超出壓縮閾值，下次 AgentLoop 将触发压缩\n")
+                        } else if usagePct >= threshold*80 {
+                                sb.WriteString(fmt.Sprintf("  ⚠️  接近壓縮閾值 (%.1f%%)，還剩 ~%.0f%% 空間\n", usagePct, threshold*100-usagePct))
+                        } else {
+                                sb.WriteString(fmt.Sprintf("  正常，距離閾值还有 ~%.0f%% 空间\n", threshold*100-usagePct))
+                        }
+                }
         }
 
         // 5. 记忆整合器信息
@@ -221,24 +249,32 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("  可用技能: %d 个\n", globalSkillManager.Count()))
         }
 
-        // 8. 最近消息摘要
+        // 8. 最近對話摘要（僅用戶與助手消息，排除工具與系統消息）
         if len(history) > 0 {
-                sb.WriteString("\n最近消息摘要:\n")
-                startIdx := 0
-                if len(history) > 3 {
-                        startIdx = len(history) - 3
+                sb.WriteString("\n最近對話摘要:\n")
+                // 從後往前取最近 3 條非 tool、非 system 消息
+                recent := make([]Message, 0, 3)
+                for i := len(history) - 1; i >= 0 && len(recent) < 3; i-- {
+                        role := history[i].Role
+                        if role == "tool" || role == "system" {
+                                continue
+                        }
+                        recent = append(recent, history[i])
                 }
-                for i := startIdx; i < len(history); i++ {
-                        msg := history[i]
-                        role := msg.Role
-                        if role == "system" {
-                                continue // 跳过系统消息
+                // 反轉為時間順序
+                for i := len(recent) - 1; i >= 0; i-- {
+                        msg := recent[i]
+                        roleLabel := msg.Role
+                        if roleLabel == "user" {
+                                roleLabel = "用户"
+                        } else if roleLabel == "assistant" {
+                                roleLabel = "助手"
                         }
                         content := ""
                         if c, ok := msg.Content.(string); ok {
-                                content = TruncateString(c, 50)
+                                content = TruncateString(c, 60)
                         }
-                        sb.WriteString(fmt.Sprintf("  [%s] %s\n", role, content))
+                        sb.WriteString(fmt.Sprintf("  [%s] %s\n", roleLabel, content))
                 }
         }
 
