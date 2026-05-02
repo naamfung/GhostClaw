@@ -339,8 +339,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		if interruptMsg := GetGlobalSession().takeInterruptMsg(); interruptMsg != "" {
 			messages = append(messages, Message{Role: "user", Content: interruptMsg})
 			ch.WriteChunk(StreamChunk{Content: "\n[任務已中斷，接收用戶輸入]\n", Done: true})
-			// 繼續循環：模型將看到新的用戶訊息並繼續任務
-			continue
+			// 退出循環：中斷訊息已注入歷史，AgentLoop 返回後用戶發送新消息時
+			// ProcessUserInput 會用包含中斷訊息嘅歷史啟動新一輪 AgentLoop
+			break
 		}
 
 		// ---- 安全檢查 (P0: CRITICAL) ----
