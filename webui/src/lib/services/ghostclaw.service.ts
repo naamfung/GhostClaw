@@ -24,6 +24,7 @@ export interface GhostClawWSChunk {
         done?: boolean;
         error?: string;
         task_running?: boolean;
+        is_reconnect?: boolean;
 }
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -36,7 +37,7 @@ export interface GhostClawWSOptions {
         onError?: (error: Error) => void;
         onStatusChange?: (status: ConnectionStatus) => void;
         onSessionId?: (sessionId: string) => void;
-        onTaskRunning?: (running: boolean) => void;
+        onTaskRunning?: (running: boolean, isReconnect?: boolean) => void;
 }
 
 class GhostClawWebSocketService {
@@ -108,7 +109,7 @@ class GhostClawWebSocketService {
 
                 // Handle task running status
                 if (chunk.task_running !== undefined) {
-                        this.options.onTaskRunning?.(chunk.task_running);
+                        this.options.onTaskRunning?.(chunk.task_running, chunk.is_reconnect);
                 }
 
                 // Handle error

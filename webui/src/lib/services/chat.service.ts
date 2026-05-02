@@ -35,7 +35,7 @@ class WebSocketManager {
                 onToolCallChunk?: (chunk: string) => void;
                 onComplete?: (content: string, reasoning?: string, timings?: unknown, toolCalls?: string) => void;
                 onError?: (error: Error) => void;
-                onTaskRunning?: (running: boolean) => void;
+                onTaskRunning?: (running: boolean, isReconnect?: boolean) => void;
         }> = new Map();
         private accumulatedContent: string = '';
         private accumulatedReasoning: string = '';
@@ -94,6 +94,7 @@ class WebSocketManager {
                 done?: boolean;
                 error?: string;
                 task_running?: boolean;
+                is_reconnect?: boolean;
         }): void {
                 if (chunk.session_id) {
                         this.sessionId = chunk.session_id;
@@ -115,7 +116,7 @@ class WebSocketManager {
 
                 // Handle task_running status (wake notifications from async tasks)
                 if (chunk.task_running !== undefined) {
-                        this.messageCallbacks.forEach(cb => cb.onTaskRunning?.(chunk.task_running!));
+                        this.messageCallbacks.forEach(cb => cb.onTaskRunning?.(chunk.task_running!, chunk.is_reconnect));
                 }
 
                 if (chunk.content) {
@@ -161,7 +162,7 @@ class WebSocketManager {
                         onToolCallChunk?: (chunk: string) => void;
                         onComplete?: (content: string, reasoning?: string, timings?: unknown, toolCalls?: string) => void;
                         onError?: (error: Error) => void;
-                        onTaskRunning?: (running: boolean) => void;
+                        onTaskRunning?: (running: boolean, isReconnect?: boolean) => void;
                 }
         ): Promise<void> {
                 // Clear old callbacks before registering new ones.
@@ -361,8 +362,8 @@ export class ChatService {
                                         onError?.(error);
                                         reject(error);
                                 },
-                                onTaskRunning: (running) => {
-                                        onTaskRunning?.(running);
+                                onTaskRunning: (running, isReconnect) => {
+                                        onTaskRunning?.(running, isReconnect);
                                 }
                         });
                 });

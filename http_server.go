@@ -105,9 +105,6 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
         connID := uuid.New().String()[:8]
         wsChannel := NewWSChannel(conn)
 
-        session.mu.Lock()
-        session.Connected = true
-        session.mu.Unlock()
         log.Printf("[WS] Connection %s established for session %s", connID, session.ID)
 
         // 订阅会话输出（每个连接独立通道，广播到所有连接）
@@ -146,17 +143,19 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                 session.Unsubscribe(connID)
                 log.Printf("[WS] connID=%s: unsubscribed, waiting for outputFinished", connID)
                 <-outputFinished
-                session.mu.Lock()
-                session.Connected = false
-                session.mu.Unlock()
                 conn.Close()
                 log.Printf("[WS] connID=%s: connection fully closed", connID)
         }()
 
-        wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, TaskRunning: session.IsTaskRunning()})
+        // 判斷此連接是否為重新連接（已有其他活躍連接）
+        session.subscribersMu.RLock()
+        isReconnect := len(session.subscribers) > 1 // >1 因為 Subscribe 已將自身加入
+        session.subscribersMu.RUnlock()
+
+        wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
         history := session.GetHistory()
         if len(history) > 0 {
-                wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, HistorySync: history, TaskRunning: session.IsTaskRunning()})
+                wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, HistorySync: history, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
         }
 
         for {

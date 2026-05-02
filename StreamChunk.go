@@ -22,6 +22,7 @@ type StreamChunk struct {
         ThinkingSignature string                   `json:"thinking_signature,omitempty"`
         SessionID        string                   `json:"session_id,omitempty"`    // 会话 ID
         TaskRunning      bool                     `json:"task_running,omitempty"`  // 任务是否在运行
+        IsReconnect      bool                     `json:"is_reconnect,omitempty"`  // 此连接是否為重新連接（前端可用於跳過首個 task_running）
         HistorySync      []Message                `json:"history_sync,omitempty"`  // 重连时同步的历史消息
 
         // Token 使用量（僅在 Done=true 時填充，來自 API 響應的 usage 字段）

@@ -768,7 +768,7 @@ class ChatStore {
                                 });
                                 if (onError) onError(error);
                         },
-                        onTaskRunning: async (running: boolean) => {
+                        onTaskRunning: async (running: boolean, isReconnect?: boolean) => {
                                 if (running) {
                                         // The first task_running=true is always the normal AgentLoop
                                         // start (sendMessage already created the assistant message).
@@ -776,6 +776,12 @@ class ChatStore {
                                         // are genuine wake notifications from async tasks.
                                         if (isFirstTaskRunning) {
                                                 isFirstTaskRunning = false;
+                                                // 若是重新連接（已有活躍任務），仍需顯示「停止」按鈕
+                                                // 但不創建新 assistant message（history_sync 已同步歷史）
+                                                if (isReconnect) {
+                                                        this.setStreamingActive(true);
+                                                        this.setChatLoading(assistantMessage.convId, true);
+                                                }
                                                 return;
                                         }
 

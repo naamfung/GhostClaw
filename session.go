@@ -42,7 +42,7 @@ type GlobalSession struct {
         persistID string
         persistMu sync.Mutex
 
-        Connected bool // 是否至少有一个 WebSocket 连接（仅用于 WS）
+        Connected bool // 是否至少有一个 WebSocket 连接（仅用于 WS，由 Subscribe/Unsubscribe 自動維護）
 
         // IsNewSession 標記當前會話是否爲新會話（/new 或 idle 重置後設爲 true）
         // 首輪對話後自動清除。用於抑制首輪的記憶注入，防止舊上下文洩漏到新會話
@@ -548,26 +548,43 @@ func (s *GlobalSession) CheckIdleReset() string {
 // 返回接收 chunk 的 channel 和用于通知退订的 done channel
 func (s *GlobalSession) Subscribe(id string) (<-chan StreamChunk, <-chan struct{}) {
         s.subscribersMu.Lock()
-        defer s.subscribersMu.Unlock()
         ch := make(chan StreamChunk, 500)
         done := make(chan struct{})
         if existing, ok := s.subscribers[id]; ok {
                 close(existing.done)
         }
         s.subscribers[id] = &subscriber{ch: ch, done: done}
-        log.Printf("[GlobalSession] Subscriber %s added (total: %d)", id, len(s.subscribers))
+        isFirst := len(s.subscribers) == 1
+        total := len(s.subscribers)
+        s.subscribersMu.Unlock()
+
+        // 自動維護 Connected：第一個訂閱者加入時設為 true
+        if isFirst {
+                s.mu.Lock()
+                s.Connected = true
+                s.mu.Unlock()
+        }
+        log.Printf("[GlobalSession] Subscriber %s added (total: %d)", id, total)
         return ch, done
 }
 
 // Unsubscribe 移除一个输出广播订阅者
 func (s *GlobalSession) Unsubscribe(id string) {
         s.subscribersMu.Lock()
-        defer s.subscribersMu.Unlock()
         if sub, ok := s.subscribers[id]; ok {
                 close(sub.done)
                 delete(s.subscribers, id)
-                log.Printf("[GlobalSession] Subscriber %s removed (total: %d)", id, len(s.subscribers))
         }
+        isEmpty := len(s.subscribers) == 0
+        total := len(s.subscribers)
+        s.subscribersMu.Unlock()
+
+        if isEmpty {
+                s.mu.Lock()
+                s.Connected = false
+                s.mu.Unlock()
+        }
+        log.Printf("[GlobalSession] Subscriber %s removed (total: %d)", id, total)
 }
 
 // EnqueueOutput 广播输出到所有订阅者
