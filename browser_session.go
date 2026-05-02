@@ -366,12 +366,13 @@ func BrowserPageCreate(sessionID, pageID, url string) (*BrowserPageCreateResult,
         }
 
         // 等待页面加载
+        // 不在此 cancel context：defer cancel() 會在函數返回後立即取消，
+        // 導致 caller 後續對 page 的任何操作都失敗並返回 "context canceled"
         timeout := globalTimeoutConfig.Browser
         if timeout <= 0 {
                 timeout = DefaultBrowserTimeout
         }
-        ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-        defer cancel()
+        ctx, _ := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
         page = page.Context(ctx)
 
         if err := page.WaitLoad(); err != nil {
