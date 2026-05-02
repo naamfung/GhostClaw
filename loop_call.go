@@ -164,8 +164,12 @@ func RunCallModel(ctx context.Context, messages *[]Message, ch Channel,
 		}
 	}
 
-	// 發送 final Done 信號，令 CMD 等頻道可以 flush 緩衝區並換行
-	ch.WriteChunk(StreamChunk{Done: true})
+	// 發送換行以令 CMD 頻道 flush 緩衝區。
+	// 不在此發送 Done=true：AgentLoop 一個任務內會多次調用 CallModel，
+	// 每次 Done=true 會令前端 onComplete 誤判任務結束（按鈕跳回「發送」、
+	// auto-scroll 停止）。真正任務結束信號為 ProcessUserInput defer 中的
+	// TaskRunning:false + Done:true。
+	ch.WriteChunk(StreamChunk{Content: "\n"})
 
 	// 對完整累積內容行一次 applyReplacements，而非逐 chunk 處理
 	// 確保跨 chunk 邊界嘅 replacement key 都能正確匹配

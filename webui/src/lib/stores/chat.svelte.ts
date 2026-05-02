@@ -72,8 +72,6 @@ class ChatStore {
         private conversationStateTimestamps = new SvelteMap<string, ConversationStateEntry>();
         private activeConversationId = $state<string | null>(null);
         private isStreamingActive = $state(false);
-        /** 追蹤當前是否在 agentic task 內（收到 task_running:true 但未收到 false） */
-        private _taskRunning = $state(false);
         private isEditModeActive = $state(false);
         private addFilesHandler: ((files: File[]) => void) | null = $state(null);
         pendingEditMessageId = $state<string | null>(null);
@@ -690,16 +688,7 @@ class ChatStore {
                                 timings?: ChatMessageTimings,
                                 toolCallContent?: string
                         ) => {
-                                // 僅在非 agentic task 時清除 loading/streaming 狀態。
-                                // AgentLoop 一個 task 內多次 CallModel，每次結束都觸發
-                                // onComplete。若 _taskRunning=true 就唔應該清除，否則：
-                                //   1. 按鈕由「停止」跳回「發送」
-                                //   2. auto-scroll interval 停止
-                                // 斜槓命令（/new /stop）冇 task_running:true，會正常清除。
-                                if (!this._taskRunning) {
-                                        this.setStreamingActive(false);
-                                        this.setChatLoading(assistantMessage.convId, false);
-                                }
+                                this.setStreamingActive(false);
                                 // 使用分离收集的内容构建最终结果
                                 const combinedContent = hasStreamedChunks
                                         ? buildCombinedContent()
@@ -723,6 +712,7 @@ class ChatStore {
                                 conversationsStore.updateMessageAtIndex(idx, uiUpdate);
                                 await conversationsStore.updateCurrentNode(assistantMessage.id);
                                 if (onComplete) await onComplete(combinedContent);
+                                this.setChatLoading(assistantMessage.convId, false);
                                 this.clearChatStreaming(assistantMessage.convId);
                                 this.setProcessingState(assistantMessage.convId, null);
                                 if (isRouterMode()) modelsStore.fetchRouterModels().catch(console.error);
@@ -779,7 +769,6 @@ class ChatStore {
                                 if (onError) onError(error);
                         },
                         onTaskRunning: async (running: boolean, isReconnect?: boolean) => {
-                                this._taskRunning = running;
                                 if (running) {
                                         // The first task_running=true is always the normal AgentLoop
                                         // start (sendMessage already created the assistant message).
