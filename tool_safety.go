@@ -39,6 +39,11 @@ const (
         readLevelFull                     // 完整讀取（ReadFileLines）
 )
 
+// readExpiryTime ReadFileLines 完整讀取記錄的有效期。
+// SSH 持久會話等耗時操作可能令模型在讀取後超過 10 分鐘先寫入，
+// 因此設為 60 分鐘以容納長操作場景。evict 使用相同閾值。
+const readExpiryTime = 60 * time.Minute
+
 // escalatePrefix 通用錯誤升級 sentinel prefix。
 // 當 SafeExecuteTool 或其他錯誤處理返回以此前綴開頭的 EnrichedMessage 時，
 // AgentLoop 主循環會提取消息內容並以用戶身份注入對話歷史。
@@ -105,7 +110,7 @@ func (t *readWriteTracker) evictIfNeeded() {
                 if count >= 50 {
                         break
                 }
-                if time.Since(ts) > 10*time.Minute {
+                if time.Since(ts) > readExpiryTime {
                         delete(t.partialReadFiles, key)
                         count++
                 }
@@ -114,7 +119,7 @@ func (t *readWriteTracker) evictIfNeeded() {
                 if count >= 50 {
                         break
                 }
-                if time.Since(ts) > 10*time.Minute {
+                if time.Since(ts) > readExpiryTime {
                         delete(t.fullReadFiles, key)
                         count++
                 }
@@ -127,10 +132,10 @@ func (t *readWriteTracker) GetFileReadLevel(filePath string) readLevel {
         defer t.mu.RUnlock()
 
         filePath = normalizeFilePath(filePath)
-        if ts, ok := t.fullReadFiles[filePath]; ok && time.Since(ts) < 10*time.Minute {
+        if ts, ok := t.fullReadFiles[filePath]; ok && time.Since(ts) < readExpiryTime {
                 return readLevelFull
         }
-        if ts, ok := t.partialReadFiles[filePath]; ok && time.Since(ts) < 10*time.Minute {
+        if ts, ok := t.partialReadFiles[filePath]; ok && time.Since(ts) < readExpiryTime {
                 return readLevelPartial
         }
         return readLevelNone
