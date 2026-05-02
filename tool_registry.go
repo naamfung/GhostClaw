@@ -221,7 +221,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("AppendToFile",
                 "Append content to the end of a file.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
