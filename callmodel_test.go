@@ -2508,7 +2508,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			shouldStop, _ := e.RecordEscalation(
 				EscalateWriteWithoutRead, "test.txt",
-				"安全檢查失敗：你必須先使用 read_all_lines",
+				"安全檢查失敗：你必須先使用 ReadFileLines",
 			)
 			if shouldStop {
 				t.Errorf("violation %d should not escalate", i+1)
@@ -2518,7 +2518,7 @@ func TestRepeatedErrorEscalator(t *testing.T) {
 		// 第 3 次應升級
 		shouldStop, userMsg := e.RecordEscalation(
 			EscalateWriteWithoutRead, "test.txt",
-			"安全檢查失敗：你必須先使用 read_all_lines",
+			"安全檢查失敗：你必須先使用 ReadFileLines",
 		)
 		if !shouldStop {
 			t.Error("3rd violation should trigger escalation")

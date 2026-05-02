@@ -205,7 +205,7 @@ func TestGetUnknownToolErrorMessage(t *testing.T) {
 
 func TestIsWriteTool(t *testing.T) {
 	writeTools := []string{
-		"WriteFileLine", "WriteAllLines", "AppendToFile",
+		"WriteFileLine", "WriteFileLines", "AppendToFile",
 		"WriteFileRange", "TextReplace", "TextTransform",
 		"MemorySave", "MemoryForget",
 	}
@@ -216,7 +216,7 @@ func TestIsWriteTool(t *testing.T) {
 	}
 
 	readTools := []string{
-		"ReadFileLine", "ReadAllLines", "TextSearch",
+		"ReadFileLine", "ReadFileLines", "TextSearch",
 		"Shell", "SmartShell", "Spawn", "mcp_call",
 		"EnterPlanMode", "Menu",
 	}
@@ -314,7 +314,7 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 
 func TestIsReadOnlyTool(t *testing.T) {
 	roTools := []string{
-		"ReadFileLine", "ReadAllLines", "TextSearch", "TextGrep",
+		"ReadFileLine", "ReadFileLines", "TextSearch", "TextGrep",
 		"MemoryRecall", "MemoryList", "PlanRead", "PluginList",
 		"SkillList", "SkillGet", "CronList", "CronStatus",
 		"SpawnList", "SshList", "ProfileCheck",
@@ -549,7 +549,7 @@ func TestNormalizeFilePath_WithDotDot(t *testing.T) {
 // ============================================================================
 
 func TestCheckWritePermission_NewFile(t *testing.T) {
-	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "WriteAllLines")
+	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "WriteFileLines")
 	if err != nil {
 		t.Errorf("CheckWritePermission for new file should allow, got error: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestCheckWritePermission_ExistingFileNotRead(t *testing.T) {
 	globalReadWriteTracker = newReadWriteTracker()
 	defer func() { globalReadWriteTracker = oldTracker }()
 
-	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
 	if err == nil {
 		t.Error("CheckWritePermission should block write on unread existing file")
 	}
@@ -586,7 +586,7 @@ func TestCheckWritePermission_ExistingFileFullyRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFileFullyRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
 	if err != nil {
 		t.Errorf("CheckWritePermission should allow write on fully read file, got error: %v", err)
 	}
@@ -605,7 +605,7 @@ func TestCheckWritePermission_ExistingFilePartialRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFilePartialRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "WriteAllLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
 	if err == nil {
 		t.Error("CheckWritePermission should block write on partial-read file (need full read)")
 	}
@@ -721,8 +721,8 @@ func TestRepeatedErrorEscalator_WriteWithoutReadMessage(t *testing.T) {
 	e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 2")
 	_, userMsg := e.RecordEscalation(EscalateWriteWithoutRead, "file.txt", "write blocked 3")
 
-	if !strings.Contains(userMsg, "ReadAllLines") {
-		t.Error("WriteWithoutRead escalation should mention ReadAllLines")
+	if !strings.Contains(userMsg, "ReadFileLines") {
+		t.Error("WriteWithoutRead escalation should mention ReadFileLines")
 	}
 }
 

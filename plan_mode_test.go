@@ -523,8 +523,8 @@ func TestIsToolAllowedInPlanMode_Inactive(t *testing.T) {
 	if !globalPlanMode.IsToolAllowedInPlanMode("SmartShell") {
 		t.Error("smart_shell should be allowed when Plan Mode is inactive")
 	}
-	if !globalPlanMode.IsToolAllowedInPlanMode("WriteAllLines") {
-		t.Error("write_all_lines should be allowed when Plan Mode is inactive")
+	if !globalPlanMode.IsToolAllowedInPlanMode("WriteFileLines") {
+		t.Error("WriteFileLines should be allowed when Plan Mode is inactive")
 	}
 }
 
@@ -564,7 +564,7 @@ func TestIsToolAllowedInPlanMode_ShellBlocked(t *testing.T) {
 
 	EnterPlanMode("test")
 
-	blockedTools := []string{"SmartShell", "Shell", "WriteAllLines", "WriteFileLine",
+	blockedTools := []string{"SmartShell", "Shell", "WriteFileLines", "WriteFileLine",
 		"AppendToFile", "TextReplace", "TextTransform", "MemorySave", "MemoryForget"}
 
 	for _, tool := range blockedTools {
@@ -580,7 +580,7 @@ func TestIsToolAllowedInPlanMode_ReadToolsAllowed(t *testing.T) {
 
 	EnterPlanMode("test")
 
-	allowedTools := []string{"ReadFileLine", "ReadAllLines", "TextSearch",
+	allowedTools := []string{"ReadFileLine", "ReadFileLines", "TextSearch",
 		"TextGrep", "MemoryRecall", "MemoryList"}
 
 	for _, tool := range allowedTools {
@@ -998,7 +998,7 @@ func TestPlanModeConcurrentAccess(t *testing.T) {
 	// Goroutine 2: Read tool permissions
 	go func() {
 		for i := 0; i < 100; i++ {
-			globalPlanMode.IsToolAllowedInPlanMode("ReadAllLines")
+			globalPlanMode.IsToolAllowedInPlanMode("ReadFileLines")
 			globalPlanMode.IsToolAllowedInPlanMode("SmartShell")
 		}
 		done <- true
@@ -1035,7 +1035,7 @@ func TestGetPlanOnlyTools(t *testing.T) {
 	// 應該包含只讀工具
 	hasReadFile := false
 	for _, t := range tools {
-		if t == "ReadAllLines" {
+		if t == "ReadFileLines" {
 			hasReadFile = true
 			break
 		}

@@ -346,7 +346,7 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 // getBlockedToolsForPlanPhase 返回 Plan Mode 指定 Phase 中應從靜態工具列表物理移除的工具集合
 // 核心設計：模型看不到被禁止的工具就不會嘗試調用，從根源消除誤調用
 //
-// 保留的工具：ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep,
+// 保留的工具：ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep,
 //
 //      MemoryRecall, MemoryList, 以及各 Phase 的動態工具
 //      ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行
@@ -370,7 +370,7 @@ func getBlockedToolsForPlanPhase(phase PlanPhase) map[string]bool {
 
         // 文件寫入工具（Plan Mode 僅允許通過 PlanWrite 寫計劃文件）
         blocked["WriteFileLine"] = true
-        blocked["WriteAllLines"] = true
+        blocked["WriteFileLines"] = true
         blocked["AppendToFile"] = true
         blocked["WriteFileRange"] = true
         blocked["TextReplace"] = true

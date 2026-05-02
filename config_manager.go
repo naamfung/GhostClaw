@@ -145,6 +145,7 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.Tools.CompressionMode = "token"
         config.Tools.CompressionThreshold = 0.8
         config.Tools.SkillCleanupThresholdDays = 90
+        config.Tools.EscalationThreshold = 3
         config.Tools.SmartShell.SyncTimeout = 60
         config.Tools.SmartShell.UnknownTimeout = 120
         config.Tools.SmartShell.DefaultWakeMins = 5
@@ -287,6 +288,17 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
         }
         if config.Tools.SkillCleanupThresholdDays > 365 {
                 config.Tools.SkillCleanupThresholdDays = 365
+        }
+
+        // Escalation threshold 默认值
+        if config.Tools.EscalationThreshold == 0 {
+                config.Tools.EscalationThreshold = 3
+        }
+        if config.Tools.EscalationThreshold < 1 {
+                config.Tools.EscalationThreshold = 1
+        }
+        if config.Tools.EscalationThreshold > 5 {
+                config.Tools.EscalationThreshold = 5
         }
 
         // BrowserConfig 默认值
@@ -676,6 +688,25 @@ func (cm *ConfigManager) UpdateSkillCleanupThresholdDays(days int) error {
         return cm.saveLocked()
 }
 
+// UpdateEscalationThreshold 更新工具失敗升級閾值，保存
+func (cm *ConfigManager) UpdateEscalationThreshold(threshold int) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        if threshold == 0 {
+                return nil // 0 means keep current
+        }
+        if threshold < 1 {
+                threshold = 1
+        }
+        if threshold > 5 {
+                threshold = 5
+        }
+
+        cm.config.Tools.EscalationThreshold = threshold
+        return cm.saveLocked()
+}
+
 // ReplaceConfig 替换整个配置对象（用于配置向导等场景），保存
 func (cm *ConfigManager) ReplaceConfig(config Config) error {
         cm.mu.Lock()
@@ -777,6 +808,7 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         globalCompressionMode = cm.config.Tools.CompressionMode
         globalCompressionThreshold = cm.config.Tools.CompressionThreshold
         globalSkillCleanupThresholdDays = cm.config.Tools.SkillCleanupThresholdDays
+        globalEscalationThreshold = cm.config.Tools.EscalationThreshold
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）

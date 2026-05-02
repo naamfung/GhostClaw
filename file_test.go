@@ -308,3 +308,178 @@ func TestDetectTextEncoding_UTF16BE(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// InsertFileLine tests
+// ============================================================================
+
+func TestInsertFileLine_MiddleOfFile(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"line1", "line2", "line3", "line4"})
+
+	err := InsertFileLine(path, 3, "INSERTED")
+	if err != nil {
+		t.Fatalf("InsertFileLine() error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(lines))
+	}
+	if lines[0] != "line1" {
+		t.Errorf("line1 = %q, want \"line1\"", lines[0])
+	}
+	if lines[1] != "line2" {
+		t.Errorf("line2 = %q, want \"line2\"", lines[1])
+	}
+	if lines[2] != "INSERTED" {
+		t.Errorf("line3 = %q, want \"INSERTED\"", lines[2])
+	}
+	if lines[3] != "line3" {
+		t.Errorf("line4 = %q, want \"line3\"", lines[3])
+	}
+	if lines[4] != "line4" {
+		t.Errorf("line5 = %q, want \"line4\"", lines[4])
+	}
+}
+
+func TestInsertFileLine_Prepend(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"first", "second"})
+
+	err := InsertFileLine(path, 1, "NEW_FIRST")
+	if err != nil {
+		t.Fatalf("InsertFileLine() error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(lines))
+	}
+	if lines[0] != "NEW_FIRST" {
+		t.Errorf("got %q, want \"NEW_FIRST\"", lines[0])
+	}
+	if lines[1] != "first" {
+		t.Errorf("got %q, want \"first\"", lines[1])
+	}
+}
+
+func TestInsertFileLine_NewFile(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "new.txt")
+
+	err := InsertFileLine(path, 1, "sole line")
+	if err != nil {
+		t.Fatalf("InsertFileLine() error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 1 || lines[0] != "sole line" {
+		t.Errorf("got %v, want [\"sole line\"]", lines)
+	}
+}
+
+// ============================================================================
+// WriteFileLine insert mode tests
+// ============================================================================
+
+func TestWriteFileLine_InsertMode_BeforeLine2(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"A", "B", "C"})
+
+	// LineNum = -2 → insert before line 2
+	err := WriteFileLine(path, -2, "INSERTED")
+	if err != nil {
+		t.Fatalf("WriteFileLine(-2) error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "A" || lines[1] != "INSERTED" || lines[2] != "B" || lines[3] != "C" {
+		t.Errorf("got %v, want [A, INSERTED, B, C]", lines)
+	}
+}
+
+func TestWriteFileLine_OverwriteMode_LineN(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"A", "B", "C"})
+
+	err := WriteFileLine(path, 2, "REPLACED")
+	if err != nil {
+		t.Fatalf("WriteFileLine(2) overwrite error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 3 || lines[1] != "REPLACED" {
+		t.Errorf("got %v, want [A, REPLACED, C]", lines)
+	}
+}
+
+// ============================================================================
+// WriteFileRange insert mode tests
+// ============================================================================
+
+func TestWriteFileRange_InsertMode_MultiLine(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"A", "B", "C", "D"})
+
+	// StartLine = -3 → insert 2 lines before line 3
+	err := WriteFileRange(path, -3, 0, "X\nY")
+	if err != nil {
+		t.Fatalf("WriteFileRange(-3) insert error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 6 {
+		t.Fatalf("expected 6 lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "A" || lines[1] != "B" || lines[2] != "X" || lines[3] != "Y" || lines[4] != "C" || lines[5] != "D" {
+		t.Errorf("got %v, want [A, B, X, Y, C, D]", lines)
+	}
+}
+
+func TestWriteFileRange_OverwriteMode_Range(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"A", "B", "C", "D", "E"})
+
+	err := WriteFileRange(path, 2, 4, "X\nY\nZ")
+	if err != nil {
+		t.Fatalf("WriteFileRange(2,4) overwrite error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "A" || lines[1] != "X" || lines[2] != "Y" || lines[3] != "Z" || lines[4] != "E" {
+		t.Errorf("got %v, want [A, X, Y, Z, E]", lines)
+	}
+}
+
+func TestWriteFileRange_InsertMode_SingleLine(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "test.txt")
+	WriteFileLines(path, []string{"header", "body", "footer"})
+
+	// StartLine = -2 → insert 1 line before line 2
+	err := WriteFileRange(path, -2, 0, "new_section")
+	if err != nil {
+		t.Fatalf("WriteFileRange(-2) insert error: %v", err)
+	}
+
+	lines, _ := ReadFileLines(path)
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d", len(lines))
+	}
+	if lines[0] != "header" || lines[1] != "new_section" || lines[2] != "body" || lines[3] != "footer" {
+		t.Errorf("got %v, want [header, new_section, body, footer]", lines)
+	}
+}
+

@@ -184,6 +184,7 @@ type ToolsConfig struct {
         CompressionMode            string  `toon:"CompressionMode,omitempty" json:"CompressionMode,omitempty"`                       // "token"（預設）或 "message"
         CompressionThreshold       float64 `toon:"CompressionThreshold,omitempty" json:"CompressionThreshold,omitempty"`           // 0.1-0.9，預設 0.8
         SkillCleanupThresholdDays  int     `toon:"SkillCleanupThresholdDays,omitempty" json:"SkillCleanupThresholdDays,omitempty"` // Skill 自動清理天數，預設 90，範圍 30-365
+        EscalationThreshold        int     `toon:"EscalationThreshold,omitempty" json:"EscalationThreshold,omitempty"`                 // 工具連續失敗升級閾值，預設 3，範圍 1-5
 }
 
 // ProfileConfig 个人资料配置

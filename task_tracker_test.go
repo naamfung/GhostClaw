@@ -62,7 +62,7 @@ func TestTaskTracker_RecordSuccess(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read file.go", "content...")
+	tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read file.go", "content...")
 
 	report := tt.GetProgressReport()
 	if !strings.Contains(report, "1 completed") {
@@ -119,7 +119,7 @@ func TestTaskTracker_StuckRecoversOnSuccess(t *testing.T) {
 	}
 
 	// Success resets
-	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 
 	if tt.GetConsecutiveFails() != 0 {
 		t.Error("consecutive fails should reset after success")
@@ -191,7 +191,7 @@ func TestTaskTracker_PromptAt8Steps(t *testing.T) {
 
 	// Record 7 successful calls (won't prompt)
 	for i := 0; i < 7; i++ {
-		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 	}
 	_, reason := tt.ShouldPromptTodo()
 	if reason != "" {
@@ -199,7 +199,7 @@ func TestTaskTracker_PromptAt8Steps(t *testing.T) {
 	}
 
 	// 8th call should prompt
-	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 	prompt, _ := tt.ShouldPromptTodo()
 	if !prompt {
 		t.Error("should prompt at step 8")
@@ -216,7 +216,7 @@ func TestTaskTracker_NoPromptForSimpleTask(t *testing.T) {
 	tt.mu.Unlock()
 
 	for i := 0; i < 10; i++ {
-		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 	}
 
 	prompt, _ := tt.ShouldPromptTodo()
@@ -336,7 +336,7 @@ func TestTaskTracker_RecentToolCallsCapped(t *testing.T) {
 
 	// Record 25 calls (cap is 20)
 	for i := 0; i < 25; i++ {
-		tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+		tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 	}
 
 	tt.mu.RLock()
@@ -364,7 +364,7 @@ func TestTaskTracker_ConcurrentReadWrite(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+				tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 			}
 		}()
 	}
@@ -397,7 +397,7 @@ func TestTaskTracker_RecordToolCall_NilTask(t *testing.T) {
 	tt := NewTaskTracker()
 
 	// Should not panic
-	tt.RecordToolCall("ReadAllLines", TaskStatusSuccess, "read", "ok")
+	tt.RecordToolCall("ReadFileLines", TaskStatusSuccess, "read", "ok")
 }
 
 func TestTaskTracker_GetConsecutiveFails_Nil(t *testing.T) {

@@ -104,7 +104,7 @@ var phaseMetadata = map[PlanPhase]phaseInfo{
 var PhaseReadTools = []string{
         "ReadFileLine",
         "ReadFileRange",
-        "ReadAllLines",
+        "ReadFileLines",
         "TextSearch",
         "TextGrep",
         "MemoryRecall",
@@ -529,7 +529,7 @@ func explorePhasePrompt() string {
 
 操作指引：
 1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
-2. 使用 ReadFileLine / ReadFileRange / ReadAllLines 閱讀相關文件
+2. 使用 ReadFileLine / ReadFileRange / ReadFileLines 閱讀相關文件
 3. 對於複雜任務，使用 spawn 創建最多 3 個並行子代理探索不同方面
 4. 使用 todos 工具管理探索子任務
 

@@ -114,7 +114,7 @@ func init() {
 Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
 ⚠️ INTERACTIVE COMMANDS: ssh, scp, rsync, sudo, su, vim, top etc. may require interactive input and will trigger a confirmation request.`,
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -155,7 +155,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         reg("WriteFileLine",
-                "Write content to a specific line in a file. If the line number is beyond the current file length, the file will be extended with empty lines.",
+                "Write or insert content at a specific line in a file.\n\nLineNum > 0: overwrite line LineNum. LineNum = 0: create empty file. LineNum = -1: append to end. LineNum < -1: insert BEFORE line |LineNum|, shifting existing lines down (e.g., -5 inserts before line 5).",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -166,18 +166,18 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                 },
                                 "LineNum": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "The line number to write to (starting from 1).",
+                                        "description": "Target line number. Positive = overwrite that line. 0 = create empty file. -1 = append to end. < -1 = insert a new line BEFORE |LineNum| (e.g., -5 inserts before line 5, shifting content down).",
                                 },
                                 "content": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "The content to write to the specified line.",
+                                        "description": "The content to write or insert at the specified position.",
                                 },
                         },
                         "required":             []string{"filename", "LineNum", "content"},
                         "additionalProperties": false,
                 })
 
-        reg("ReadAllLines",
+        reg("ReadFileLines",
                 "Read all lines from a file and return them as a list of strings.",
                 "core", "core",
                 map[string]interface{}{
@@ -196,7 +196,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                         "additionalProperties": false,
                 })
 
-        reg("WriteAllLines",
+        reg("WriteFileLines",
                 "Write all lines to a file.",
                 "core", "core",
                 map[string]interface{}{
@@ -244,7 +244,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                 })
 
         reg("WriteFileRange",
-                "Write content to a specific range of lines in a file.",
+                "Write to or insert into a specific range of lines in a file.\n\nStartLine >= 1: overwrite lines StartLine..EndLine with content (EndLine defaults to StartLine if not specified). StartLine < 0: insert content BEFORE line |StartLine|, shifting existing lines down (EndLine is ignored).",
                 "file", "extended",
                 map[string]interface{}{
                         "type": "object",
@@ -255,15 +255,15 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
                                 },
                                 "StartLine": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "The starting line number (1-based).",
+                                        "description": "Target line number. Positive = start of overwrite range (1-based). Negative = insert BEFORE |StartLine|, shifting lines down (e.g., -10 inserts before line 10). Cannot be 0.",
                                 },
                                 "EndLine": map[string]interface{}{
                                         "type":        "integer",
-                                        "description": "The ending line number (1-based). If not specified, only the start_line will be written.",
+                                        "description": "Ending line number (1-based) for overwrite mode only. Ignored in insert mode. Defaults to StartLine if not specified.",
                                 },
                                 "content": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "The content to write. Each line in the content will replace one line in the file range.",
+                                        "description": "The content to write or insert. Each line in the content will replace/insert one line.",
                                 },
                         },
                         "required":             []string{"filename", "StartLine", "content"},
@@ -479,7 +479,7 @@ validate + 可选冒烟测试。
 | Instagram | instagram | search, user, posts |
 | Facebook | facebook | search, posts |
 | 豆瓣 | douban | search, movie, book |`,
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1492,7 +1492,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryRecall",
                 "检索已保存的记忆。支持按关键词模糊搜索（query）或按键名精确查找，可限定分类。无参数时返回所有记忆。",
-                "core", "core",
+                "memory", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1515,7 +1515,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryForget",
                 "删除指定键名的记忆（不可恢复）。建议先用 MemoryRecall 确认要删除的记忆内容。",
-                "memory", "expert",
+                "memory", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1529,7 +1529,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryList",
                 "列出所有已保存的记忆，支持按分类（preference/fact/project/skill/context）和范围（user/global）过滤。",
-                "memory", "extended",
+                "memory", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2012,7 +2012,7 @@ validate + 可选冒烟测试。
 
         // ========== 后台任务管理工具 ==========
         reg("ShellDelayed", "Execute a shell command in background with NO timeout. Use this for long-running commands that may take minutes or hours.\n\n✅ USE THIS FOR:\n• Package managers: apt/yum/dnf/pacman (Linux), pkg (FreeBSD/GhostBSD)\n• System updates: apt update, yum update, pkg update, freebsd-update, portsnap\n• Compilation: make, cmake, npm install, pip install, cargo build, go build\n• Network transfers: ssh, scp, rsync, sftp, wget, curl, git clone\n• Docker: docker build, docker-compose build\n• Archives: tar, unzip, 7z (large files)\n• Media encoding: ffmpeg, handbrake\n• Backups, long scripts, any command > 60 seconds\n\n❌ DO NOT USE THIS FOR: quick commands like ls, cat, mkdir - use 'shell' instead.\n\n⏱️ The command runs in background. You specify when to wake up (1-1440 minutes).\n\n🚫 DO NOT POLL: After starting the task, DO NOT call ShellDelayed_check repeatedly. The system will automatically notify you when the task completes or wake time arrives.",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2033,7 +2033,7 @@ validate + 可选冒烟测试。
                 })
 
         reg("ShellDelayedCheck", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2047,7 +2047,7 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedTerminate",
                 "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 ShellDelayed_list 获取任务ID。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2065,14 +2065,14 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedList",
                 "列出所有后台任务，显示任务ID、命令、状态和运行时长。无参数。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
                 })
 
         reg("ShellDelayedWait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2090,7 +2090,7 @@ validate + 可选冒烟测试。
 
         reg("ShellDelayedRemove",
                 "从任务列表中移除已完成或已终止的任务。运行中的任务需要先终止才能移除。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2159,7 +2159,7 @@ validate + 可选冒烟测试。
         // ========== SSH 持久化连接工具 ==========
         reg("SshConnect",
                 "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 SshExec 命令使用。支持密码或私钥认证。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2189,7 +2189,7 @@ validate + 可选冒烟测试。
 
         reg("SshExec",
                 "在一个已建立的持久化 SSH 连接上执行命令。支持同步和异步模式，可以维护会话上下文（如当前目录、环境变量）。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2219,7 +2219,7 @@ validate + 可选冒烟测试。
 
         reg("SshList",
                 "列出所有活跃的持久化 SSH 连接，显示别名、主机、用户和连接状态。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type":       "object",
                         "properties": map[string]interface{}{},
@@ -2227,7 +2227,7 @@ validate + 可选冒烟测试。
 
         reg("SshClose",
                 "关闭指定的持久化 SSH 连接并释放资源。先用 SshList 查看连接别名。",
-                "core", "expert",
+                "core", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{

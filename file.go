@@ -115,14 +115,30 @@ func ReadFileRange(filename string, startLine, endLine int) ([]string, error) {
         return lines, nil
 }
 
-// WriteFileLine 写入文件的指定行（替换原内容），若行号超出则自动扩展
+// WriteFileLine writes or inserts a single line at a specific position:
+//
+//   LineNum > 0  → overwrite line LineNum (existing behaviour)
+//   LineNum = 0  → truncate / create empty file (caller handles)
+//   LineNum < -1 → insert BEFORE line |LineNum|, shifting content down
+//
+// (LineNum == -1 is handled by the caller as "append to end" via AppendFileLine)
 func WriteFileLine(filename string, lineNum int, content string) error {
+        if lineNum == 0 {
+                return errors.New("line number must not be 0 (use caller helper for empty file)")
+        }
+
+        // Insert mode: negative lineNum < -1
+        if lineNum < -1 {
+                return InsertFileLine(filename, -lineNum, content)
+        }
+
+        // Overwrite mode: lineNum >= 1
         if lineNum < 1 {
-                return errors.New("line number must be >= 1")
+                return errors.New("line number must be >= 1 for overwrite mode")
         }
 
         // 读取文件所有行，如果文件不存在则视为空
-        lines, err := ReadAllLines(filename)
+        lines, err := ReadFileLines(filename)
         if err != nil && !os.IsNotExist(err) {
                 return err
         }
@@ -137,12 +153,48 @@ func WriteFileLine(filename string, lineNum int, content string) error {
         }
         lines[lineNum-1] = content
 
-        return WriteAllLines(filename, lines)
+        return WriteFileLines(filename, lines)
 }
 
-// ReadAllLines 读取文件所有行，返回字符串切片
+// InsertFileLine inserts a single line of content BEFORE the specified line
+// position, shifting all existing content at that position and below down by 1.
+// insertBefore is 1-based (1 = insert before line 1, i.e. prepend).
+func InsertFileLine(filename string, insertBefore int, content string) error {
+        if insertBefore < 1 {
+                return errors.New("insert position must be >= 1")
+        }
+
+        lines, err := ReadFileLines(filename)
+        if err != nil && !os.IsNotExist(err) {
+                return err
+        }
+        if os.IsNotExist(err) {
+                lines = []string{}
+        }
+
+        // Insert before position <insertBefore>. If insertBefore is beyond the
+        // file and the file has content, extend with empty lines first.
+        if insertBefore > len(lines) && len(lines) > 0 {
+                needed := insertBefore - len(lines)
+                lines = append(lines, make([]string, needed)...)
+        }
+        // For empty files (or insert beyond end), clamp idx to the end
+        if insertBefore > len(lines) {
+                insertBefore = len(lines) + 1
+        }
+
+        idx := insertBefore - 1
+        result := make([]string, 0, len(lines)+1)
+        result = append(result, lines[:idx]...)
+        result = append(result, content)
+        result = append(result, lines[idx:]...)
+
+        return WriteFileLines(filename, result)
+}
+
+// ReadFileLines 读取文件所有行，返回字符串切片
 // 若文件不存在，返回空切片与 nil 错误
-func ReadAllLines(filename string) ([]string, error) {
+func ReadFileLines(filename string) ([]string, error) {
         file, err := os.Open(filename)
         if err != nil {
                 if os.IsNotExist(err) {
@@ -168,9 +220,9 @@ func ReadAllLines(filename string) ([]string, error) {
         return lines, nil
 }
 
-// WriteAllLines 将字符串切片写入文件（覆盖原有内容）
+// WriteFileLines 将字符串切片写入文件（覆盖原有内容）
 // Uses atomic write: writes to a .tmp file first, then renames to prevent corruption.
-func WriteAllLines(filename string, lines []string) error {
+func WriteFileLines(filename string, lines []string) error {
         tmpFile := filename + ".tmp"
         file, err := os.OpenFile(tmpFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
         if err != nil {
@@ -232,15 +284,48 @@ func AppendFileLine(filename string, content string) error {
         return writer.Flush()
 }
 
-// WriteFileRange writes content to a specific range of lines in a file
+// WriteFileRange writes to or inserts into a specific range of lines:
+//
+//   Overwrite mode   — StartLine >= 1: replaces lines StartLine..EndLine with content
+//   Insert mode      — StartLine < 0 : inserts content BEFORE line |StartLine|,
+//                       shifting existing lines down. EndLine is ignored in insert mode.
 func WriteFileRange(filename string, startLine, endLine int, content string) error {
-        // 读取文件内容
-        lines, err := ReadAllLines(filename)
+        // 分割内容为行
+        newLines := strings.Split(content, "\n")
+        if len(newLines) > 0 && newLines[len(newLines)-1] == "" {
+                newLines = newLines[:len(newLines)-1]
+        }
+
+        // Insert mode: startLine < 0 → insert before |startLine|
+        if startLine < 0 {
+                insertBefore := -startLine
+                if insertBefore < 1 {
+                        return fmt.Errorf("invalid insert position: start_line=%d", startLine)
+                }
+                lines, err := ReadFileLines(filename)
+                if err != nil && !os.IsNotExist(err) {
+                        return err
+                }
+                if os.IsNotExist(err) {
+                        lines = []string{}
+                }
+                if insertBefore > len(lines) {
+                        needed := insertBefore - len(lines)
+                        lines = append(lines, make([]string, needed)...)
+                }
+                idx := insertBefore - 1
+                result := make([]string, 0, len(lines)+len(newLines))
+                result = append(result, lines[:idx]...)
+                result = append(result, newLines...)
+                result = append(result, lines[idx:]...)
+                return WriteFileLines(filename, result)
+        }
+
+        // Overwrite mode: startLine >= 1
+        lines, err := ReadFileLines(filename)
         if err != nil {
                 return err
         }
-
-        // 检查行号范围
         if startLine < 1 || startLine > len(lines) {
                 return fmt.Errorf("start_line out of range (1-%d)", len(lines))
         }
@@ -251,21 +336,12 @@ func WriteFileRange(filename string, startLine, endLine int, content string) err
                 endLine = len(lines)
         }
 
-        // 分割内容为行
-        newLines := strings.Split(content, "\n")
-        // 移除最后一个空行（如果有）
-        if len(newLines) > 0 && newLines[len(newLines)-1] == "" {
-                newLines = newLines[:len(newLines)-1]
-        }
-
-        // 替换指定范围的行
-        result := make([]string, 0, len(lines)- (endLine-startLine+1) + len(newLines))
+        result := make([]string, 0, len(lines)-(endLine-startLine+1)+len(newLines))
         result = append(result, lines[:startLine-1]...)
         result = append(result, newLines...)
         result = append(result, lines[endLine:]...)
 
-        // 写回文件
-        return WriteAllLines(filename, result)
+        return WriteFileLines(filename, result)
 }
 
 // TextSearchResult 表示单个文本搜索结果

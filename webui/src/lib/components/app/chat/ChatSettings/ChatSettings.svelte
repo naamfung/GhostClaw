@@ -245,6 +245,11 @@
                                         key: SETTINGS_KEYS.SKILL_CLEANUP_THRESHOLD_DAYS,
                                         label: 'Skill 清理天數',
                                         type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.ESCALATION_THRESHOLD,
+                                        label: '工具失敗升級次數',
+                                        type: SettingsFieldType.INPUT
                                 }
                         ]
                 },
@@ -431,6 +436,11 @@
                         // Skill cleanup threshold
                         if (processedConfig.skillCleanupThresholdDays !== undefined) {
                                 backendConfig.SkillCleanupThresholdDays = Number(processedConfig.skillCleanupThresholdDays) || 90;
+                        }
+
+                        // Escalation threshold
+                        if (processedConfig.escalationThreshold !== undefined) {
+                                backendConfig.EscalationThreshold = Number(processedConfig.escalationThreshold) || 3;
                         }
 
                         await fetch('/api/config', {

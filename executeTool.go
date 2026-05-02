@@ -237,7 +237,7 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
                         file.Close()
                         content = "Successfully created empty file: " + filename
                 }
-        } else if lineNum < 0 {
+        } else if lineNum == -1 {
                 // 追加到文件末尾
                 err := AppendFileLine(filename, text)
                 if err != nil {
@@ -246,8 +246,18 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 } else {
                         content = "Successfully appended to end of file"
                 }
+        } else if lineNum < -1 {
+                // 插入到指定行之前
+                insertBefore := -lineNum
+                err := InsertFileLine(filename, insertBefore, text)
+                if err != nil {
+                        content = "Error: " + err.Error()
+                        failed = true
+                } else {
+                        content = "Successfully inserted before line " + strconv.Itoa(insertBefore)
+                }
         } else {
-                // 写入指定行
+                // 写入指定行（覆写）
                 err := WriteFileLine(filename, lineNum, text)
                 if err != nil {
                         content = "Error: " + err.Error()
@@ -263,10 +273,10 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
+func execReadFileLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok := ec.ArgsMap["filename"].(string)
         if !ok || filename == "" {
-                return "Error: Invalid arguments for ReadAllLines", TaskStatusFailed
+                return "Error: Invalid arguments for ReadFileLines", TaskStatusFailed
         }
 
         // 二進制文件檢測
@@ -274,7 +284,7 @@ func execReadAllLines(ec *ToolExecContext) (string, TaskStatus) {
                 return getFileTypeDescription(filename), TaskStatusSuccess
         }
 
-        lines, err := ReadAllLines(filename)
+        lines, err := ReadFileLines(filename)
         if err != nil {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
@@ -549,11 +559,11 @@ func countLinesAndChars(path string) (lines int, chars int) {
         return strings.Count(content, "\n"), len([]rune(content))
 }
 
-func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
+func execWriteFileLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
         linesInterface, ok2 := ec.ArgsMap["lines"].([]interface{})
         if !ok1 || !ok2 || filename == "" {
-                return "Error: Invalid arguments for WriteAllLines", TaskStatusFailed
+                return "Error: Invalid arguments for WriteFileLines", TaskStatusFailed
         }
 
         lines := make([]string, len(linesInterface))
@@ -575,7 +585,7 @@ func execWriteAllLines(ec *ToolExecContext) (string, TaskStatus) {
         if appendMode {
                 err = AppendAllLines(filename, lines)
         } else {
-                err = WriteAllLines(filename, lines)
+                err = WriteFileLines(filename, lines)
         }
 
         var content string
@@ -638,15 +648,18 @@ func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok1 := ec.ArgsMap["filename"].(string)
         startLineFloat, ok2 := ec.ArgsMap["StartLine"].(float64)
         contentStr, ok3 := ec.ArgsMap["content"].(string)
-        if !ok1 || !ok2 || !ok3 || filename == "" || startLineFloat < 1 {
-                return "Error: Invalid arguments for WriteFileRange", TaskStatusFailed
+        if !ok1 || !ok2 || !ok3 || filename == "" || startLineFloat == 0 {
+                return "Error: Invalid arguments for WriteFileRange (StartLine cannot be 0)", TaskStatusFailed
         }
 
         startLine := int(startLineFloat)
         endLine := startLine
-        if endLineFloat, ok := ec.ArgsMap["EndLine"].(float64); ok && endLineFloat >= float64(startLine) {
+        if endLineFloat, ok := ec.ArgsMap["EndLine"].(float64); ok {
                 endLine = int(endLineFloat)
         }
+
+        // For insert mode (StartLine < 0), endLine is ignored
+        isInsert := startLine < 0
 
         err := WriteFileRange(filename, startLine, endLine, contentStr)
         if err != nil {
@@ -655,7 +668,9 @@ func execWriteFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 return content, TaskStatusFailed
         }
         var content string
-        if startLine == endLine {
+        if isInsert {
+                content = "Successfully inserted " + strconv.Itoa(len(strings.Split(contentStr, "\n"))) + " lines before line " + strconv.Itoa(-startLine)
+        } else if startLine == endLine {
                 content = "Successfully wrote to line " + strconv.Itoa(startLine)
         } else {
                 content = "Successfully wrote to lines " + strconv.Itoa(startLine) + "-" + strconv.Itoa(endLine)
@@ -2730,8 +2745,8 @@ func init() {
                 // File tools
                 "ReadFileLine":  execReadFileLine,
                 "WriteFileLine": execWriteFileLine,
-                "ReadAllLines":  execReadAllLines,
-                "WriteAllLines": execWriteAllLines,
+                "ReadFileLines":  execReadFileLines,
+                "WriteFileLines": execWriteFileLines,
                 "AppendToFile":  execAppendToFile,
                 "WriteFileRange": execWriteFileRange,
                 "ReadFileRange":  execReadFileRange,

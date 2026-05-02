@@ -55,9 +55,9 @@
 - search
 - visit
 - read_file_line
-- read_all_lines
+- read_file_lines
 - write_file_line
-- write_all_lines
+- write_file_lines
 - memory_save
 - memory_recall
 - memory_list

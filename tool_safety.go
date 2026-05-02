@@ -36,7 +36,7 @@ type readLevel int
 const (
         readLevelNone    readLevel = iota // 未讀取
         readLevelPartial                  // 部分讀取（ReadFileLine, TextGrep）
-        readLevelFull                     // 完整讀取（ReadAllLines）
+        readLevelFull                     // 完整讀取（ReadFileLines）
 )
 
 // escalatePrefix 通用錯誤升級 sentinel prefix。
@@ -47,7 +47,7 @@ const (
 const escalatePrefix = "__ESCALATE__:"
 
 // readWriteTracker 追踪已讀取的文件及其讀取級別，強制先讀後寫
-// 核心設計：只有完整讀取（ReadAllLines）才能滿足全量寫入工具的先讀要求，
+// 核心設計：只有完整讀取（ReadFileLines）才能滿足全量寫入工具的先讀要求，
 // 防止模型只讀一行就用幻覺重寫整個文件
 type readWriteTracker struct {
         mu               sync.RWMutex
@@ -62,7 +62,7 @@ var globalReadWriteTracker = &readWriteTracker{
         maxEntries:       200,
 }
 
-// MarkFileFullyRead 標記文件已被完整讀取（僅由 ReadAllLines 調用）
+// MarkFileFullyRead 標記文件已被完整讀取（僅由 ReadFileLines 調用）
 // 完整讀取是滿足任何寫入操作的最高級別要求
 func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
         t.mu.Lock()
@@ -80,7 +80,7 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
 
 // MarkFilePartialRead 標記文件已被部分讀取（由 ReadFileLine, TextGrep 調用）
 // 部分讀取不滿足任何寫入操作的先讀要求，僅作內部追蹤用途；
-// 所有寫入操作統一要求完整讀取（ReadAllLines）
+// 所有寫入操作統一要求完整讀取（ReadFileLines）
 func (t *readWriteTracker) MarkFilePartialRead(filePath string) {
         t.mu.Lock()
         defer t.mu.Unlock()
@@ -156,8 +156,8 @@ func normalizeFilePath(path string) string {
 // 新建文件（目標路徑不存在）無需先讀，直接允許寫入
 //
 // 安全策略：
-//   - 所有寫入工具（WriteFileLine, WriteAllLines, AppendToFile,
-//     WriteFileRange, TextReplace, TextTransform）統一要求完整讀取（ReadAllLines）
+//   - 所有寫入工具（WriteFileLine, WriteFileLines, AppendToFile,
+//     WriteFileRange, TextReplace, TextTransform）統一要求完整讀取（ReadFileLines）
 //   - ReadFileLine 或 TextGrep 僅讀取部分內容，不被視為已讀過文件
 //   - 防止模型只讀一行就用幻覺寫入/修改文件
 func CheckWritePermission(filePath string, toolName string) error {
@@ -172,7 +172,7 @@ func CheckWritePermission(filePath string, toolName string) error {
 
         // 所有寫入工具統一要求完整讀取
         if readLvl != readLevelFull {
-                return fmt.Errorf("安全檢查失敗：你必須先使用 ReadAllLines 完整讀取 %s 才能進行寫入/編輯操作（ReadFileLine / ReadFileRange 或 TextGrep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
+                return fmt.Errorf("安全檢查失敗：你必須先使用 ReadFileLines 完整讀取 %s 才能進行寫入/編輯操作（ReadFileLine / ReadFileRange 或 TextGrep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
         }
         return nil
 }
@@ -211,7 +211,17 @@ var globalErrorEscalator = &RepeatedErrorEscalator{
 	trackers: make(map[string]*escalationTracker),
 }
 
-const defaultEscalationThreshold = 3
+const defaultEscalationThresholdValue = 3
+
+// getEscalationThreshold returns the configurable escalation threshold
+// (1-5, default 3). Uses globalEscalationThreshold if set, otherwise falls
+// back to the hardcoded default.
+func getEscalationThreshold() int {
+	if globalEscalationThreshold > 0 {
+		return globalEscalationThreshold
+	}
+	return defaultEscalationThresholdValue
+}
 
 // RecordEscalation 記錄一次錯誤並判斷是否需要升級。
 // category: 錯誤類別
@@ -237,7 +247,7 @@ func (e *RepeatedErrorEscalator) RecordEscalation(
 	t.count++
 	t.messages = append(t.messages, errMsg)
 
-	if t.count >= defaultEscalationThreshold {
+	if t.count >= getEscalationThreshold() {
 		userMsg = e.buildEscalationMessage(t)
 		shouldStop = true
 		// 重置此追蹤器，為下一輪做準備
@@ -257,7 +267,7 @@ func (e *RepeatedErrorEscalator) buildEscalationMessage(t *escalationTracker) st
 		for i, msg := range t.messages {
 			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
 		}
-		sb.WriteString("你必須使用 ReadAllLines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
+		sb.WriteString("你必須使用 ReadFileLines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
 
 	case EscalateRepeatedFailure:
 		sb.WriteString("以下是你連續多次重複相同失敗操作的記錄：\n\n")
@@ -308,7 +318,7 @@ var allKnownToolNames = []string{
         "ShellDelayedList", "ShellDelayedWait", "ShellDelayedRemove",
         "Spawn", "SpawnCheck", "SpawnList", "SpawnCancel",
         // 文件操作
-        "ReadFileLine", "ReadFileRange", "WriteFileLine", "ReadAllLines", "WriteAllLines",
+        "ReadFileLine", "ReadFileRange", "WriteFileLine", "ReadFileLines", "WriteFileLines",
         "AppendToFile", "WriteFileRange",
         // 文本处理
         "TextSearch", "TextGrep", "TextReplace", "TextTransform",
@@ -535,7 +545,7 @@ func ShouldForceStop(iteration int) bool {
 // ReadOnlyTools 只读工具列表，这些工具可以并行执行
 var ReadOnlyTools = map[string]bool{
         "ReadFileLine": true,
-        "ReadAllLines":  true,
+        "ReadFileLines":  true,
         "TextSearch":     true,
         "TextGrep":       true,
         "MemoryRecall":   true,
@@ -588,10 +598,10 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 // 針對模型常見誤操作給出明確指引，防止死循環
                 switch toolName {
                 case "EnterPlanMode":
-                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 EnterPlanMode。\n\n當前可用操作：\n- 使用只讀工具（ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep）探索專案文件\n- 使用 Spawn 創建並行子代理\n- 完成當前階段後調用 NextPhase 推進\n- 如需退出 Plan Mode，使用 ExitPlanMode", currentPhase)
+                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 EnterPlanMode。\n\n當前可用操作：\n- 使用只讀工具（ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep）探索專案文件\n- 使用 Spawn 創建並行子代理\n- 完成當前階段後調用 NextPhase 推進\n- 如需退出 Plan Mode，使用 ExitPlanMode", currentPhase)
                 case "SmartShell", "Shell":
-                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/SmartShell。此階段僅允許只讀工具。\n\n請改用：\n- ReadFileLine / ReadFileRange / ReadAllLines 讀取文件\n- TextSearch / TextGrep 搜索內容\n- Spawn 創建只讀子代理\n\n完成當前階段後調用 NextPhase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
-                case "WriteFileLine", "WriteAllLines", "AppendToFile", "WriteFileRange", "TextReplace":
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/SmartShell。此階段僅允許只讀工具。\n\n請改用：\n- ReadFileLine / ReadFileRange / ReadFileLines 讀取文件\n- TextSearch / TextGrep 搜索內容\n- Spawn 創建只讀子代理\n\n完成當前階段後調用 NextPhase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
+                case "WriteFileLine", "WriteFileLines", "AppendToFile", "WriteFileRange", "TextReplace":
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行寫入操作。\n\n當前階段請使用只讀工具。完成後調用 NextPhase。", currentPhase, toolName)
                 default:
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用工具 '%s'。當前階段可用工具有限。完成後請調用 NextPhase 推進到下一階段。", currentPhase, toolName)
@@ -653,7 +663,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                                 Meta:    MessageMeta{Status: TaskStatusFailed},
                         }
                 }
-                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。\n\n當前階段僅可使用只讀工具（ReadFileLine, ReadFileRange, ReadAllLines, TextSearch, TextGrep, MemoryRecall, MemoryList）以及 Spawn、Todos。\n\n善用 Spawn 並行探索不同模塊。完成探索後調用 NextPhase 進入設計階段。"
+                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。\n\n當前階段僅可使用只讀工具（ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep, MemoryRecall, MemoryList）以及 Spawn、Todos。\n\n善用 Spawn 並行探索不同模塊。完成探索後調用 NextPhase 進入設計階段。"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
@@ -768,7 +778,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
 func isWriteTool(toolName string) bool {
         writeTools := map[string]bool{
                 "WriteFileLine": true,
-                "WriteAllLines": true,
+                "WriteFileLines": true,
                 "AppendToFile":  true,
                 "WriteFileRange": true,
                 "TextReplace":    true,
@@ -794,7 +804,7 @@ func extractFilePathFromArgs(args map[string]interface{}) string {
 
 // init 初始化：工具安全网启动日志
 // MarkFileFullyRead / MarkFilePartialRead 已集成到以下工具中：
-//   - executeTool.go: execReadAllLines -> MarkFileFullyRead
+//   - executeTool.go: execReadFileLines -> MarkFileFullyRead
 //   - executeTool.go: execReadFileLine -> MarkFilePartialRead
 //   - TextReplace_tools.go: handleTextSearch (TextGrep) -> MarkFilePartialRead
 func init() {

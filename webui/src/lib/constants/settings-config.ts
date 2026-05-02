@@ -45,6 +45,8 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         compressionThreshold: 0.8,
         // skill
         skillCleanupThresholdDays: 90,
+        // escalation
+        escalationThreshold: 3,
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -102,6 +104,8 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         compressionThreshold: 'Token 模式下觸發壓縮的閾值（0.1-0.9）。例如 0.8 表示 token 數超過 context window 嘅 80% 時觸發壓縮。',
         // skill
         skillCleanupThresholdDays: 'Skill 自動清理閾值（天）。長期未使用且使用次數少嘅 skill 超過此天數後會被自動刪除。範圍 30-365，預設 90。',
+        // escalation
+        escalationThreshold: '工具連續失敗升級閾值（次）。相同工具+相同參數連續失敗達到此次數後，系統會以用戶身份轉發錯誤記錄畀模型，強制佢改變策略。範圍 1-5，預設 3。',
         // security extra
         allowPrivateIPs: '允许访问私有 IP 地址（如 192.168.x.x、10.x.x.x）。仅在内网开发环境中启用。',
 };

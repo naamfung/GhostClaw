@@ -167,8 +167,8 @@ func TestStatusValuesArePascalCase(t *testing.T) {
 
 // oldToolNames 是已被重命名的舊蛇形工具名 — 它們不應再出現在源碼中
 var oldToolNames = []string{
-	"smart_shell", "shell_delayed", "read_all_lines", "read_file_line",
-	"read_file_range", "write_file_line", "write_all_lines", "write_file_range",
+	"smart_shell", "shell_delayed", "read_file_lines", "read_file_line",
+	"read_file_range", "write_file_line", "write_file_lines", "write_file_range",
 	"append_to_file", "text_search", "text_grep", "text_replace", "text_transform",
 	"browser_search", "browser_visit", "browser_click", "browser_type",
 	"browser_download", "browser_scroll", "browser_screenshot",

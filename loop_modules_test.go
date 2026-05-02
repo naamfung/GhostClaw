@@ -283,7 +283,7 @@ func TestRunAfterToolExec_AppendsResults(t *testing.T) {
 
 	results := []EnrichedMessage{
 		NewToolResultMessage("tc-1", "command output", TaskStatusSuccess, "SmartShell"),
-		NewToolResultMessage("tc-2", "file content", TaskStatusSuccess, "ReadAllLines"),
+		NewToolResultMessage("tc-2", "file content", TaskStatusSuccess, "ReadFileLines"),
 	}
 
 	dc := &dummyChannel{}

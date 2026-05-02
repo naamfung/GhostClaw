@@ -205,10 +205,10 @@ func TestExecReadFileLine_MissingArgs(t *testing.T) {
 	requireFailed(t, status, "ReadFileLine no args")
 }
 
-func TestExecReadAllLines_MissingArgs(t *testing.T) {
+func TestExecReadFileLines_MissingArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execReadAllLines(ec)
-	requireFailed(t, status, "ReadAllLines no args")
+	_, status := execReadFileLines(ec)
+	requireFailed(t, status, "ReadFileLines no args")
 }
 
 func TestExecReadFileRange_MissingArgs(t *testing.T) {
@@ -227,22 +227,22 @@ func TestExecReadFileRange_NoStartLine(t *testing.T) {
 // Write handlers
 // ============================================================
 
-func TestExecWriteAllLines_MissingArgs(t *testing.T) {
+func TestExecWriteFileLines_MissingArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execWriteAllLines(ec)
-	requireFailed(t, status, "WriteAllLines no args")
+	_, status := execWriteFileLines(ec)
+	requireFailed(t, status, "WriteFileLines no args")
 }
 
-func TestExecWriteAllLines_NoFilename(t *testing.T) {
+func TestExecWriteFileLines_NoFilename(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{"lines": []interface{}{"a", "b"}})
-	_, status := execWriteAllLines(ec)
-	requireFailed(t, status, "WriteAllLines no filename")
+	_, status := execWriteFileLines(ec)
+	requireFailed(t, status, "WriteFileLines no filename")
 }
 
-func TestExecWriteAllLines_NoLines(t *testing.T) {
+func TestExecWriteFileLines_NoLines(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{"filename": "/tmp/test.txt"})
-	_, status := execWriteAllLines(ec)
-	requireFailed(t, status, "WriteAllLines no lines")
+	_, status := execWriteFileLines(ec)
+	requireFailed(t, status, "WriteFileLines no lines")
 }
 
 func TestExecAppendToFile_MissingArgs(t *testing.T) {

@@ -15,7 +15,8 @@ export const NUMERIC_FIELDS = [
         'smartShellMaxDirectOutput',
         'maxAgentIterations',
         'compressionThreshold',
-        'skillCleanupThresholdDays'
+        'skillCleanupThresholdDays',
+        'escalationThreshold'
 ] as const;
 
 /**

@@ -191,8 +191,8 @@ func TestDetectXML_CaseInsensitive(t *testing.T) {
 
 func TestDetectXML_AllKnownTools(t *testing.T) {
 	knownTools := []string{
-		"SmartShell", "Shell", "ShellDelayed", "ReadAllLines", "ReadFileLine", "ReadFileRange",
-		"write_file", "WriteFileLine", "WriteAllLines", "search_files",
+		"SmartShell", "Shell", "ShellDelayed", "ReadFileLines", "ReadFileLine", "ReadFileRange",
+		"write_file", "WriteFileLine", "WriteFileLines", "search_files",
 		"EnterPlanMode", "Spawn", "SpawnCheck", "SpawnList", "SpawnBatch",
 		"Menu", "todo", "Todos", "grep", "list_directory", "web_search",
 		"BrowserNavigate", "BrowserClick", "BrowserType", "BrowserSnapshot",

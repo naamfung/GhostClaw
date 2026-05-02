@@ -104,6 +104,7 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                         "Threshold": globalCompressionThreshold,
                 },
                 "SkillCleanupThresholdDays": globalSkillCleanupThresholdDays,
+                "EscalationThreshold":       globalEscalationThreshold,
         }
 
         json.NewEncoder(w).Encode(configData)
@@ -255,6 +256,24 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 if days > 0 {
                         if err := globalConfigManager.UpdateSkillCleanupThresholdDays(days); err != nil {
                                 log.Printf("Warning: failed to update skill cleanup threshold: %v", err)
+                        }
+                }
+        }
+
+        // 更新工具失敗升級閾值
+        if v, ok := rawMap["EscalationThreshold"]; ok {
+                var threshold int
+                switch n := v.(type) {
+                case float64:
+                        threshold = int(math.Round(n))
+                case int:
+                        threshold = n
+                case int64:
+                        threshold = int(n)
+                }
+                if threshold > 0 {
+                        if err := globalConfigManager.UpdateEscalationThreshold(threshold); err != nil {
+                                log.Printf("Warning: failed to update escalation threshold: %v", err)
                         }
                 }
         }

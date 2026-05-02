@@ -47,6 +47,8 @@ export const SETTINGS_KEYS = {
         COMPRESSION_THRESHOLD: 'compressionThreshold',
         // Skill
         SKILL_CLEANUP_THRESHOLD_DAYS: 'skillCleanupThresholdDays',
+        // Escalation
+        ESCALATION_THRESHOLD: 'escalationThreshold',
         // Security extra
         ALLOW_PRIVATE_IPS: 'allowPrivateIPs',
 } as const;
