@@ -165,7 +165,7 @@ func TestCreateDefaultConfig_DefaultValues(t *testing.T) {
 		got   interface{}
 		want  interface{}
 	}{
-		{"MaxRequestSizeBytes", cfg.MaxRequestSizeBytes, 256 * 1024},
+		{"MaxRequestSizeBytes", cfg.MaxRequestSizeBytes, 0}, // 0 = 不限制
 		{"HTTPServer.Listen", cfg.HTTPServer.Listen, "0.0.0.0:10086"},
 		{"Security.EnableSSRFProtection", cfg.Security.EnableSSRFProtection, true},
 		{"CronConfig.MaxConcurrent", cfg.CronConfig.MaxConcurrent, 1},

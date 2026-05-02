@@ -126,7 +126,7 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.Models = make(map[string]*ModelConfig)
         config.Models[DEFAULT_MODEL_ID] = defaultModel
 
-        config.MaxRequestSizeBytes = 256 * 1024 // 256KB
+        config.MaxRequestSizeBytes = 0 // 不限制；由 API provider 自行處理 oversized request。過小嘅固定值（如 256KB）在長對話中會過早觸發 compressMessages 大幅裁剪上下文
         config.HTTPServer.Listen = "0.0.0.0:10086"
         config.DataDir = ""
         config.Security.EnableSSRFProtection = true
@@ -199,10 +199,8 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
                 }
         }
 
-        // MaxRequestSizeBytes 默认值
-        if config.MaxRequestSizeBytes == 0 {
-                config.MaxRequestSizeBytes = 256 * 1024
-        }
+        // MaxRequestSizeBytes：0 表示不限制（由 API provider 處理 oversized request）
+        // 不再強制設為 256KB，避免長對話中過早觸發 compressMessages 裁剪上下文
 
         // CronConfig
         if config.CronConfig.MaxConcurrent == 0 {
