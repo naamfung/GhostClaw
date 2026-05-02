@@ -486,7 +486,7 @@ func (s *GlobalSession) ConsumeIsNewSession() bool {
 
 // fullSessionReset 完整重置會話的所有子系統狀態。
 // 調用方必須在持有 session.mu 的情況下調用（inputMu 在內部嵌套獲取）。
-// reason: 重置原因（"idle"、"token_limit"、"new_command"）
+// reason: 重置原因（"idle"、"new_command"）
 func (s *GlobalSession) fullSessionReset(reason string) {
         // === 核心會話狀態 ===
         s.History = make([]Message, 0)
@@ -581,24 +581,6 @@ func (s *GlobalSession) CheckIdleReset() string {
                 log.Printf("[GlobalSession] Idle reset triggered: idle_timeout=%d mins, had_activity=%v, full_state_cleared",
                         cfg.IdleTimeoutMins, hadActivity)
                 return BuildIdleResetNotice(cfg.IdleTimeoutMins, hadActivity)
-        }
-
-        // 檢查 token 上限重置
-        if tracker.IsTokenBudgetExceeded() {
-                cfg := EffectiveSessionConfig()
-                s.mu.RLock()
-                hadActivity := len(s.History) > 0
-                s.mu.RUnlock()
-
-                s.mu.Lock()
-                s.fullSessionReset("token_limit")
-                s.mu.Unlock()
-
-                go s.persistEmptySession("token_limit")
-
-                log.Printf("[GlobalSession] Token limit reset triggered: limit=%d tokens, had_activity=%v, full_state_cleared",
-                        cfg.SessionTokenLimit, hadActivity)
-                return BuildTokenLimitNotice(cfg.SessionTokenLimit)
         }
 
         return ""

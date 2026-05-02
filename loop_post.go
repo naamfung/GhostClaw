@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -98,13 +97,6 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 				lastTokenUsage.PromptTokens, lastTokenUsage.CompletionTokens,
 				lastTokenUsage.TotalTokens, stats.TotalTokens)
 
-			if tracker.ShouldWarnTokenBudget() {
-				tracker.MarkTokenWarningSent()
-				cfg := EffectiveSessionConfig()
-				warnMsg := fmt.Sprintf("\n[系統提醒] 當前會話 token 使用量已達上限的 %.0f%% (%d/%d)。\n如需繼續長時間對話，建議使用 /new 開始新會話，或等待系統自動重置。\n",
-					cfg.TokenWarningRatio*100, stats.TotalTokens, cfg.SessionTokenLimit)
-				ch.WriteChunk(StreamChunk{Content: warnMsg})
-			}
 		}
 	}
 

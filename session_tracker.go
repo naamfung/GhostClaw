@@ -9,7 +9,7 @@ import (
 )
 
 // ============================================================================
-// SessionConfig — 會話管理配置（idle 重置 + token 追蹤）
+// SessionConfig — 會話管理配置（idle 重置）
 // ============================================================================
 
 // SessionConfig 會話管理配置
@@ -17,11 +17,6 @@ type SessionConfig struct {
         // Idle 重置
         IdleResetEnabled bool `toon:"IdleResetEnabled" json:"IdleResetEnabled"`   // 是否啟用 idle 重置
         IdleTimeoutMins  int  `toon:"IdleTimeoutMins" json:"IdleTimeoutMins"`       // idle 超時（分鐘），0=禁用，默認30
-
-        // Token 追蹤
-        TokenTrackEnabled  bool `toon:"TokenTrackEnabled" json:"TokenTrackEnabled"`       // 是否啟用 token 追蹤
-        SessionTokenLimit  int  `toon:"SessionTokenLimit" json:"SessionTokenLimit"`       // 單個會話 token 上限（估算），0=無限制，默認200000
-        TokenWarningRatio  float64 `toon:"TokenWarningRatio" json:"TokenWarningRatio"`   // 達到上限的此比例時發出警告（0.0~1.0），默認0.8
 }
 
 // DefaultSessionConfig 返回默認配置
@@ -29,9 +24,6 @@ func DefaultSessionConfig() SessionConfig {
         return SessionConfig{
                 IdleResetEnabled:  true,
                 IdleTimeoutMins:   30,
-                TokenTrackEnabled: true,
-                SessionTokenLimit: 200000,
-                TokenWarningRatio: 0.8,
         }
 }
 
@@ -44,15 +36,6 @@ func EffectiveSessionConfig() SessionConfig {
                 }
                 if globalConfig.Session.IdleTimeoutMins > 0 {
                         cfg.IdleTimeoutMins = globalConfig.Session.IdleTimeoutMins
-                }
-                if globalConfig.Session.TokenTrackEnabled {
-                        cfg.TokenTrackEnabled = true
-                }
-                if globalConfig.Session.SessionTokenLimit > 0 {
-                        cfg.SessionTokenLimit = globalConfig.Session.SessionTokenLimit
-                }
-                if globalConfig.Session.TokenWarningRatio > 0 {
-                        cfg.TokenWarningRatio = globalConfig.Session.TokenWarningRatio
                 }
         }
         return cfg
@@ -69,8 +52,7 @@ type SessionStats struct {
         TurnCount          int       `json:"turn_count"`            // 會話輪次（用戶消息數）
         LastPromptTokens   int       `json:"last_prompt_tokens"`    // 最近一次 API 調用的 prompt tokens（用於壓縮預檢）
         LastAPICallAt      time.Time `json:"last_api_call_at"`       // 最近一次 API 調用時間
-        TokenWarningSent   bool      `json:"token_warning_sent"`    // 是否已發送過 token 不足警告
-        AutoResetReason    string    `json:"auto_reset_reason"`     // 自動重置原因（"idle" 或 "token_limit"）
+        AutoResetReason    string    `json:"auto_reset_reason"`     // 自動重置原因（"idle"）
         AutoResetHadActivity bool    `json:"auto_reset_had_activity"` // 被重置的會話是否曾有活動
 }
 
@@ -158,42 +140,6 @@ func (st *SessionTracker) ShouldIdleReset(lastActivity time.Time) bool {
         return time.Now().After(idleDeadline)
 }
 
-// IsTokenBudgetExceeded 檢查是否超過 token 預算
-// 返回是否超限
-func (st *SessionTracker) IsTokenBudgetExceeded() bool {
-        if !st.cfg.TokenTrackEnabled || st.cfg.SessionTokenLimit <= 0 {
-                return false
-        }
-        st.mu.RLock()
-        defer st.mu.RUnlock()
-        return st.stats.TotalTokens >= st.cfg.SessionTokenLimit
-}
-
-// ShouldWarnTokenBudget 檢查是否需要發出 token 不足警告
-// 返回是否應該警告
-func (st *SessionTracker) ShouldWarnTokenBudget() bool {
-        if !st.cfg.TokenTrackEnabled || st.cfg.SessionTokenLimit <= 0 {
-                return false
-        }
-        st.mu.RLock()
-        defer st.mu.RUnlock()
-        if st.stats.TokenWarningSent {
-                return false
-        }
-        ratio := float64(st.stats.TotalTokens) / float64(st.cfg.SessionTokenLimit)
-        if ratio >= st.cfg.TokenWarningRatio {
-                return true
-        }
-        return false
-}
-
-// MarkTokenWarningSent 標記已發送 token 不足警告
-func (st *SessionTracker) MarkTokenWarningSent() {
-        st.mu.Lock()
-        defer st.mu.Unlock()
-        st.stats.TokenWarningSent = true
-}
-
 // ConsumeAutoResetReason 消費自動重置原因（調用後清空，僅消費一次）
 // 用於向用戶通知會話已被重置
 func (st *SessionTracker) ConsumeAutoResetReason() string {
@@ -213,9 +159,6 @@ func (st *SessionTracker) ConsumeAutoResetReason() string {
 // FormatStatsForPrompt 將會話統計格式化為注入到 system prompt 的信息
 // 模型可見，幫助模型了解當前會話的 token 消耗狀況
 func (st *SessionTracker) FormatStatsForPrompt() string {
-        if !st.cfg.TokenTrackEnabled {
-                return ""
-        }
         st.mu.RLock()
         defer st.mu.RUnlock()
         if st.stats.TotalTokens == 0 && st.stats.TurnCount == 0 {
@@ -251,15 +194,5 @@ func BuildIdleResetNotice(idleMinutes int, hadActivity bool) string {
         if hadActivity {
                 sb.WriteString("之前的對話上下文已被清除，記憶系統仍保留重要信息。\n")
         }
-        return sb.String()
-}
-
-// BuildTokenLimitNotice 構建 token 上限重置的通知消息
-func BuildTokenLimitNotice(tokenLimit int) string {
-        var sb strings.Builder
-        sb.WriteString("[系統通知] 當前會話的累計 token 使用量已達到上限（")
-        sb.WriteString(fmt.Sprintf("%d tokens", tokenLimit))
-        sb.WriteString("），會話已自動重置以確保後續對話品質。\n")
-        sb.WriteString("之前的對話上下文已被清除，記憶系統仍保留重要信息。\n")
         return sb.String()
 }
