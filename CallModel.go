@@ -2300,6 +2300,17 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
         // 检查请求体大小
         reqBody, _ := json.Marshal(data)
         maxSize := globalAPIConfig.MaxRequestSizeBytes
+        // 若未手動設定，根據模型 context window 動態計算合理上限
+        // JSON 中每 token 約佔 6-10 bytes，取 8 bytes/token，上限 10MB
+        if maxSize == 0 {
+                maxSize = contextLimit * 8
+                if maxSize > 10*1024*1024 {
+                        maxSize = 10 * 1024 * 1024
+                }
+                if maxSize < 256*1024 {
+                        maxSize = 256 * 1024 // 不低於舊有預設值
+                }
+        }
         if maxSize == 0 || len(reqBody) <= maxSize || IsDebug {
                 // 大小合适或调试模式，直接发送
                 chunkChan, err := sendRequestAndGetChunks(ctx, data, resolvedBaseURL, apiPath, apiKey, apiType, stream)
