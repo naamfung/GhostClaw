@@ -726,16 +726,16 @@ func GetConsolidationTools() []map[string]interface{} {
                 "parameters": map[string]interface{}{
                     "type": "object",
                     "properties": map[string]interface{}{
-                        "history_entry": map[string]interface{}{
+                        "HistoryEntry": map[string]interface{}{
                             "type":        "string",
                             "description": "一段总结关键事件/决策/主题的段落。以 [YYYY-MM-DD HH:MM] 开头。",
                         },
-                        "memory_update": map[string]interface{}{
+                        "MemoryUpdate": map[string]interface{}{
                             "type":        "string",
                             "description": "完整的更新后长期记忆（markdown 格式）。",
                         },
                     },
-                    "required": []string{"history_entry", "memory_update"},
+                    "required": []string{"HistoryEntry", "MemoryUpdate"},
                 },
             },
         },
@@ -744,10 +744,10 @@ func GetConsolidationTools() []map[string]interface{} {
 
 // HandleConsolidateMemory 处理记忆整合工具调用
 func HandleConsolidateMemory(args map[string]interface{}) (string, error) {
-    historyEntry, _ := args["history_entry"].(string)
-    memoryUpdate, _ := args["memory_update"].(string)
+    historyEntry, _ := args["HistoryEntry"].(string)
+    memoryUpdate, _ := args["MemoryUpdate"].(string)
     if historyEntry == "" {
-        return "", fmt.Errorf("history_entry is required")
+        return "", fmt.Errorf("HistoryEntry is required")
     }
     if globalUnifiedMemory != nil {
         globalUnifiedMemory.RecordSession("default", "tool", historyEntry, 0, []string{"manual"})

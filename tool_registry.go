@@ -1552,16 +1552,16 @@ validate + 可选冒烟测试。
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "history_entry": map[string]interface{}{
+                                "HistoryEntry": map[string]interface{}{
                                         "type":        "string",
                                         "description": "一段总结关键事件/决策/主题的段落。以 [YYYY-MM-DD HH:MM] 开头。",
                                 },
-                                "memory_update": map[string]interface{}{
+                                "MemoryUpdate": map[string]interface{}{
                                         "type":        "string",
                                         "description": "完整的更新后长期记忆（markdown 格式）。",
                                 },
                         },
-                        "required": []string{"history_entry", "memory_update"},
+                        "required": []string{"HistoryEntry", "MemoryUpdate"},
                 })
 
         // ========== Profile 工具 ==========
