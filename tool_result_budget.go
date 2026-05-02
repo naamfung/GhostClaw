@@ -31,6 +31,7 @@ type ToolResultBudget struct {
 
 // toolCategoryPrefixes maps keyword prefixes to their tool category thresholds.
 // A tool name is matched against these prefixes in order; the first match wins.
+// Matching is case-insensitive (resolveThreshold uses strings.ToLower on toolName).
 var toolCategoryPrefixes = []struct {
 	prefix   string
 	threshold int

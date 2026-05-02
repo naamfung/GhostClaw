@@ -396,10 +396,10 @@ func getBlockedToolsForPlanPhase(phase PlanPhase) map[string]bool {
         blocked["SkillUpdate"] = true
         blocked["SkillEvaluate"] = true
 
-        // SSH 寫入工具（保留 SshList）
-        blocked["SshConnect"] = true
-        blocked["SshExec"] = true
-        blocked["SshClose"] = true
+        // SSH 寫入工具（保留 SSHList）
+        blocked["SSHConnect"] = true
+        blocked["SSHExec"] = true
+        blocked["SSHClose"] = true
 
         // Cron 寫入工具（保留 CronList / cron_status）
         blocked["CronAdd"] = true

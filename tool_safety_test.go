@@ -317,7 +317,7 @@ func TestIsReadOnlyTool(t *testing.T) {
 		"ReadFileLine", "ReadFileLines", "TextSearch", "TextGrep",
 		"MemoryRecall", "MemoryList", "PlanRead", "PluginList",
 		"SkillList", "SkillGet", "CronList", "CronStatus",
-		"SpawnList", "SshList", "ProfileCheck",
+		"SpawnList", "SSHList", "ProfileCheck",
 	}
 	for _, name := range roTools {
 		if !IsReadOnlyTool(name) {

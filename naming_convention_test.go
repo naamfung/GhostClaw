@@ -253,6 +253,72 @@ var opencliActions = []string{
 	"Doctor", "DaemonStop",
 }
 
+// ==========================================================================
+// 規則 5a：工具名稱中的 Go acronym 必須全大楷
+// ==========================================================================
+
+// goAcronyms lists common acronyms that should always appear in all-caps in Go names.
+var goAcronyms = []string{
+	"SSH", "HTTP", "HTTPS", "URL", "URI", "API", "JSON", "XML", "HTML", "CSS",
+	"SQL", "ID", "UUID", "IP", "TCP", "UDP", "DNS", "FTP", "SFTP", "SCP",
+	"MCP", "CLI", "GUI", "DB", "IO", "OS", "PID", "UID", "GID", "TLS", "SSL",
+	"AWS", "GCP", "GPU", "CPU", "RAM", "JWT",
+}
+
+// allowedNonAcronymNames matches names that contain acronym-like substrings
+// but are actually well-known words/signals, not tech acronyms.
+var allowedNonAcronymNames = map[string]bool{
+	"Sighup": true, // Unix signal name
+}
+
+// splitPascalCase splits a PascalCase name into its constituent words.
+// e.g., "SSHConnect" → ["SSH", "Connect"], "BrowserClick" → ["Browser", "Click"]
+func splitPascalCase(name string) []string {
+	if name == "" {
+		return nil
+	}
+	var words []string
+	start := 0
+	// Track whether we're in an all-caps (acronym) run vs a regular word
+	for i := 1; i <= len(name); i++ {
+		if i == len(name) {
+			words = append(words, name[start:i])
+			break
+		}
+		// Transition: lowercase followed by uppercase → new word
+		if i > 0 && i-1 >= start && name[i-1] >= 'a' && name[i-1] <= 'z' && name[i] >= 'A' && name[i] <= 'Z' {
+			words = append(words, name[start:i])
+			start = i
+			continue
+		}
+		// Transition: uppercase followed by lowercase, and we're in an all-caps run of 2+ chars
+		// e.g., "SSHC" + "onnect" — the last uppercase before lowercase belongs to the new word
+		if i > start+1 && name[i] >= 'a' && name[i] <= 'z' && name[i-1] >= 'A' && name[i-1] <= 'Z' && name[i-2] >= 'A' && name[i-2] <= 'Z' {
+			words = append(words, name[start:i-1])
+			start = i - 1
+		}
+	}
+	return words
+}
+
+func TestToolNamesFollowGoAcronymConvention(t *testing.T) {
+	for toolName := range toolHandlerRegistry {
+		if allowedNonAcronymNames[toolName] {
+			continue
+		}
+		words := splitPascalCase(toolName)
+		for _, word := range words {
+			for _, acronym := range goAcronyms {
+				// Check if the PascalCase word matches the acronym case-insensitively
+				// but is not written in all-caps.
+				if strings.EqualFold(word, acronym) && word != acronym {
+					t.Errorf("tool name %q: word %q should be the all-caps acronym %q (Go convention)", toolName, word, acronym)
+				}
+			}
+		}
+	}
+}
+
 func TestOpenCliActionsArePascalCase(t *testing.T) {
 	for _, action := range opencliActions {
 		if isSnakeCase(action) {

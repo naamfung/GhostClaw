@@ -352,8 +352,8 @@ func TestE13LogScenario_Exact(t *testing.T) {
 		msgs := []Message{
 			mtMakeSystem("system prompt"),
 			mtMakeUser("⏰ 任务唤醒通知\n\n❌ 任务ID: task_7f6d4102"),
-			mtMakeAssistantWithToolCalls("我來修復", "c1", "SshConnect"),
-			mtMakeToolResult("connected", "c1_SshConnect"),
+			mtMakeAssistantWithToolCalls("我來修復", "c1", "SSHConnect"),
+			mtMakeToolResult("connected", "c1_SSHConnect"),
 		}
 		result := validateAndCleanMessages(msgs)
 		ml := NewMessageList(result)

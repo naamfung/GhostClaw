@@ -223,6 +223,134 @@ func TestExecReadFileRange_NoStartLine(t *testing.T) {
 	requireFailed(t, status, "ReadFileRange no start_line")
 }
 
+// TestExecReadFileLines_FileTooLarge 測試大文件拒絕整文件讀取
+func TestExecReadFileLines_FileTooLarge(t *testing.T) {
+	// 保存舊全局狀態
+	oldConfig := globalConfig
+	oldTracker := globalReadWriteTracker
+	oldOverrides := userContextLengthOverrides
+	defer func() {
+		globalConfig = oldConfig
+		globalReadWriteTracker = oldTracker
+		userContextLengthOverrides = oldOverrides
+	}()
+
+	// 初始化 read/write tracker
+	globalReadWriteTracker = newReadWriteTracker()
+
+	// 模擬一個 1000 tokens 的上下文: Config 中加入 model + user override 設置 context length
+	modelName := "small-ctx-model"
+	globalConfig = Config{
+		Models: map[string]*ModelConfig{
+			modelName: {
+				ModelBase: ModelBase{Model: modelName},
+			},
+		},
+	}
+	SetUserContextLengthOverrides(map[string]int{modelName: 1000})
+
+	// 驗證 context length 生效
+	if cl := getEffectiveContextLength(); cl != 1000 {
+		t.Fatalf("getEffectiveContextLength() = %d, want 1000", cl)
+	}
+
+	// 創建一個超過 50% 上下文的大文件 (> 1000*0.5*4 = 2000 bytes)
+	dir := t.TempDir()
+	largeFilePath := dir + "/large_file.txt"
+	largeContent := strings.Repeat("X", 3000) // ~750 tokens, > 500 tokens (50% of 1000)
+	if err := os.WriteFile(largeFilePath, []byte(largeContent), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	ec := newTestEC(map[string]interface{}{"filename": largeFilePath})
+	result, status := execReadFileLines(ec)
+
+	// 應該返回成功（警告信息），而不是失敗
+	if status != TaskStatusSuccess {
+		t.Errorf("ReadFileLines on large file: status = %v, want TaskStatusSuccess", status)
+	}
+
+	// 結果應該包含警告信息
+	if !strings.Contains(result, "Warning:") {
+		t.Error("ReadFileLines on large file: result should contain warning")
+	}
+	if !strings.Contains(result, "ReadFileRange") {
+		t.Error("ReadFileLines on large file: should suggest ReadFileRange")
+	}
+	if !strings.Contains(result, "文件過大") {
+		t.Error("ReadFileLines on large file: should mention file too large")
+	}
+}
+
+// TestExecReadFileLines_NormalFile 測試正常大小文件仍然可以讀取
+func TestExecReadFileLines_NormalFile(t *testing.T) {
+	oldConfig := globalConfig
+	oldTracker := globalReadWriteTracker
+	defer func() {
+		globalConfig = oldConfig
+		globalReadWriteTracker = oldTracker
+	}()
+
+	globalReadWriteTracker = newReadWriteTracker()
+
+	globalConfig = Config{
+		Models: map[string]*ModelConfig{
+			"test-model": {
+				ModelBase: ModelBase{
+					Model:         "test-model",
+					ContextLength: 64000, // 64k 上下文
+				},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	normalFilePath := dir + "/normal_file.txt"
+	normalContent := "line1\nline2\nline3\n"
+	if err := os.WriteFile(normalFilePath, []byte(normalContent), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	ec := newTestEC(map[string]interface{}{"filename": normalFilePath})
+	result, status := execReadFileLines(ec)
+
+	if status != TaskStatusSuccess {
+		t.Errorf("ReadFileLines on normal file: status = %v, want TaskStatusSuccess", status)
+	}
+	if !strings.Contains(result, "line1") {
+		t.Error("ReadFileLines on normal file: should contain file content")
+	}
+}
+
+// TestExecReadFileLines_NoModelsConfigured 測試無模型配置時使用安全默認值
+func TestExecReadFileLines_NoModelsConfigured(t *testing.T) {
+	oldConfig := globalConfig
+	oldTracker := globalReadWriteTracker
+	defer func() {
+		globalConfig = oldConfig
+		globalReadWriteTracker = oldTracker
+	}()
+
+	globalReadWriteTracker = newReadWriteTracker()
+	globalConfig = Config{} // 無模型配置 → 安全默認 4096 tokens
+
+	dir := t.TempDir()
+	filePath := dir + "/small.txt"
+	if err := os.WriteFile(filePath, []byte("hello"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	ec := newTestEC(map[string]interface{}{"filename": filePath})
+	result, status := execReadFileLines(ec)
+
+	if status != TaskStatusSuccess {
+		t.Errorf("ReadFileLines with no models: status = %v, want TaskStatusSuccess", status)
+	}
+	if !strings.Contains(result, "hello") {
+		t.Error("ReadFileLines with no models: should contain file content")
+	}
+}
+
 // ============================================================
 // Write handlers
 // ============================================================
@@ -321,19 +449,27 @@ func TestExecTodos_EmptyArgs(t *testing.T) {
 func TestExecSSHConnect_MissingArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
 	_, status := execSSHConnect(ec)
-	requireFailed(t, status, "SshConnect no args")
+	requireFailed(t, status, "SSHConnect no args")
 }
 
 func TestExecSSHExec_MissingArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
 	_, status := execSSHExec(ec)
-	requireFailed(t, status, "SshExec no args")
+	requireFailed(t, status, "SSHExec no args")
+}
+
+func TestExecSSHList_Executes(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execSSHList(ec)
+	if status != TaskStatusSuccess {
+		t.Log("SSHList failed (no active connections): OK")
+	}
 }
 
 func TestExecSSHClose_MissingArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
 	_, status := execSSHClose(ec)
-	requireFailed(t, status, "SshClose no args")
+	requireFailed(t, status, "SSHClose no args")
 }
 
 // ============================================================
@@ -662,36 +798,6 @@ func TestExecWriteFileRange_StartLineZero_Error(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{"filename": "/tmp/x", "StartLine": float64(0), "content": "x"})
 	_, status := execWriteFileRange(ec)
 	requireFailed(t, status, "WriteFileRange StartLine=0")
-}
-
-// ============================================================
-// SSH tools
-// ============================================================
-
-func TestExecSshConnect_MissingArgs(t *testing.T) {
-	ec := newTestEC(map[string]interface{}{})
-	_, status := execSSHConnect(ec)
-	requireFailed(t, status, "SshConnect missing args")
-}
-
-func TestExecSshExec_MissingArgs(t *testing.T) {
-	ec := newTestEC(map[string]interface{}{})
-	_, status := execSSHExec(ec)
-	requireFailed(t, status, "SshExec missing args")
-}
-
-func TestExecSshList_Executes(t *testing.T) {
-	ec := newTestEC(map[string]interface{}{})
-	_, status := execSSHList(ec)
-	if status != TaskStatusSuccess {
-		t.Log("SshList failed (no active connections): OK")
-	}
-}
-
-func TestExecSshClose_MissingArgs(t *testing.T) {
-	ec := newTestEC(map[string]interface{}{})
-	_, status := execSSHClose(ec)
-	requireFailed(t, status, "SshClose missing args")
 }
 
 // ============================================================

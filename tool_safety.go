@@ -344,7 +344,7 @@ var allKnownToolNames = []string{
         // Cron
         "CronAdd", "CronList", "CronRemove", "CronStatus", "Todos",
         // SSH
-        "SshConnect", "SshExec", "SshList", "SshClose",
+        "SSHConnect", "SSHExec", "SSHList", "SSHClose",
         // 技能
         "SkillList", "SkillCreate", "SkillDelete", "SkillGet",
         "SkillLoad", "SkillReload", "SkillUpdate", "SkillSuggest", "SkillStats",
@@ -444,7 +444,7 @@ func minInt(a, b, c int) int {
 }
 
 // snakeToPascalCase 將 snake_case 工具名轉換為 PascalCase
-// 例如：ssh_connect → SshConnect, browser_click → BrowserClick
+// 例如：ssh_connect → SSHConnect, browser_click → BrowserClick
 func snakeToPascalCase(s string) string {
         parts := strings.Split(s, "_")
         for i, part := range parts {
@@ -557,7 +557,7 @@ var ReadOnlyTools = map[string]bool{
         "CronList":       true,
         "CronStatus":     true,
         "SpawnList":      true,
-        "SshList":        true,
+        "SSHList":        true,
         "ProfileCheck":   true,
 }
 

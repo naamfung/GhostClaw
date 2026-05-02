@@ -192,8 +192,8 @@ func TestCompress_BeyondMaxHistory_GeneratesSummary(t *testing.T) {
 	// Add enough tool messages to exceed the limit
 	for i := 0; i < 60; i++ {
 		tcID := "call_" + string(rune('a'+i%26))
-		msgs = append(msgs, makeAssistantWithToolCalls("running tool...", tcID, "SshExec"))
-		msgs = append(msgs, makeToolResult(strings.Repeat("output ", 50), tcID+"_SshExec"))
+		msgs = append(msgs, makeAssistantWithToolCalls("running tool...", tcID, "SSHExec"))
+		msgs = append(msgs, makeToolResult(strings.Repeat("output ", 50), tcID+"_SSHExec"))
 	}
 	msgs = append(msgs, makeMsg("user", "What's the status?"))
 
@@ -490,12 +490,12 @@ func TestExtractStructuredData_ToolSummary(t *testing.T) {
 	cc := NewContextCompressor()
 	msgs := []Message{
 		makeMsg("user", "run some commands"),
-		makeAssistantWithToolCalls("", "t1", "SshExec"),
-		makeToolResult("[COMPLETED | Tool: SshExec] Success", "t1_SshExec"),
-		makeAssistantWithToolCalls("", "t2", "SshConnect"),
-		makeToolResult("Connection established", "t2_SshConnect"),
-		makeAssistantWithToolCalls("", "t3", "SshExec"),
-		makeToolResult("[COMPLETED | Tool: SshExec] Done", "t3_SshExec"),
+		makeAssistantWithToolCalls("", "t1", "SSHExec"),
+		makeToolResult("[COMPLETED | Tool: SSHExec] Success", "t1_SSHExec"),
+		makeAssistantWithToolCalls("", "t2", "SSHConnect"),
+		makeToolResult("Connection established", "t2_SSHConnect"),
+		makeAssistantWithToolCalls("", "t3", "SSHExec"),
+		makeToolResult("[COMPLETED | Tool: SSHExec] Done", "t3_SSHExec"),
 	}
 
 	s := cc.extractStructuredData(msgs)
@@ -552,8 +552,8 @@ func TestCompress_FullPipeline_PreservesContext(t *testing.T) {
 	// Many tool interactions simulating installation
 	for i := 0; i < 40; i++ {
 		tcID := "install_" + string(rune('a'+i%26))
-		msgs = append(msgs, makeAssistantWithToolCalls("正在执行安装步骤...", tcID, "SshExec"))
-		msgs = append(msgs, makeToolResult("command output: "+strings.Repeat("data ", 20), tcID+"_SshExec"))
+		msgs = append(msgs, makeAssistantWithToolCalls("正在执行安装步骤...", tcID, "SSHExec"))
+		msgs = append(msgs, makeToolResult("command output: "+strings.Repeat("data ", 20), tcID+"_SSHExec"))
 	}
 
 	// Success confirmation
@@ -564,8 +564,8 @@ func TestCompress_FullPipeline_PreservesContext(t *testing.T) {
 	msgs = append(msgs, makeMsg("user", "你是用什么工具管理 jail 的？"))
 
 	// Model answers
-	msgs = append(msgs, makeAssistantWithToolCalls("正在检查 jail 管理工具...", "check1", "SshExec"))
-	msgs = append(msgs, makeToolResult("Bastille is used", "check1_SshExec"))
+	msgs = append(msgs, makeAssistantWithToolCalls("正在检查 jail 管理工具...", "check1", "SSHExec"))
+	msgs = append(msgs, makeToolResult("Bastille is used", "check1_SSHExec"))
 	msgs = append(msgs, makeMsg("assistant", "用的是 Bastille（FreeBSD 容器管理工具）。"))
 
 	// More follow-up questions

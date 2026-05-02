@@ -273,6 +273,23 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
+// getEffectiveContextLength 從全局配置中的第一個可用模型獲取上下文長度，
+// 若無配置則返回安全默認值。返回的數值為 token 數量。
+func getEffectiveContextLength() int {
+        if globalConfig.Models != nil {
+                for _, m := range globalConfig.Models {
+                        if m.Model != "" {
+                                return GetModelContextLengthSafe(m.Model)
+                        }
+                }
+        }
+        return GetModelContextLengthSafe("")
+}
+
+// maxReadFileLinesFraction 定義 ReadFileLines 允許讀取的最大文件大小比例。
+// 若文件估算 token 數超過上下文長度的此比例，則拒絕整文件讀取並建議使用範圍讀取工具。
+const maxReadFileLinesFraction = 0.5
+
 func execReadFileLines(ec *ToolExecContext) (string, TaskStatus) {
         filename, ok := ec.ArgsMap["filename"].(string)
         if !ok || filename == "" {
@@ -282,6 +299,31 @@ func execReadFileLines(ec *ToolExecContext) (string, TaskStatus) {
         // 二進制文件檢測
         if isBinaryFile(filename) {
                 return getFileTypeDescription(filename), TaskStatusSuccess
+        }
+
+        // 防禦性檢查：若文件大小超過上下文長度的 50%，拒絕整文件讀取，
+        // 建議模型使用 ReadFileRange 進行範圍讀取
+        if info, statErr := os.Stat(filename); statErr == nil {
+                fileSize := info.Size()
+                contextLen := getEffectiveContextLength()
+                // 粗略估算：1 token ≈ 4 bytes，50% 上下文 ≈ contextLen * 2 bytes
+                maxSafeBytes := int64(float64(contextLen) * maxReadFileLinesFraction * 4)
+                if maxSafeBytes > 0 && fileSize > maxSafeBytes {
+                        // 由於 ReadFileLines 已被調用這一次，標記文件為已完整讀取，
+                        // 以便後續寫入操作不受阻
+                        globalReadWriteTracker.MarkFileFullyRead(filename)
+                        return fmt.Sprintf(
+                                "Warning: 文件過大，拒絕整文件讀取。\n"+
+                                        "文件大小: %d bytes (約 %d tokens)\n"+
+                                        "模型上下文上限: %d tokens\n"+
+                                        "超出安全閾值: %.0f%% (limit: %.0f%%)\n\n"+
+                                        "請改用 ReadFileRange 指定行範圍進行部分讀取，或使用其他範圍工具讀寫文件。\n"+
+                                        "文件已標記為完整讀取狀態，後續寫入操作不受影響。",
+                                fileSize, fileSize/4,
+                                contextLen,
+                                float64(fileSize)*100/float64(contextLen*4), maxReadFileLinesFraction*100,
+                        ), TaskStatusSuccess
+                }
         }
 
         lines, err := ReadFileLines(filename)
@@ -2737,10 +2779,10 @@ func init() {
                 "Opencli":     execOpenCLITool,
 
                 // SSH tools
-                "SshConnect": execSSHConnect,
-                "SshExec":    execSSHExec,
-                "SshList":    execSSHList,
-                "SshClose":   execSSHClose,
+                "SSHConnect": execSSHConnect,
+                "SSHExec":    execSSHExec,
+                "SSHList":    execSSHList,
+                "SSHClose":   execSSHClose,
 
                 // File tools
                 "ReadFileLine":  execReadFileLine,
@@ -2944,6 +2986,7 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
         }
 
         content = sanitizeContent(content)
+        content = GetGlobalToolResultBudget().CheckAndPersistResult(toolName, content)
         if content != "" {
                 ch.WriteChunk(StreamChunk{Content: content + "\n"})
         }

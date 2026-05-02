@@ -2174,8 +2174,8 @@ validate + 可选冒烟测试。
                 })
 
         // ========== SSH 持久化连接工具 ==========
-        reg("SshConnect",
-                "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 SshExec 命令使用。支持密码或私钥认证。",
+        reg("SSHConnect",
+                "建立一个到远程服务器的持久化 SSH 连接。连接会保存在会话管理器中，供后续的 SSHExec 命令使用。支持密码或私钥认证。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -2204,7 +2204,7 @@ validate + 可选冒烟测试。
                         "required": []string{"username", "host"},
                 })
 
-        reg("SshExec",
+        reg("SSHExec",
                 "在一个已建立的持久化 SSH 连接上执行命令。支持同步和异步模式，可以维护会话上下文（如当前目录、环境变量）。",
                 "core", "core",
                 map[string]interface{}{
@@ -2212,7 +2212,7 @@ validate + 可选冒烟测试。
                         "properties": map[string]interface{}{
                                 "SessionId": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "由 SshConnect 返回的会话 ID",
+                                        "description": "由 SSHConnect 返回的会话 ID",
                                 },
                                 "command": map[string]interface{}{
                                         "type":        "string",
@@ -2234,7 +2234,7 @@ validate + 可选冒烟测试。
                         "required": []string{"SessionId", "command"},
                 })
 
-        reg("SshList",
+        reg("SSHList",
                 "列出所有活跃的持久化 SSH 连接，显示别名、主机、用户和连接状态。",
                 "core", "core",
                 map[string]interface{}{
@@ -2242,8 +2242,8 @@ validate + 可选冒烟测试。
                         "properties": map[string]interface{}{},
                 })
 
-        reg("SshClose",
-                "关闭指定的持久化 SSH 连接并释放资源。先用 SshList 查看连接别名。",
+        reg("SSHClose",
+                "关闭指定的持久化 SSH 连接并释放资源。先用 SSHList 查看连接别名。",
                 "core", "core",
                 map[string]interface{}{
                         "type": "object",

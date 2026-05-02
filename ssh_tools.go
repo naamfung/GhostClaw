@@ -7,7 +7,7 @@ import (
     "github.com/toon-format/toon-go"
 )
 
-// handleSSHConnect 处理 SshConnect 调用
+// handleSSHConnect 处理 SSHConnect 调用
 func handleSSHConnect(argsMap map[string]interface{}) (string, error) {
     username, _ := argsMap["username"].(string)
     host, _ := argsMap["host"].(string)
@@ -23,10 +23,10 @@ func handleSSHConnect(argsMap map[string]interface{}) (string, error) {
         return "", fmt.Errorf("SSH connection failed: %w", err)
     }
 
-    return fmt.Sprintf("SSH connection established successfully.\nSession ID: %s\n\nYou can now use this session_id with SshExec to run commands.", sessionID), nil
+    return fmt.Sprintf("SSH connection established successfully.\nSession ID: %s\n\nYou can now use this session_id with SSHExec to run commands.", sessionID), nil
 }
 
-// handleSSHExec 处理 SshExec 调用
+// handleSSHExec 处理 SSHExec 调用
 // 返回 (输出内容, 任务状态)
 func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, TaskStatus) {
     sessionID, _ := argsMap["SessionId"].(string)
@@ -34,7 +34,7 @@ func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Chann
 
     sess, ok := globalSSHManager.GetSession(sessionID)
     if !ok {
-        return fmt.Sprintf("Error: SSH session '%s' not found. Use SshConnect to create one.", sessionID), TaskStatusFailed
+        return fmt.Sprintf("Error: SSH session '%s' not found. Use SSHConnect to create one.", sessionID), TaskStatusFailed
     }
 
     async, _ := argsMap["async"].(bool)
@@ -111,7 +111,7 @@ func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Chann
     }
 }
 
-// handleSSHList 处理 SshList 调用
+// handleSSHList 处理 SSHList 调用
 func handleSSHList() (string, error) {
     sessions := globalSSHManager.ListSessions()
     if len(sessions) == 0 {
@@ -124,7 +124,7 @@ func handleSSHList() (string, error) {
     return result, nil
 }
 
-// handleSSHClose 处理 ssh_close 调用
+// handleSSHClose 处理 SSHClose 调用
 func handleSSHClose(argsMap map[string]interface{}) (string, error) {
     sessionID, _ := argsMap["SessionId"].(string)
     if err := globalSSHManager.Close(sessionID); err != nil {

@@ -91,11 +91,11 @@ func detectBlockingCommand(command string) BlockingCommandInfo {
                 hasBackground := strings.Contains(lowerCmd, "&")
 
                 var iSuggestion = "强烈推荐使用原生 SSH 工具：\n" +
-                        "1. 使用 SshConnect 建立持久连接\n" +
-                        "2. 使用 SshExec 执行命令\n" +
+                        "1. 使用 SSHConnect 建立持久连接\n" +
+                        "2. 使用 SSHExec 执行命令\n" +
                         "示例：\n" +
-                        "  SshConnect(username=\"user\", host=\"host\", password=\"pass\") -> 得到 session_id\n" +
-                        "  SshExec(session_id=\"...\", command=\"ls -la\")"
+                        "  SSHConnect(username=\"user\", host=\"host\", password=\"pass\") -> 得到 session_id\n" +
+                        "  SSHExec(session_id=\"...\", command=\"ls -la\")"
 
                 if !strings.HasPrefix(strings.TrimSpace(command), "sshpass") {
                         hasPasswordAuth := strings.Contains(lowerCmd, "passwordauthentication=yes") ||

@@ -870,7 +870,7 @@ var monitoredTools = map[string]bool{
         "Shell":         true,
         "SmartShell":   true,
         "ShellDelayed": true,
-        "SshExec":      true,
+        "SSHExec":      true,
 }
 
 // LoopDetector 循环检测器
@@ -988,8 +988,8 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
                 }
         }
 
-        // 对于 SshExec，使用命令内容作为指纹
-        if toolName == "SshExec" {
+        // 对于 SSHExec，使用命令内容作为指纹
+        if toolName == "SSHExec" {
                 if cmd, ok := args["command"].(string); ok {
                         return toolName + ":" + cmd
                 }
