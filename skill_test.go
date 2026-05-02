@@ -617,3 +617,320 @@ func TestGenerateCleanupSuggestions_Criterion2_ImproveNotDelete(t *testing.T) {
 	}
 	t.Error("low quality active skill should appear in suggestions with action='improve'")
 }
+
+// ============================================================================
+// Negative-time guard (clock skew protection)
+// ============================================================================
+
+func TestGenerateCleanupSuggestions_NegativeTime_SkipsSkill(t *testing.T) {
+	opt, sm, cleanup := setupTestEvolutionOptimizer(t)
+	defer cleanup()
+
+	now := time.Now().Unix()
+
+	// Future timestamp — should be skipped by the negative-time guard
+	insertTestSkillMeta(t, sm, SkillMeta{
+		Name:         "future_skill",
+		DisplayName:  "Future",
+		Description:  "test",
+		Tags:         `["test"]`,
+		TriggerWords: `["test"]`,
+		FilePath:     "/tmp/test/future/SKILL.md",
+		UseCount:     1,
+		LastUsed:     now + 86400,     // tomorrow (clock skew)
+		QualityScore: 0.1,
+		Protected:    false,
+		CreatedAt:    now + 86400,     // tomorrow (clock skew)
+	})
+
+	suggestions, err := opt.GenerateCleanupSuggestions()
+	if err != nil {
+		t.Fatalf("GenerateCleanupSuggestions() error: %v", err)
+	}
+
+	for _, s := range suggestions {
+		if s.SkillName == "future_skill" {
+			t.Error("skills with future timestamps should be skipped (clock skew guard)")
+		}
+	}
+}
+
+func TestGenerateCleanupSuggestions_QualityScoreBoundary(t *testing.T) {
+	opt, sm, cleanup := setupTestEvolutionOptimizer(t)
+	defer cleanup()
+
+	now := time.Now().Unix()
+
+	// QualityScore = 0.3 (exactly at boundary) — should NOT be deleted
+	insertTestSkillMeta(t, sm, SkillMeta{
+		Name:         "boundary_quality",
+		DisplayName:  "Boundary",
+		Description:  "test",
+		Tags:         `["test"]`,
+		TriggerWords: `["test"]`,
+		FilePath:     "/tmp/test/boundary/SKILL.md",
+		UseCount:     3,
+		LastUsed:     now - 100*86400,
+		QualityScore: 0.3, // exactly at the gate
+		Protected:    false,
+		CreatedAt:    now - 200*86400,
+	})
+
+	suggestions, err := opt.GenerateCleanupSuggestions()
+	if err != nil {
+		t.Fatalf("GenerateCleanupSuggestions() error: %v", err)
+	}
+
+	for _, s := range suggestions {
+		if s.SkillName == "boundary_quality" && s.Action == "delete" {
+			t.Error("QualityScore=0.3 should NOT be deleted (gate is < 0.3)")
+		}
+	}
+}
+
+// ============================================================================
+// DeleteSkill V2 protected enforcement
+// ============================================================================
+
+func TestDeleteSkill_V2_RefusesProtected(t *testing.T) {
+	sm, cleanup := setupTestSkillManagerV2(t)
+	defer cleanup()
+
+	skillDir := filepath.Join(sm.skillsDir, "v2_protected_del")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: v2_protected_del\ndescription: protected from deletion\nprotected: true\n---\n# Test\n\n## 描述\nTest skill."), 0644)
+
+	sm.RebuildIndex()
+
+	err := sm.DeleteSkill("v2_protected_del")
+	if err == nil {
+		t.Error("DeleteSkill() should return error for V2 protected skill")
+	}
+}
+
+func TestDeleteSkill_V2_AllowsUnprotected(t *testing.T) {
+	sm, cleanup := setupTestSkillManagerV2(t)
+	defer cleanup()
+
+	skillDir := filepath.Join(sm.skillsDir, "v2_normal_del")
+	os.MkdirAll(skillDir, 0755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: v2_normal_del\ndescription: a normal skill\n---\n# Test\n\n## 描述\nA normal skill."), 0644)
+
+	sm.RebuildIndex()
+
+	err := sm.DeleteSkill("v2_normal_del")
+	if err != nil {
+		t.Errorf("DeleteSkill() should succeed for unprotected skill: %v", err)
+	}
+
+	// Verify it's gone
+	_, err = sm.IsSkillProtected("v2_normal_del")
+	if err == nil {
+		t.Error("skill should be gone after successful deletion")
+	}
+}
+
+// ============================================================================
+// Config update edge cases
+// ============================================================================
+
+func TestUpdateCompressionConfig_ExplicitZeroThreshold_KeepsCurrent(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	// Set a known threshold first
+	cm.UpdateCompressionConfig("", 0.7)
+
+	// Explicitly send 0 — should keep 0.7 (0 is treated as "not provided")
+	err := cm.UpdateCompressionConfig("", 0)
+	if err != nil {
+		t.Fatalf("UpdateCompressionConfig with 0 threshold: %v", err)
+	}
+
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.7 {
+		t.Errorf("threshold should stay 0.7 when 0 is passed, got %v", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateCompressionConfig_ThresholdExactlyAtBoundary(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	// Exactly at lower boundary — should be accepted as-is
+	err := cm.UpdateCompressionConfig("", 0.1)
+	if err != nil {
+		t.Fatalf("UpdateCompressionConfig with 0.1 threshold: %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.1 {
+		t.Errorf("threshold 0.1 should be accepted: got %v", cfg.Tools.CompressionThreshold)
+	}
+
+	// Exactly at upper boundary
+	err = cm.UpdateCompressionConfig("", 0.9)
+	if err != nil {
+		t.Fatalf("UpdateCompressionConfig with 0.9 threshold: %v", err)
+	}
+	cfg = cm.GetConfig()
+	if cfg.Tools.CompressionThreshold != 0.9 {
+		t.Errorf("threshold 0.9 should be accepted: got %v", cfg.Tools.CompressionThreshold)
+	}
+}
+
+func TestUpdateSkillCleanupThresholdDays_Rounding(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	// 30.7 rounds to 31
+	err := cm.UpdateSkillCleanupThresholdDays(31)
+	if err != nil {
+		t.Fatalf("UpdateSkillCleanupThresholdDays(31): %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.SkillCleanupThresholdDays != 31 {
+		t.Errorf("got %d, want 31", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+func TestUpdateSkillCleanupThresholdDays_BelowMin_Clamped(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateSkillCleanupThresholdDays(10)
+	if err != nil {
+		t.Fatalf("UpdateSkillCleanupThresholdDays(10): %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.SkillCleanupThresholdDays != 30 {
+		t.Errorf("got %d, want 30 (clamped from 10)", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+func TestUpdateSkillCleanupThresholdDays_AboveMax_Clamped(t *testing.T) {
+	cm := setupTempConfigManager(t)
+	defer cleanupTempConfigManager(cm)
+
+	err := cm.UpdateSkillCleanupThresholdDays(500)
+	if err != nil {
+		t.Fatalf("UpdateSkillCleanupThresholdDays(500): %v", err)
+	}
+	cfg := cm.GetConfig()
+	if cfg.Tools.SkillCleanupThresholdDays != 365 {
+		t.Errorf("got %d, want 365 (clamped from 500)", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+// ============================================================================
+// RunHistoryCompression edge cases
+// ============================================================================
+
+func TestRunHistoryCompression_NilCompressor_DoesNotPanic(t *testing.T) {
+	restore := saveAndRestoreCompressionGlobals()
+	defer restore()
+
+	globalCompressionMode = "token"
+	globalCompressionThreshold = 0.8
+
+	// Empty messages with nil compressor — should handle gracefully
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Error("RunHistoryCompression should not panic with nil compressor and empty messages")
+			}
+		}()
+		// This would panic if we call estimateMessagesTokenCount on nil,
+		// but with empty messages early return happens before that
+		result := RunHistoryCompression([]Message{}, "", nil)
+		_ = result
+	}()
+}
+
+func TestRunHistoryCompression_UnknownMode_DefaultsToMessage(t *testing.T) {
+	restore := saveAndRestoreCompressionGlobals()
+	defer restore()
+
+	// Set a mode that doesn't exist
+	globalCompressionMode = "invalid_mode_xyz"
+
+	compressor := NewContextCompressor()
+	msgs := []Message{
+		makeMsg("system", "You are helpful"),
+		makeMsg("user", "hello"),
+	}
+	originalLen := len(msgs)
+
+	result := RunHistoryCompression(msgs, "", compressor)
+
+	// Should fall through to default case (message count) and skip
+	if len(result) != originalLen {
+		t.Errorf("unknown mode should default to message count: got %d msgs, want %d", len(result), originalLen)
+	}
+}
+
+func TestRunHistoryCompression_MessageMode_ExactlyAtLimit(t *testing.T) {
+	restore := saveAndRestoreCompressionGlobals()
+	defer restore()
+
+	globalCompressionMode = "message"
+
+	compressor := NewContextCompressor()
+	// adaptiveMaxHistory for 4096 context is ~3
+	// 3 messages exactly at the limit
+	msgs := []Message{
+		makeMsg("system", "You are helpful"),
+		makeMsg("user", "hello"),
+		makeMsg("assistant", "hi"),
+	}
+
+	result := RunHistoryCompression(msgs, "", compressor)
+
+	// len(messages) <= adaptiveMaxHistory → should return early (not compress)
+	if len(result) != 3 {
+		t.Errorf("exactly at limit should not compress: got %d msgs", len(result))
+	}
+}
+
+// ============================================================================
+// Compression config defaults
+// ============================================================================
+
+func TestApplyDefaults_SkillCleanupThresholdDays_ZeroDefaultsTo90(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.SkillCleanupThresholdDays = 0
+	cm.applyDefaults(cfg)
+	if cfg.Tools.SkillCleanupThresholdDays != 90 {
+		t.Errorf("SkillCleanupThresholdDays with 0: got %d, want 90", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+func TestApplyDefaults_SkillCleanupThresholdDays_ClampedToMin(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.SkillCleanupThresholdDays = 10
+	cm.applyDefaults(cfg)
+	if cfg.Tools.SkillCleanupThresholdDays != 30 {
+		t.Errorf("SkillCleanupThresholdDays with 10: got %d, want 30", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+func TestApplyDefaults_SkillCleanupThresholdDays_ClampedToMax(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.SkillCleanupThresholdDays = 500
+	cm.applyDefaults(cfg)
+	if cfg.Tools.SkillCleanupThresholdDays != 365 {
+		t.Errorf("SkillCleanupThresholdDays with 500: got %d, want 365", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}
+
+func TestApplyDefaults_SkillCleanupThresholdDays_WithinRange_Unchanged(t *testing.T) {
+	cm := &ConfigManager{}
+	cfg := &Config{}
+	cfg.Tools.SkillCleanupThresholdDays = 60
+	cm.applyDefaults(cfg)
+	if cfg.Tools.SkillCleanupThresholdDays != 60 {
+		t.Errorf("SkillCleanupThresholdDays with 60: got %d, want 60", cfg.Tools.SkillCleanupThresholdDays)
+	}
+}

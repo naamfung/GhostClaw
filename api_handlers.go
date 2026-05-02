@@ -5,6 +5,7 @@ import (
         "fmt"
         "io"
         "log"
+        "math"
         "net/http"
         "os"
         "path/filepath"
@@ -242,8 +243,17 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
 
         // 更新 Skill 清理閾值
         if v, ok := rawMap["SkillCleanupThresholdDays"]; ok {
-                if days, ok := v.(float64); ok {
-                        if err := globalConfigManager.UpdateSkillCleanupThresholdDays(int(days)); err != nil {
+                var days int
+                switch n := v.(type) {
+                case float64:
+                        days = int(math.Round(n))
+                case int:
+                        days = n
+                case int64:
+                        days = int(n)
+                }
+                if days > 0 {
+                        if err := globalConfigManager.UpdateSkillCleanupThresholdDays(days); err != nil {
                                 log.Printf("Warning: failed to update skill cleanup threshold: %v", err)
                         }
                 }
@@ -843,21 +853,35 @@ func (s *HTTPServer) updateSkill(w http.ResponseWriter, r *http.Request, name st
         json.NewEncoder(w).Encode(map[string]string{"message": "技能更新成功"})
 }
 
-// deleteSkill 删除技能
+// deleteSkill 删除技能（用 V2 以支持 Protected 檢查，fallback 到 v1）
 func (s *HTTPServer) deleteSkill(w http.ResponseWriter, _ *http.Request, name string) {
+        // 優先使用 V2 刪除（有 Protected 檢查 + 清理整個目錄 + 清理 DB）
+        if globalSkillManagerV2 != nil {
+                if err := globalSkillManagerV2.DeleteSkill(name); err != nil {
+                        http.Error(w, fmt.Sprintf(`{"error": "删除技能失败: %s"}`, err.Error()), http.StatusInternalServerError)
+                        return
+                }
+                // 同步 v1 緩存
+                if globalSkillManager != nil {
+                        globalSkillManager.Reload()
+                }
+                w.WriteHeader(http.StatusOK)
+                json.NewEncoder(w).Encode(map[string]string{"message": "技能删除成功"})
+                return
+        }
+
+        // Fallback 到 v1
         if globalSkillManager == nil {
                 http.Error(w, `{"error": "技能管理器未初始化"}`, http.StatusInternalServerError)
                 return
         }
 
-        // 检查技能是否存在
         _, ok := globalSkillManager.GetSkill(name)
         if !ok {
                 http.Error(w, `{"error": "技能不存在"}`, http.StatusNotFound)
                 return
         }
 
-        // 删除技能
         if err := globalSkillManager.DeleteSkill(name); err != nil {
                 http.Error(w, fmt.Sprintf(`{"error": "删除技能失败: %s"}`, err.Error()), http.StatusInternalServerError)
                 return
@@ -882,22 +906,28 @@ func (s *HTTPServer) protectSkill(w http.ResponseWriter, r *http.Request, name s
                 return
         }
 
-        // Read body for explicit protected value
+        // Read body for explicit protected value (use *bool to distinguish
+        // "not provided" from "explicitly set to false")
         var body struct {
-                Protected bool `json:"Protected"`
+                Protected *bool `json:"Protected"`
         }
         if r.Body != nil {
                 bodyBytes, _ := io.ReadAll(r.Body)
                 if len(bodyBytes) > 0 {
-                        json.Unmarshal(bodyBytes, &body)
+                        if err := json.Unmarshal(bodyBytes, &body); err != nil {
+                                http.Error(w, fmt.Sprintf(`{"error": "解析請求體失敗: %v"}`, err), http.StatusBadRequest)
+                                return
+                        }
                 }
                 r.Body.Close()
         }
 
         // Toggle or set explicitly
-        newProtected := !currentProtected
-        if body.Protected {
-                newProtected = true
+        var newProtected bool
+        if body.Protected != nil {
+                newProtected = *body.Protected
+        } else {
+                newProtected = !currentProtected // no body → toggle
         }
 
         if err := globalSkillManagerV2.SetSkillProtected(name, newProtected); err != nil {

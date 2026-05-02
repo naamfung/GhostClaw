@@ -352,6 +352,11 @@ func (seo *SkillEvolutionOptimizer) GenerateCleanupSuggestions() ([]CleanupSugge
 		daysSinceLastUse := float64(now-skill.LastUsed) / 86400.0
 		daysSinceCreation := float64(now-skill.CreatedAt) / 86400.0
 
+		// Guard against clock skew — negative days mean future timestamps, skip
+		if daysSinceLastUse < 0 || daysSinceCreation < 0 {
+			continue
+		}
+
 		// Criterion 1: 從未使用且創建超過 30 日
 		if skill.UseCount == 0 && daysSinceCreation > 30 {
 			suggestions = append(suggestions, CleanupSuggestion{
