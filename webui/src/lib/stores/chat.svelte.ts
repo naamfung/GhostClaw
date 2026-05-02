@@ -72,6 +72,8 @@ class ChatStore {
         private conversationStateTimestamps = new SvelteMap<string, ConversationStateEntry>();
         private activeConversationId = $state<string | null>(null);
         private isStreamingActive = $state(false);
+        /** 追蹤當前是否在 agentic task 內（收到 task_running:true 但未收到 false） */
+        private _taskRunning = $state(false);
         private isEditModeActive = $state(false);
         private addFilesHandler: ((files: File[]) => void) | null = $state(null);
         pendingEditMessageId = $state<string | null>(null);
@@ -688,12 +690,16 @@ class ChatStore {
                                 timings?: ChatMessageTimings,
                                 toolCallContent?: string
                         ) => {
-                                // 注意：不在此清除 isLoading / isStreamingActive！
-                                // AgentLoop 一個任務內會多次調用 CallModel，每次 CallModel
-                                // 結束都觸發 onComplete。若在此清除會導致：
-                                //   1. 按鈕由「停止」跳回「發送」→ 用戶以為任務結束
-                                //   2. auto-scroll interval 停止 → 後續輸出不再滾屏
-                                // 只有 onTaskRunning(false) 才是真正任務結束，由佢負責清除。
+                                // 僅在非 agentic task 時清除 loading/streaming 狀態。
+                                // AgentLoop 一個 task 內多次 CallModel，每次結束都觸發
+                                // onComplete。若 _taskRunning=true 就唔應該清除，否則：
+                                //   1. 按鈕由「停止」跳回「發送」
+                                //   2. auto-scroll interval 停止
+                                // 斜槓命令（/new /stop）冇 task_running:true，會正常清除。
+                                if (!this._taskRunning) {
+                                        this.setStreamingActive(false);
+                                        this.setChatLoading(assistantMessage.convId, false);
+                                }
                                 // 使用分离收集的内容构建最终结果
                                 const combinedContent = hasStreamedChunks
                                         ? buildCombinedContent()
@@ -773,6 +779,7 @@ class ChatStore {
                                 if (onError) onError(error);
                         },
                         onTaskRunning: async (running: boolean, isReconnect?: boolean) => {
+                                this._taskRunning = running;
                                 if (running) {
                                         // The first task_running=true is always the normal AgentLoop
                                         // start (sendMessage already created the assistant message).
