@@ -34,6 +34,7 @@
         let filteredActors = $state<Actor[]>([]);
         let roles = $state<RoleInfo[]>([]);
         let models = $state<ModelInfo[]>([]);
+        let mainModelName = $state<string>('');
         let searchQuery = $state('');
         let isLoading = $state(false);
         let selectedActor = $state<Actor | null>(null);
@@ -43,11 +44,19 @@
         let actorToDelete = $state<Actor | null>(null);
         let isSettingDefault = $state(false);
 
+        // 获取默认模型名称（优先用 mainModelName，fallback 到 models 中标记为 IsDefault 的）
+        function getDefaultModelName(): string {
+                if (mainModelName) return mainModelName;
+                const defaultModel = models.find(m => (m as any).IsDefault);
+                if (defaultModel) return defaultModel.Name;
+                return models.length > 0 ? models[0].Name : 'main';
+        }
+
         // 编辑表单字段
         let editForm = $state({
                 Name: '',
                 Role: '',
-                Model: 'main',
+                Model: '',
                 CharacterName: '',
                 CharacterBackground: '',
                 Description: ''
@@ -87,6 +96,7 @@
                         if (response.ok) {
                                 const data = await response.json();
                                 models = data.Models || [];
+                                mainModelName = data.MainModel || '';
                         }
                 } catch (error) {
                         console.error('加载模型列表失败:', error);
@@ -109,10 +119,11 @@
 
         function handleCreate() {
                 editingActor = null;
+                const defaultModel = getDefaultModelName();
                 editForm = {
                         Name: '',
                         Role: roles[0]?.Name || 'coder',
-                        Model: 'main',
+                        Model: defaultModel,
                         CharacterName: '',
                         CharacterBackground: '',
                         Description: ''
@@ -122,10 +133,11 @@
 
         function handleEdit(actor: Actor) {
                 editingActor = actor;
+                const defaultModel = getDefaultModelName();
                 editForm = {
                         Name: actor.Name,
                         Role: actor.Role,
-                        Model: actor.Model || 'main',
+                        Model: actor.Model || defaultModel,
                         CharacterName: actor.CharacterName,
                         CharacterBackground: actor.CharacterBackground,
                         Description: actor.Description
@@ -294,7 +306,7 @@
                                                                 <option value={m.Name}>{m.Name} ({m.Model})</option>
                                                         {/each}
                                                         {#if models.length === 0}
-                                                                <option value="main">main</option>
+                                                                <option value={editForm.Model || getDefaultModelName()}>{editForm.Model || getDefaultModelName()}</option>
                                                         {/if}
                                                 </select>
                                                 <p class="text-xs text-muted-foreground">选择演员使用的模型配置</p>
@@ -458,7 +470,7 @@
 
                                                                 <div>
                                                                         <h4 class="mb-1 text-xs font-medium text-muted-foreground">模型配置</h4>
-                                                                        <Badge variant="outline">{selectedActor.Model}</Badge>
+                                                                        <Badge variant="outline">{selectedActor.Model || getDefaultModelName()}</Badge>
                                                                 </div>
 
                                                                 {#if selectedActor.Description}

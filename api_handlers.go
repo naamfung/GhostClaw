@@ -1069,13 +1069,23 @@ func (s *HTTPServer) listActors(w http.ResponseWriter, _ *http.Request) {
 
         actors := globalActorManager.ListActors()
 
+        // 获取默认模型名称（当演员未设置模型时的 fallback）
+        defaultModelName := ""
+        if globalConfigManager != nil {
+                defaultModelName = globalConfigManager.GetMainModelName()
+        }
+
         // 转换为简化格式
         result := make([]map[string]interface{}, 0, len(actors))
         for _, a := range actors {
+                modelName := a.Model
+                if modelName == "" {
+                        modelName = defaultModelName
+                }
                 result = append(result, map[string]interface{}{
                         "Name":                a.Name,
                         "Role":                a.Role,
-                        "Model":               a.Model,
+                        "Model":               modelName,
                         "CharacterName":       a.CharacterName,
                         "CharacterBackground": a.CharacterBackground,
                         "Description":         a.Description,
@@ -1194,7 +1204,13 @@ func (s *HTTPServer) getActor(w http.ResponseWriter, _ *http.Request, name strin
                 return
         }
 
-        json.NewEncoder(w).Encode(actor)
+        // 如果演员未设置模型，返回默认模型名称
+        response := *actor // 浅拷贝
+        if response.Model == "" && globalConfigManager != nil {
+                response.Model = globalConfigManager.GetMainModelName()
+        }
+
+        json.NewEncoder(w).Encode(response)
 }
 
 // updateActor 更新演员

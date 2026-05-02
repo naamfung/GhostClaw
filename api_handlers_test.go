@@ -851,6 +851,107 @@ func TestNewSessionHandler_PostSuccess(t *testing.T) {
 	}
 }
 
+// --- GET /api/actors with empty Model fill-in ---
+
+func TestListActors_EmptyModelFillsDefault(t *testing.T) {
+	s := testHTTPServer()
+	cleanup := saveRestoreGlobals()
+	defer cleanup()
+
+	// 建立 ConfigManager（默认模型名 "deepseek-chat"）
+	tmpDir := t.TempDir()
+	cm, err := NewConfigManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewConfigManager: %v", err)
+	}
+	globalConfigManager = cm
+
+	// 建立 ActorManager，内部会创建一个 Model 为空的默认演员
+	actorFile := tmpDir + "/actors.toon"
+	am, err := NewActorManager(actorFile, "coder")
+	if err != nil {
+		t.Fatalf("NewActorManager: %v", err)
+	}
+	globalActorManager = am
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/actors", nil)
+	s.listActors(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	actors, ok := resp["Actors"].([]interface{})
+	if !ok || len(actors) == 0 {
+		t.Fatal("Actors is empty")
+	}
+
+	// 默认演员的 Model 应该被填充为默认模型名
+	defaultActor := actors[0].(map[string]interface{})
+	if model, _ := defaultActor["Model"].(string); model == "" {
+		t.Error("default actor Model should not be empty, expected filled-in main model name")
+	}
+	mainModel := cm.GetMainModelName()
+	if model, _ := defaultActor["Model"].(string); model != mainModel {
+		t.Errorf("default actor Model = %q, want %q (main model)", model, mainModel)
+	}
+}
+
+func TestListActors_ExistingModelPreserved(t *testing.T) {
+	s := testHTTPServer()
+	cleanup := saveRestoreGlobals()
+	defer cleanup()
+
+	tmpDir := t.TempDir()
+	cm, err := NewConfigManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewConfigManager: %v", err)
+	}
+	globalConfigManager = cm
+
+	actorFile := tmpDir + "/actors.toon"
+	am, err := NewActorManager(actorFile, "coder")
+	if err != nil {
+		t.Fatalf("NewActorManager: %v", err)
+	}
+	// 添加一个有明确 Model 的演员
+	am.AddActor(&Actor{
+		Name:          "custom_actor",
+		Role:          "coder",
+		Model:         "gpt-4",
+		CharacterName: "Custom",
+		Description:   "A custom actor",
+	})
+	globalActorManager = am
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/actors", nil)
+	s.listActors(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	actors := resp["Actors"].([]interface{})
+
+	for _, a := range actors {
+		actor := a.(map[string]interface{})
+		name, _ := actor["Name"].(string)
+		model, _ := actor["Model"].(string)
+		if name == "custom_actor" && model != "gpt-4" {
+			t.Errorf("custom_actor Model = %q, want %q (should preserve explicit model)", model, "gpt-4")
+		}
+	}
+}
+
 // ======================== Helper: contains ========================
 
 func contains(s, substr string) bool {
