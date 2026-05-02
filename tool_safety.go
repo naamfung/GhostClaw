@@ -309,56 +309,14 @@ func (e *RepeatedErrorEscalator) ResetKey(category EscalationCategory, errorKey 
 // 未知工具引导（Unknown Tool Guidance）
 // ============================================================================
 
-// allKnownToolNames 所有已知工具名称列表
-// 用于在模型调用不存在的工具时提供模糊匹配建议
-var allKnownToolNames = []string{
-        // 命令执行
-        "SmartShell", "Shell",
-        "ShellDelayed", "ShellDelayedCheck", "ShellDelayedTerminate",
-        "ShellDelayedList", "ShellDelayedWait", "ShellDelayedRemove",
-        "Spawn", "SpawnCheck", "SpawnList", "SpawnCancel",
-        // 文件操作
-        "ReadFileLine", "ReadFileRange", "WriteFileLine", "ReadFileLines", "WriteFileLines",
-        "AppendToFile", "WriteFileRange",
-        // 文本处理
-        "TextSearch", "TextGrep", "TextReplace", "TextTransform",
-        // 浏览器
-        "BrowserVisit", "BrowserSearch", "BrowserDownload", "BrowserClick",
-        "BrowserType", "BrowserScroll", "BrowserScreenshot", "BrowserExecuteJs",
-        "BrowserFillForm", "BrowserHover", "BrowserDoubleClick", "BrowserNavigate",
-        "BrowserWaitElement", "BrowserWaitSmart",
-        "BrowserExtractLinks", "BrowserExtractImages", "BrowserExtractElements",
-        "BrowserRightClick", "BrowserDrag",
-        "BrowserGetCookies", "BrowserCookieSave", "BrowserCookieLoad",
-        "BrowserSnapshot", "BrowserUploadFile", "BrowserSelectOption",
-        "BrowserKeyPress", "BrowserElementScreenshot",
-        "BrowserPdf", "BrowserPdfFromFile",
-        "BrowserSetHeaders", "BrowserSetUserAgent", "BrowserEmulateDevice",
-        "BrowserInteract", "BrowserExtract", "BrowserFormFill",
-        // 记忆
-        "MemorySave", "MemoryRecall", "MemoryForget", "MemoryList",
-        // 插件
-        "PluginList", "PluginCreate", "PluginLoad", "PluginCall",
-        "PluginUnload", "PluginReload", "PluginCompile", "PluginDelete",
-        "PluginApis", "PluginDetail",
-        // Cron
-        "CronAdd", "CronList", "CronRemove", "CronStatus", "Todos",
-        // SSH
-        "SSHConnect", "SSHExec", "SSHList", "SSHClose",
-        // 技能
-        "SkillList", "SkillCreate", "SkillDelete", "SkillGet",
-        "SkillLoad", "SkillReload", "SkillUpdate", "SkillSuggest", "SkillStats",
-        "SkillEvaluate",
-        // 配置
-        "ProfileCheck", "ProfileReload", "ActorIdentitySet", "ActorIdentityClear",
-        // Plan Mode
-        "PlanWrite", "PlanRead", "EnterPlanMode", "ExitPlanMode", "NextPhase",
-        // 记忆整合
-        "ConsolidateMemory",
-        // 其他
-        "SchemeEval", "Opencli",
-        // 工具菜单
-        "Menu",
+// allRegisteredToolNames returns a snapshot of all tool names in toolRegistryMap.
+// Used for fuzzy matching suggestions when the model calls an unknown tool.
+func allRegisteredToolNames() []string {
+        names := make([]string, 0, len(toolRegistryMap))
+        for name := range toolRegistryMap {
+                names = append(names, name)
+        }
+        return names
 }
 
 // FindSimilarTool 找到与输入最相似的工具名称
@@ -369,7 +327,7 @@ func FindSimilarTool(input string) string {
         bestMatch := ""
         bestDistance := len(input) + 5 // 初始阈值
 
-        for _, name := range allKnownToolNames {
+        for _, name := range allRegisteredToolNames() {
                 distance := levenshteinDistance(input, name)
                 // 只考虑距离足够小的匹配
                 if distance < bestDistance && distance <= max(len(input), len(name))/2+1 {
@@ -480,7 +438,7 @@ func GetUnknownToolErrorMessage(toolName string) string {
         // 檢測 snake_case：如果工具名含底線，先試自動轉 PascalCase
         if strings.Contains(toolName, "_") {
                 pascalName := snakeToPascalCase(toolName)
-                for _, name := range allKnownToolNames {
+                for _, name := range allRegisteredToolNames() {
                         if name == pascalName {
                                 return fmt.Sprintf("工具名不能使用底線格式 (snake_case)！請使用駝峰式 (PascalCase)：'%s'", pascalName)
                         }
@@ -703,14 +661,8 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 }
         }
 
-        // 未知工具检查 - 检查是否是已知工具
-        isKnown := false
-        for _, name := range allKnownToolNames {
-                if name == toolName {
-                        isKnown = true
-                        break
-                }
-        }
+        // 未知工具检查 - 直接查 toolRegistryMap（同 tool_registry.go 保持同步，唔需手動維護第二份名單）
+        _, isKnown := toolRegistryMap[toolName]
         if !isKnown {
                 // 检查是否是 MCP 动态工具
                 isMCP := false

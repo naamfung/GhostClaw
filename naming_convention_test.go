@@ -75,10 +75,10 @@ func TestToolNamesArePascalCase(t *testing.T) {
 // ==========================================================================
 
 func TestToolParamKeysArePascalCase(t *testing.T) {
-	// 檢查 allKnownToolNames 列表中的每個工具
-	for _, name := range allKnownToolNames {
+	// 檢查 toolRegistryMap 中每個已註冊工具
+	for _, name := range allRegisteredToolNames() {
 		if isSnakeCase(name) {
-			t.Errorf("allKnownToolNames 中工具名必須為 PascalCase: %q", name)
+			t.Errorf("toolRegistryMap 中工具名必須為 PascalCase: %q", name)
 		}
 	}
 }

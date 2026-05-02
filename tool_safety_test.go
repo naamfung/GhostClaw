@@ -99,7 +99,7 @@ func TestLevenshteinDistance(t *testing.T) {
 }
 
 // ============================================================================
-// FindSimilarTool — 依赖 allKnownToolNames (init() 已填充)
+// FindSimilarTool — 依赖 toolRegistryMap（動態查詢）
 // ============================================================================
 
 func TestFindSimilarTool(t *testing.T) {
@@ -145,7 +145,7 @@ func TestFindSimilarTool(t *testing.T) {
 		result := FindSimilarTool("~~~")
 		// 只验证返回结果非空且是已知工具
 		found := false
-		for _, name := range allKnownToolNames {
+		for _, name := range allRegisteredToolNames() {
 			if result == name {
 				found = true
 				break
