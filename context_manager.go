@@ -101,145 +101,11 @@ func detectContextLengthFromSuffix(modelID string) int {
 	return 0
 }
 
-// modelContextDatabase 扩展的模型上下文长度数据库
-// 覆盖主流大模型厂商的常见模型
-// 注意：此数据库僅作為 fallback，用戶應優先通過 config.toon 的 ContextLength 或 MaxTokens 指定上下文長度
-var modelContextDatabase = map[string]int{
-        // ---- OpenAI ----
-        "gpt-4":                  128000,
-        "gpt-4-1106-preview":     128000,
-        "gpt-4-0125-preview":     128000,
-        "gpt-4-0613":             8192,
-        "gpt-4-32k":              32768,
-        "gpt-4-turbo":            128000,
-        "gpt-4o":                 128000,
-        "gpt-4o-mini":            128000,
-        "gpt-3.5-turbo":          16384,
-        "gpt-3.5-turbo-1106":     16384,
-        "gpt-3.5-turbo-0125":     16384,
-        "gpt-3.5-turbo-16k":      16384,
-        "gpt-3.5-turbo-instruct": 4096,
-        "o1-preview":             128000,
-        "o1-mini":                128000,
-        "o3-mini":                200000,
-
-        // ---- Anthropic ----
-        "claude-3-opus":             200000,
-        "claude-3-opus-20240229":    200000,
-        "claude-3-sonnet":           200000,
-        "claude-3-sonnet-20240229":  200000,
-        "claude-3-haiku":            200000,
-        "claude-3-haiku-20240307":   200000,
-        "claude-3.5-sonnet":         200000,
-        "claude-3.5-sonnet-20241022": 200000,
-        "claude-3.5-haiku":          200000,
-        "claude-4-sonnet":           200000,
-        "claude-4-opus":             200000,
-        "claude-sonnet-4-6":         200000,
-        "claude-sonnet-4-6-20250514": 200000,
-        "claude-opus-4-6":           200000,
-        "claude-haiku-4-5":          200000,
-        "claude-2.1":                200000,
-        "claude-2":                  100000,
-
-        // ---- Google ----
-        "gemini-pro":          32768,
-        "gemini-1.5-pro":      1048576,
-        "gemini-1.5-pro-lite": 1048576,
-        "gemini-1.5-flash":    1048576,
-        "gemini-2.0-flash":    1048576,
-        "gemini-2.0-pro":      2097152,
-        "gemini-2.5-pro":      1048576,
-        "gemini-2.5-flash":    1048576,
-
-        // ---- DeepSeek ----
-        "deepseek-chat":    64000,
-        "deepseek-coder":   64000,
-        "deepseek-reasoner": 64000,
-        "deepseek-llm":     128000,
-
-        // ---- Qwen (通义千问) ----
-        "qwen-turbo":  131072,
-        "qwen-plus":   131072,
-        "qwen-max":    32768,
-        "qwen-long":   1048576,
-        "qwen2-7b":    32768,
-        "qwen2-14b":   131072,
-        "qwen2-32b":   131072,
-        "qwen2-72b":   131072,
-        "qwen2.5-7b":  131072,
-        "qwen2.5-14b": 131072,
-        "qwen2.5-32b": 131072,
-        "qwen2.5-72b": 131072,
-        "qwen3.5-1.8b": 131072,
-        "qwen3.5-14b": 131072,
-        "qwen3.5-32b": 131072,
-        "qwen3.5-72b": 131072,
-
-        // ---- Meta Llama ----
-        "llama-3-8b":  8192,
-        "llama-3-70b": 8192,
-        "llama-3.1-8b": 131072,
-        "llama-3.1-70b": 131072,
-        "llama-3.1-405b": 131072,
-        "llama-3.2-1b": 131072,
-        "llama-3.2-3b": 131072,
-        "llama-3.2-11b": 131072,
-        "llama-3.3-70b": 131072,
-        "llama-4-maverick": 131072,
-        "llama-4-scout":    1048576,
-        "llama3-70b":  131072,
-        "llama3-8b":   131072,
-        "llama2-70b":  4096,
-        "llama2-13b": 4096,
-        "llama2-7b":   4096,
-
-        // ---- GLM (智谱) ----
-        "glm-4":         131072,
-        "glm-4-flash":   131072,
-        "glm-4-plus":    131072,
-        "glm-4-long":    1048576,
-        "glm-4-air":     131072,
-        "glm-4v":        8192,
-        "chatglm3-6b":   32768,
-        "glm-3-turbo":   100000,
-
-        // ---- Yi (零一万物) ----
-        "yi-34b":    4096,
-        "yi-6b":     4096,
-        "yi-large":  16384,
-        "yi-lightning": 16384,
-
-        // ---- Mistral ----
-        "mistral-7b":        32768,
-        "mistral-large":     131072,
-        "mistral-small":     32768,
-        "mixtral-8x7b":      32768,
-        "mixtral-8x22b":     65536,
-        "codestral":         32768,
-        "mistral-nemo":      131072,
-        "pixtral-large":     131072,
-
-        // ---- MiniMax ----
-        "minimax":           204800,
-        "minimax-abab6":     204800,
-        "minimax-abab6.5":   204800,
-
-        // ---- Kimi (Moonshot) ----
-        "kimi":     262144,
-        "moonshot": 131072,
-
-        // ---- Baichuan ----
-        "baichuan2-7b":  4096,
-        "baichuan2-13b": 4096,
-        "baichuan4":     131072,
-
-        // ---- Yi / 01.AI ----
-        "yi-vl-34b": 4096,
-}
-
-// GetModelContextLengthSafe 获取模型上下文长度
-// 优先级：用户配置(ContextLength 或 MaxTokens) > hardcoded database 精确匹配 > 子串匹配 > suffix 推斷 > 安全默認值
+// GetModelContextLengthSafe 獲取模型上下文長度（token 數量）。
+// 優先級：用戶配置（ContextLength 或 MaxTokens） > model ID suffix 推斷 > 安全默認值 4096。
+// 注意：不再維護 hardcoded 模型數據庫，因為模型能力迭代頻繁，
+// 同一名稱可能對接不同能力的模型（如 deepseek-chat 由 64K 升級到 1M）。
+// 用戶應通過 config.toon 的 ContextLength 或 MaxTokens 顯式指定上下文長度。
 func GetModelContextLengthSafe(modelID string) int {
         if modelID == "" {
                 return 4096
@@ -254,32 +120,12 @@ func GetModelContextLengthSafe(modelID string) int {
                 }
         }
 
-        // 2) Hardcoded database：精確匹配（向後兼容）
-        if limit, ok := modelContextDatabase[lowerID]; ok {
-                return limit
-        }
-
-        // 3) Hardcoded database：子串匹配（取最长匹配）
-        var bestMatch string
-        var bestLimit int
-        for model, limit := range modelContextDatabase {
-                if strings.Contains(lowerID, model) {
-                        if len(model) > len(bestMatch) {
-                                bestMatch = model
-                                bestLimit = limit
-                        }
-                }
-        }
-        if bestMatch != "" {
-                return bestLimit
-        }
-
-        // 4) Model ID suffix 智能推斷（如 [1m]、[128k]）
+        // 2) Model ID suffix 智能推斷（如 [1m]、[128k]、[200k]）
         if limit := detectContextLengthFromSuffix(lowerID); limit > 0 {
                 return limit
         }
 
-        // 5) 安全默认值：4096（避免未知模型溢出上下文）
+        // 3) 安全默認值：4096
         return 4096
 }
 

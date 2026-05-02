@@ -123,7 +123,7 @@ func TestDetectContextLengthFromSuffix(t *testing.T) {
 }
 
 // ============================================================================
-// GetModelContextLengthSafe — 5 级 fallback
+// GetModelContextLengthSafe — 3 级 fallback
 // ============================================================================
 
 func TestGetModelContextLengthSafe(t *testing.T) {
@@ -145,24 +145,14 @@ func TestGetModelContextLengthSafe(t *testing.T) {
 		}
 	})
 
-	t.Run("hardcoded database 精确匹配", func(t *testing.T) {
-		got := GetModelContextLengthSafe("gpt-4")
-		if got != 128000 {
-			t.Errorf("expected 128000 for gpt-4, got %d", got)
-		}
-	})
+	t.Run("用户配置中 MaxTokens 作為 context length", func(t *testing.T) {
+		oldOverrides := userContextLengthOverrides
+		defer func() { userContextLengthOverrides = oldOverrides }()
+		userContextLengthOverrides = map[string]int{"my-model": 512000}
 
-	t.Run("hardcoded database 子串匹配 (Claude)", func(t *testing.T) {
-		got := GetModelContextLengthSafe("claude-3-opus-20240229")
-		if got != 200000 {
-			t.Errorf("expected 200000, got %d", got)
-		}
-	})
-
-	t.Run("hardcoded database 子串匹配 (DeepSeek)", func(t *testing.T) {
-		got := GetModelContextLengthSafe("deepseek-chat-v2")
-		if got != 64000 {
-			t.Errorf("expected 64000, got %d", got)
+		got := GetModelContextLengthSafe("my-model")
+		if got != 512000 {
+			t.Errorf("expected 512000, got %d", got)
 		}
 	})
 
@@ -180,39 +170,43 @@ func TestGetModelContextLengthSafe(t *testing.T) {
 		}
 	})
 
-	t.Run("完全未知返回默认 4096", func(t *testing.T) {
+	t.Run("suffix 推断 [200k]", func(t *testing.T) {
+		got := GetModelContextLengthSafe("claude-3-opus-[200k]")
+		if got != 204800 {
+			t.Errorf("expected 204800, got %d", got)
+		}
+	})
+
+	t.Run("無用戶配置且無 suffix → 安全默認 4096", func(t *testing.T) {
 		got := GetModelContextLengthSafe("xyz-unknown-model-abc")
 		if got != 4096 {
 			t.Errorf("expected 4096, got %d", got)
 		}
 	})
 
-	t.Run("大小写不敏感", func(t *testing.T) {
-		got := GetModelContextLengthSafe("GPT-4")
-		if got != 128000 {
-			t.Errorf("expected 128000, got %d", got)
+	t.Run("無用戶配置的 gpt-4 應返回默認 4096（不再依賴 hardcoded DB）", func(t *testing.T) {
+		got := GetModelContextLengthSafe("gpt-4")
+		if got != 4096 {
+			t.Errorf("expected 4096 (unknown without user config), got %d", got)
 		}
 	})
 
-	t.Run("子串匹配取最长", func(t *testing.T) {
-		// "gpt-4" = 5 chars, "gpt-4o" = 6 chars
-		got := GetModelContextLengthSafe("gpt-4o-mini")
-		if got != 128000 {
-			t.Errorf("expected 128000 (gpt-4o-mini matches gpt-4o over gpt-4), got %d", got)
+	t.Run("無用戶配置的 claude-sonnet-4-6 應返回默認 4096", func(t *testing.T) {
+		got := GetModelContextLengthSafe("claude-sonnet-4-6")
+		if got != 4096 {
+			t.Errorf("expected 4096 (unknown without user config), got %d", got)
 		}
 	})
 
-	t.Run("Claude 4.6 Sonnet", func(t *testing.T) {
-		got := GetModelContextLengthSafe("claude-sonnet-4-6-20250514")
-		if got != 200000 {
-			t.Errorf("expected 200000, got %d", got)
-		}
-	})
+	t.Run("用戶配置覆蓋優先於 suffix 推断", func(t *testing.T) {
+		oldOverrides := userContextLengthOverrides
+		defer func() { userContextLengthOverrides = oldOverrides }()
+		userContextLengthOverrides = map[string]int{"model-[128k]": 256000}
 
-	t.Run("Gemini 2.0 Flash", func(t *testing.T) {
-		got := GetModelContextLengthSafe("gemini-2.0-flash")
-		if got != 1048576 {
-			t.Errorf("expected 1048576, got %d", got)
+		// 即使 model ID 帶 [128k] suffix (131072)，用戶配置仍優先
+		got := GetModelContextLengthSafe("model-[128k]")
+		if got != 256000 {
+			t.Errorf("expected user override 256000, got %d", got)
 		}
 	})
 }

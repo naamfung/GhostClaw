@@ -229,11 +229,19 @@ func TestExecReadFileLines_FileTooLarge(t *testing.T) {
 	oldConfig := globalConfig
 	oldTracker := globalReadWriteTracker
 	oldOverrides := userContextLengthOverrides
+	oldStage := globalStage
+	oldConfigManager := globalConfigManager
 	defer func() {
 		globalConfig = oldConfig
 		globalReadWriteTracker = oldTracker
 		userContextLengthOverrides = oldOverrides
+		globalStage = oldStage
+		globalConfigManager = oldConfigManager
 	}()
+
+	// 清空 session/actor 狀態，確保 test 用自訂 config（而非真實 globalStage 嘅 actor model）
+	globalStage = nil
+	globalConfigManager = nil
 
 	// 初始化 read/write tracker
 	globalReadWriteTracker = newReadWriteTracker()
@@ -286,10 +294,18 @@ func TestExecReadFileLines_FileTooLarge(t *testing.T) {
 func TestExecReadFileLines_NormalFile(t *testing.T) {
 	oldConfig := globalConfig
 	oldTracker := globalReadWriteTracker
+	oldStage := globalStage
+	oldConfigManager := globalConfigManager
 	defer func() {
 		globalConfig = oldConfig
 		globalReadWriteTracker = oldTracker
+		globalStage = oldStage
+		globalConfigManager = oldConfigManager
 	}()
+
+	// 清空 session/actor 狀態
+	globalStage = nil
+	globalConfigManager = nil
 
 	globalReadWriteTracker = newReadWriteTracker()
 
@@ -326,10 +342,18 @@ func TestExecReadFileLines_NormalFile(t *testing.T) {
 func TestExecReadFileLines_NoModelsConfigured(t *testing.T) {
 	oldConfig := globalConfig
 	oldTracker := globalReadWriteTracker
+	oldStage := globalStage
+	oldConfigManager := globalConfigManager
 	defer func() {
 		globalConfig = oldConfig
 		globalReadWriteTracker = oldTracker
+		globalStage = oldStage
+		globalConfigManager = oldConfigManager
 	}()
+
+	// 清空 session/actor 狀態
+	globalStage = nil
+	globalConfigManager = nil
 
 	globalReadWriteTracker = newReadWriteTracker()
 	globalConfig = Config{} // 無模型配置 → 安全默認 4096 tokens

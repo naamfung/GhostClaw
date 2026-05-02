@@ -273,9 +273,25 @@ func execWriteFileLine(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-// getEffectiveContextLength 從全局配置中的第一個可用模型獲取上下文長度，
-// 若無配置則返回安全默認值。返回的數值為 token 數量。
+// getEffectiveContextLength 獲取當前有效模型的上下文長度（token 數量）。
+// 優先級：當前 session 嘅 active actor model > main model > globalConfig.Models fallback > 安全默認值。
 func getEffectiveContextLength() int {
+        // 1) 優先：當前 session 嘅 active actor model（同 CallModel 保持一致）
+        if globalStage != nil {
+                currentActor := globalStage.GetCurrentActor()
+                if modelConfig := getActorModelConfig(currentActor); modelConfig != nil {
+                        if modelConfig.Model != "" {
+                                return GetModelContextLengthSafe(modelConfig.Model)
+                        }
+                }
+        }
+        // 2) 退而求其次：globalConfigManager 嘅 main model
+        if globalConfigManager != nil {
+                if mainModel := globalConfigManager.GetMainModel(); mainModel != nil && mainModel.Model != "" {
+                        return GetModelContextLengthSafe(mainModel.Model)
+                }
+        }
+        // 3) Fallback：iterate globalConfig.Models（保留兼容性）
         if globalConfig.Models != nil {
                 for _, m := range globalConfig.Models {
                         if m.Model != "" {
@@ -283,6 +299,7 @@ func getEffectiveContextLength() int {
                         }
                 }
         }
+        // 4) 安全默認值
         return GetModelContextLengthSafe("")
 }
 

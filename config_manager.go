@@ -765,8 +765,7 @@ func (cm *ConfigManager) syncGlobalsLocked() {
 
         // 構建用戶配置的上下文長度覆蓋表
         // key: lowercase model ID (ModelBase.Model 字段), value: ContextLength 或 MaxTokens
-        // 這讓 GetModelContextLengthSafe 優先使用用戶顯式設定的值，
-        // 而非依賴 hardcoded modelContextDatabase
+        // 這讓 GetModelContextLengthSafe 優先使用用戶顯式設定的值作為上下文長度
         overrides := make(map[string]int, len(cm.config.Models))
         for _, m := range cm.config.Models {
                 if m.Model != "" {
