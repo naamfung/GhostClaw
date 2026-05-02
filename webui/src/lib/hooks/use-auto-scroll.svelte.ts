@@ -90,10 +90,10 @@ export class AutoScrollController {
 
 	/**
 	 * Scrolls the container to the bottom.
-	 * Uses instant scroll for programmatic auto-scrolling to avoid
-	 * smooth-animation scroll events interfering with user-scroll detection.
+	 * _isProgrammaticScroll flag 會跳過程式化 scroll events，所以 smooth
+	 * 動畫期間嘅中間 scroll events 唔會觸發「用戶向上滾動」誤判。
 	 */
-	scrollToBottom(behavior: ScrollBehavior = 'auto'): void {
+	scrollToBottom(behavior: ScrollBehavior = 'smooth'): void {
 		if (this._disabled || !this._container) return;
 
 		this._isProgrammaticScroll = true;
