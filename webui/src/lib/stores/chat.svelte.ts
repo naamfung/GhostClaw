@@ -825,9 +825,12 @@ class ChatStore {
                                         this.setActiveProcessingConversation(assistantMessage.convId);
                                         this.setChatStreaming(assistantMessage.convId, buildCombinedContent(), assistantMessage.id);
                                 } else {
-                                        // Task ended
+                                        // Task ended — 必須同步清除 chatStreamingStates，
+                                        // 否則 sendMessage 內部 guard (isChatLoadingInternal) 會
+                                        // 阻止發送，令 UI 顯示「發送」但實際點擊無反應
                                         this.setStreamingActive(false);
                                         this.setChatLoading(assistantMessage.convId, false);
+                                        this.clearChatStreaming(assistantMessage.convId);
                                 }
                         }
                 };

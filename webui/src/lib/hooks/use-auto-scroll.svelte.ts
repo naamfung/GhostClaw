@@ -21,6 +21,7 @@ export class AutoScrollController {
 	private _scrollTimeout: ReturnType<typeof setTimeout> | undefined;
 	private _container: HTMLElement | undefined;
 	private _disabled: boolean;
+	private _isProgrammaticScroll = false;
 
 	constructor(options: AutoScrollOptions = {}) {
 		this._disabled = options.disabled ?? false;
@@ -58,6 +59,9 @@ export class AutoScrollController {
 	handleScroll(): void {
 		if (this._disabled || !this._container) return;
 
+		// 跳過程式化滾動事件（由 scrollToBottom 觸發），避免干擾用戶滾動檢測
+		if (this._isProgrammaticScroll) return;
+
 		const { scrollTop, scrollHeight, clientHeight } = this._container;
 		const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 		const isAtBottom = distanceFromBottom < AUTO_SCROLL_AT_BOTTOM_THRESHOLD;
@@ -70,29 +74,36 @@ export class AutoScrollController {
 			this._autoScrollEnabled = true;
 		}
 
-		if (this._scrollTimeout) {
-			clearTimeout(this._scrollTimeout);
+		// 延遲重啟：若用戶短暫向上滾動後立刻回到底部，自動恢復自動滾動
+		if (!this._scrollTimeout) {
+			this._scrollTimeout = setTimeout(() => {
+				this._scrollTimeout = undefined;
+				if (isAtBottom) {
+					this._userScrolledUp = false;
+					this._autoScrollEnabled = true;
+				}
+			}, AUTO_SCROLL_INTERVAL);
 		}
-
-		this._scrollTimeout = setTimeout(() => {
-			if (isAtBottom) {
-				this._userScrolledUp = false;
-				this._autoScrollEnabled = true;
-			}
-		}, AUTO_SCROLL_INTERVAL);
 
 		this._lastScrollTop = scrollTop;
 	}
 
 	/**
 	 * Scrolls the container to the bottom.
+	 * Uses instant scroll for programmatic auto-scrolling to avoid
+	 * smooth-animation scroll events interfering with user-scroll detection.
 	 */
-	scrollToBottom(behavior: ScrollBehavior = 'smooth'): void {
+	scrollToBottom(behavior: ScrollBehavior = 'auto'): void {
 		if (this._disabled || !this._container) return;
 
+		this._isProgrammaticScroll = true;
 		this._container.scrollTo({
 			top: this._container.scrollHeight,
 			behavior
+		});
+		// 用 requestAnimationFrame 確保 scroll event 已被觸發並跳過
+		requestAnimationFrame(() => {
+			this._isProgrammaticScroll = false;
 		});
 	}
 
