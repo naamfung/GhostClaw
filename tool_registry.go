@@ -12,7 +12,6 @@ package main
 //   - Plan Mode 动态工具（next_phase, PlanWrite, PlanRead - plan_mode.go）
 //   - 合并浏览器工具（GetConsolidatedBrowserTools - tool_tier.go）
 //   - MCP 动态工具（运行时加载）
-//   - 记忆整合工具（GetConsolidationTools - memory_consolidator.go）
 // ============================================================
 
 // ToolDef 工具定义结构体
@@ -66,7 +65,7 @@ func init() {
 • wake_after_minutes: 异步唤醒时间（默认5分钟）
 
 🚫 DO NOT POLL: 异步任务启动后不要轮询，系统会自动通知结果。如果当前有活跃的 todo 项目，请使用 todos 工具将相关 todo 标记为 waiting，然后继续处理其他工作或等待系统唤醒，切勿以同步模式重新执行同一命令。`,
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -133,7 +132,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("ReadFileLine",
                 "Read a specific line from a file. Use this when you need to read a particular line from a file without reading the entire file.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -156,7 +155,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("WriteFileLine",
                 "Overwrite, insert, or append a single line in a file.\n\n- LineNum > 0: Overwrite line LineNum with content.\n- LineNum = 0: Create an empty file (content is ignored).\n- LineNum = -1: Append content to the end of the file.\n- LineNum < -1: Insert content as a new line BEFORE position |LineNum|, shifting existing lines down. Example: LineNum=-5 inserts before line 5.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -179,7 +178,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("ReadFileLines",
                 "Read all lines from a file and return them as a list of strings.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -198,7 +197,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("WriteFileLines",
                 "Write all lines to a file.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -245,7 +244,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("WriteFileRange",
                 "Overwrite a range of lines, or insert multiple lines, in a file.\n\nOverwrite mode (StartLine >= 1):\n  Replace lines StartLine through EndLine with content. EndLine defaults to StartLine if not specified. Each line in content replaces one line in the range.\n\nInsert mode (StartLine < 0):\n  Insert all lines of content BEFORE position |StartLine|, shifting existing lines down. EndLine is ignored in this mode. Example: StartLine=-10 inserts before line 10.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -272,7 +271,7 @@ Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
 
         reg("ReadFileRange",
                 "Read a specific range of lines from a file. Use this when you need to read a portion of a file without reading the entire file.",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -321,7 +320,7 @@ OpenCLI provides better session persistence and more reliable web automation.
 Example OpenCLI alternative:
 - shell: "opencli search <keyword>" (if adapter available)
 - shell: "opencli open https://www.baidu.com/s?wd=<keyword>"`,
-                "web", "core",
+                "web", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -342,7 +341,7 @@ OpenCLI provides better session persistence, cookie reuse, and more reliable web
 Example OpenCLI alternative:
 - shell: "opencli open <url>"
 - shell: "opencli <adapter> <command>" (e.g., "opencli hackernews top --limit 5")`,
-                "web", "core",
+                "web", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -479,7 +478,7 @@ validate + 可选冒烟测试。
 | Instagram | instagram | search, user, posts |
 | Facebook | facebook | search, posts |
 | 豆瓣 | douban | search, movie, book |`,
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1459,7 +1458,7 @@ validate + 可选冒烟测试。
         // ========== 记忆管理工具 ==========
         reg("MemorySave",
                 "保存一条记忆到长期存储，跨会话持久化。支持分类（fact/preference/project/skill/context）和标签，便于后续检索。",
-                "memory", "core",
+                "memory", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1492,7 +1491,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryRecall",
                 "检索已保存的记忆。支持按关键词模糊搜索（query）或按键名精确查找，可限定分类。无参数时返回所有记忆。",
-                "memory", "core",
+                "memory", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1515,7 +1514,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryForget",
                 "删除指定键名的记忆（不可恢复）。建议先用 MemoryRecall 确认要删除的记忆内容。",
-                "memory", "core",
+                "memory", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1529,7 +1528,7 @@ validate + 可选冒烟测试。
 
         reg("MemoryList",
                 "列出所有已保存的记忆，支持按分类（preference/fact/project/skill/context）和范围（user/global）过滤。",
-                "memory", "core",
+                "memory", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -1545,6 +1544,24 @@ validate + 可选冒烟测试。
                                 },
                         },
                         "required": []string{},
+                })
+
+        reg("ConsolidateMemory",
+                "将当前对话中的关键信息整合到长期记忆系统中。当对话内容较长或包含重要信息时，使用此工具进行记忆整合。",
+                "memory", "small",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "history_entry": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "一段总结关键事件/决策/主题的段落。以 [YYYY-MM-DD HH:MM] 开头。",
+                                },
+                                "memory_update": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "完整的更新后长期记忆（markdown 格式）。",
+                                },
+                        },
+                        "required": []string{"history_entry", "memory_update"},
                 })
 
         // ========== Profile 工具 ==========
@@ -1819,7 +1836,7 @@ validate + 可选冒烟测试。
         // ========== 文本搜索工具 ==========
         reg("TextSearch",
                 "全系统文本搜索。在文件中搜索关键词，返回匹配的文件路径、行号与匹配内容。支持正则表达式。未指定 root_dir 时自动从当前工作目录开始级联向上搜索（CWD → 父目录 → ... → /）。搜索中文时请务必使用正则交替匹配简繁变体，如：'中文|華文'、'华语|華語'、'汉语|漢語'、'汉字|漢字'、'软件|軟體|軟件'、'网络|網路'等，以提升命中率。",
-                "core", "core",
+                "core", "small",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -2430,10 +2447,22 @@ func GetCategoryRegistry() []ToolCategory {
 // ============================================================
 
 // GetCoreToolNamesFromRegistry 返回所有 core 层级工具名称
+// GetSmallToolNamesFromRegistry 返回精简层工具名称（仅 tier="small"）
+func GetSmallToolNamesFromRegistry() []string {
+        names := make([]string, 0)
+        for _, td := range toolRegistry {
+                if td.Tier == "small" {
+                        names = append(names, td.Name)
+                }
+        }
+        return names
+}
+
+// GetCoreToolNamesFromRegistry 返回核心层工具名称（tier="small" + tier="core"）
 func GetCoreToolNamesFromRegistry() []string {
         names := make([]string, 0)
         for _, td := range toolRegistry {
-                if td.Tier == "core" {
+                if td.Tier == "small" || td.Tier == "core" {
                         names = append(names, td.Name)
                 }
         }

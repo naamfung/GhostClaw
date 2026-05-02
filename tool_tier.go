@@ -20,15 +20,19 @@ import (
 type ToolTier int
 
 const (
-        // ToolTierCore 核心层：5-8 个最常用工具，始终加载
-        // 适用于 <8K 上下文窗口的小模型
-        ToolTierCore ToolTier = iota
+        // ToolTierSmall 精简层：~17 个最常用工具，通过 Menu 可加载更多
+        // 适用于 <4K 上下文窗口的超小模型
+        ToolTierSmall ToolTier = iota
 
-        // ToolTierExtended 扩展层：15-20 个基于角色的工具
+        // ToolTierCore 核心层：Small + Standard 工具（~56 个）
+        // 适用于 4K-8K 上下文窗口的小模型
+        ToolTierCore
+
+        // ToolTierExtended 扩展层：Core + Extended 工具
         // 适用于 8K-32K 上下文窗口的中等模型
         ToolTierExtended
 
-        // ToolTierExpert 专家层：30+ 全部工具（含浏览器、MCP 等）
+        // ToolTierExpert 专家层：全部工具（~96 个）
         // 适用于 >=32K 上下文窗口的大模型
         ToolTierExpert
 )
@@ -56,6 +60,9 @@ const (
 
 // 上下文窗口阈值常量（单位：token）
 const (
+        // tierThresholdSmall 小于此值使用精简层（仅最常用工具）
+        tierThresholdSmall = 4096
+
         // tierThresholdCore 小于此值使用核心层
         tierThresholdCore = 8192
 
@@ -87,10 +94,13 @@ const (
 // ToolTierManager 工具分层管理器
 // 根据模型上下文窗口大小，动态决定工具数量和描述详细程度
 type ToolTierManager struct {
-        // coreToolNames 核心工具名称集合（用于快速查找）
+        // smallToolSet 精简层工具名称集合（仅最常用 ~17 个）
+        smallToolSet map[string]bool
+
+        // coreToolSet 核心层工具名称集合（Small + Standard ~56 个）
         coreToolSet map[string]bool
 
-        // extendedToolNames 扩展层工具名称集合（包含核心工具）
+        // extendedToolSet 扩展层工具名称集合（Core + Extended）
         extendedToolSet map[string]bool
 }
 
@@ -105,8 +115,12 @@ var (
 func getGlobalTierManager() *ToolTierManager {
         globalTierManagerOnce.Do(func() {
                 mgr := &ToolTierManager{
-                        coreToolSet:    make(map[string]bool),
+                        smallToolSet:    make(map[string]bool),
+                        coreToolSet:     make(map[string]bool),
                         extendedToolSet: make(map[string]bool),
+                }
+                for _, name := range GetSmallToolNames() {
+                        mgr.smallToolSet[name] = true
                 }
                 for _, name := range GetCoreToolNames() {
                         mgr.coreToolSet[name] = true
@@ -128,10 +142,14 @@ func NewToolTierManager() *ToolTierManager {
 }
 
 // GetTierForContextWindow 根据上下文窗口大小确定工具层级
-// <8K → Core（仅核心工具）
-// <32K → Extended（核心 + 扩展工具）
+// <4K → Small（仅最常用工具）
+// <8K → Core（Small + Standard）
+// <32K → Extended（Core + Extended）
 // >=32K → Expert（全部工具）
 func (m *ToolTierManager) GetTierForContextWindow(contextWindow int) ToolTier {
+        if contextWindow < tierThresholdSmall {
+                return ToolTierSmall
+        }
         if contextWindow < tierThresholdCore {
                 return ToolTierCore
         }
@@ -179,6 +197,10 @@ func (m *ToolTierManager) GetFilteredTools(
 
                 // 根据层级判断是否包含此工具
                 switch tier {
+                case ToolTierSmall:
+                        if !m.smallToolSet[name] {
+                                continue
+                        }
                 case ToolTierCore:
                         if !m.coreToolSet[name] {
                                 continue
@@ -352,9 +374,12 @@ func (m *ToolTierManager) GetMaxHistoryMessages(contextWindow int, systemPromptT
 // 核心工具名称列表
 // ============================================================
 
-// GetCoreToolNames 返回核心层工具名称列表
-// 这些是 AI 助手最基本、最常用的工具，在任何场景下都应该可用
-// 包含：Shell 执行、文件读写、文本搜索、记忆检索
+// GetSmallToolNames 返回精简层工具名称列表
+func GetSmallToolNames() []string {
+        return GetSmallToolNamesFromRegistry()
+}
+
+// GetCoreToolNames 返回核心层工具名称列表（含 Small + Standard）
 func GetCoreToolNames() []string {
         return GetCoreToolNamesFromRegistry()
 }
@@ -854,7 +879,8 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
         // 獲取經過層級篩選、密度裁剪和角色權限檢查的工具列表
         filtered := manager.GetFilteredTools(allTools, tier, density, role)
 
-        // 非 Expert 層級：追加通過 menu 工具加載的額外工具
+        // Expert 以外嘅層級：追加通過 menu 工具加載的額外工具
+        // Small 層尤其依賴 Menu 來按需加載更多工具
         if tier != ToolTierExpert {
                 loaded := GetLoadedToolNames()
                 existingNames := make(map[string]bool, len(filtered))
@@ -911,7 +937,6 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
                 }
                 // menu 不在 toolRegistry 中（獨立定義於 tool_menu.go），
                 // 但它是系統最核心的工具入口，必須受預算保護。
-                // 與 getTools.go applyToolDistributionFilter 中的 coreTools 保持一致。
                 coreNames["Menu"] = true
                 // 計算核心工具的 token 數
                 var coreTokens int

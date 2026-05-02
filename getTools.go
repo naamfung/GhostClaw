@@ -280,7 +280,6 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
         if globalMCPClientManager != nil {
                 dynamicTools = append(dynamicTools, globalMCPClientManager.GetAllTools()...)
         }
-        dynamicTools = append(dynamicTools, GetConsolidationTools()...)
 
         // 如果是 Anthropic 格式，需要转换工具格式
         if apiType == "anthropic" {
