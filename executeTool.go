@@ -8,11 +8,13 @@ import (
         "log"
         "os"
         "path/filepath"
+        "regexp"
         "strconv"
         "strings"
         "time"
 
         "github.com/toon-format/toon-go"
+        yaml "gopkg.in/yaml.v3"
 )
 
 // --- Types ---
@@ -2513,6 +2515,64 @@ func execSchemeEval(ec *ToolExecContext) (string, TaskStatus) {
         return result, TaskStatusSuccess
 }
 
+// --- WebRead post-processing helpers ---
+
+// webReadMetadata holds the YAML metadata output by opencli web read.
+type webReadMetadata struct {
+        Title       string `yaml:"title"`
+        Author      string `yaml:"author"`
+        PublishTime string `yaml:"publish_time"`
+        Status      int    `yaml:"status"`
+        Size        int64  `yaml:"size"`
+}
+
+var invalidFilenameChars = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+var whitespaceSeq = regexp.MustCompile(`\s+`)
+var multiUnderscore = regexp.MustCompile(`_+`)
+
+// sanitizeWebFilename sanitizes a title into a safe directory/file name,
+// mirroring the JS sanitizeFilename logic in opencli.
+func sanitizeWebFilename(name string, maxLength int) string {
+        if name == "" {
+                return "untitled"
+        }
+        // Replace invalid filename chars
+        safe := invalidFilenameChars.ReplaceAllString(name, "_")
+        // Replace whitespace sequences with underscore
+        safe = whitespaceSeq.ReplaceAllString(safe, "_")
+        // Collapse consecutive underscores
+        safe = multiUnderscore.ReplaceAllString(safe, "_")
+        // Trim leading/trailing underscores
+        safe = strings.Trim(safe, "_")
+        if safe == "" {
+                return "untitled"
+        }
+        if len(safe) > maxLength {
+                safe = safe[:maxLength]
+        }
+        return safe
+}
+
+// readWebArticleFile parses opencli YAML metadata from stdout, reconstructs
+// the saved markdown file path, and reads its content. Returns the content
+// string, file path, and whether the operation succeeded.
+func readWebArticleFile(stdout, outputDir string) (content, filePath string, ok bool) {
+        var meta webReadMetadata
+        if err := yaml.Unmarshal([]byte(stdout), &meta); err != nil {
+                return "", "", false
+        }
+        if meta.Title == "" {
+                return "", "", false
+        }
+        safeTitle := sanitizeWebFilename(meta.Title, 80)
+        articlePath := filepath.Join(outputDir, safeTitle, safeTitle+".md")
+        data, err := os.ReadFile(articlePath)
+        if err != nil {
+                return "", articlePath, false
+        }
+        return string(data), articlePath, true
+}
+
 func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
         action, ok := ec.ArgsMap["action"].(string)
         if !ok || action == "" {
@@ -2520,6 +2580,7 @@ func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
         }
 
         var opencliCmd string
+        var webReadOutputDir string // tracked for post-processing
 
         switch action {
         // === 数据获取 ===
@@ -2537,6 +2598,9 @@ func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
                 }
                 if v, _ := ec.ArgsMap["output"].(string); v != "" {
                         opencliCmd += " --output " + v
+                        webReadOutputDir = v
+                } else {
+                        webReadOutputDir = "./web-articles"
                 }
 
         case "Adapter":
@@ -2773,6 +2837,13 @@ func execOpenCLITool(ec *ToolExecContext) (string, TaskStatus) {
                         }
                         fmt.Println(content)
                         return content, TaskStatusFailed
+                }
+                // WebRead post-processing: read full markdown content from saved file
+                if action == "WebRead" && webReadOutputDir != "" {
+                        articleContent, _, ok := readWebArticleFile(content, webReadOutputDir)
+                        if ok {
+                                content += "\n\n---\n\n" + articleContent
+                        }
                 }
                 fmt.Println(content)
                 return content, TaskStatusSuccess
