@@ -9,21 +9,21 @@ import (
 )
 
 // ============================================================================
-// SessionConfig — 會話管理配置（idle 重置）
+// SessionConfig — 會話管理配置（idle 任務接續檢查）
 // ============================================================================
 
 // SessionConfig 會話管理配置
 type SessionConfig struct {
-        // Idle 重置
-        IdleResetEnabled bool `toon:"IdleResetEnabled" json:"IdleResetEnabled"`   // 是否啟用 idle 重置
-        IdleTimeoutMins  int  `toon:"IdleTimeoutMins" json:"IdleTimeoutMins"`       // idle 超時（分鐘），0=禁用，默認30
+        // Idle 任務接續檢查
+        IdleTaskCheckEnabled bool `toon:"IdleTaskCheckEnabled" json:"IdleTaskCheckEnabled"` // 是否啟用 idle 任務接續檢查
+        IdleTaskCheckMins    int  `toon:"IdleTaskCheckMins" json:"IdleTaskCheckMins"`       // idle 超時（分鐘），0=禁用，默認30
 }
 
 // DefaultSessionConfig 返回默認配置
 func DefaultSessionConfig() SessionConfig {
         return SessionConfig{
-                IdleResetEnabled:  true,
-                IdleTimeoutMins:   30,
+                IdleTaskCheckEnabled: true,
+                IdleTaskCheckMins:    30,
         }
 }
 
@@ -31,11 +31,11 @@ func DefaultSessionConfig() SessionConfig {
 func EffectiveSessionConfig() SessionConfig {
         cfg := DefaultSessionConfig()
         if globalConfig.Session != nil {
-                if globalConfig.Session.IdleResetEnabled {
-                        cfg.IdleResetEnabled = true
+                if globalConfig.Session.IdleTaskCheckEnabled {
+                        cfg.IdleTaskCheckEnabled = true
                 }
-                if globalConfig.Session.IdleTimeoutMins > 0 {
-                        cfg.IdleTimeoutMins = globalConfig.Session.IdleTimeoutMins
+                if globalConfig.Session.IdleTaskCheckMins > 0 {
+                        cfg.IdleTaskCheckMins = globalConfig.Session.IdleTaskCheckMins
                 }
         }
         return cfg
@@ -52,21 +52,20 @@ type SessionStats struct {
         TurnCount          int       `json:"turn_count"`            // 會話輪次（用戶消息數）
         LastPromptTokens   int       `json:"last_prompt_tokens"`    // 最近一次 API 調用的 prompt tokens（用於壓縮預檢）
         LastAPICallAt      time.Time `json:"last_api_call_at"`       // 最近一次 API 調用時間
-        AutoResetReason    string    `json:"auto_reset_reason"`     // 自動重置原因（"idle"）
-        AutoResetHadActivity bool    `json:"auto_reset_had_activity"` // 被重置的會話是否曾有活動
 }
 
 // ============================================================================
-// SessionTracker — 會話追蹤器（idle 重置 + token 追蹤）
+// SessionTracker — 會話追蹤器（idle 任務接續檢查 + token 追蹤）
 // ============================================================================
 
-// SessionTracker 會話追蹤器，管理 idle 重置和 token 追蹤
+// SessionTracker 會話追蹤器，管理 idle 任務接續檢查和 token 追蹤
 // 適配 GhostClaw 的 GlobalSession 單會話架構
 type SessionTracker struct {
-        mu       sync.RWMutex
-        stats    SessionStats
-        cfg      SessionConfig
-        started  bool
+        mu              sync.RWMutex
+        stats           SessionStats
+        cfg             SessionConfig
+        started         bool
+        idleCheckPaused bool // COMPLETE 後暫停後續 idle check，/new 時重置
 }
 
 // NewSessionTracker 創建新的會話追蹤器
@@ -80,11 +79,9 @@ func NewSessionTracker(cfg SessionConfig) *SessionTracker {
 func (st *SessionTracker) Reset(reason string, hadActivity bool) {
         st.mu.Lock()
         defer st.mu.Unlock()
-        st.stats = SessionStats{
-                AutoResetReason:      reason,
-                AutoResetHadActivity: hadActivity,
-        }
+        st.stats = SessionStats{}
         st.started = false
+        st.idleCheckPaused = false
         log.Printf("[SessionTracker] Session reset: reason=%s, had_activity=%v", reason, hadActivity)
 }
 
@@ -123,37 +120,24 @@ func (st *SessionTracker) GetLastPromptTokens() int {
         return st.stats.LastPromptTokens
 }
 
-// ShouldIdleReset 檢查是否需要因 idle 超時而重置會話
+// ShouldCheckTaskOnIdle 檢查是否需要因 idle 超時而進行任務接續檢查
 // lastActivity: 最後一次活動時間（通常是 GlobalSession.LastSeen）
-// 返回是否應該重置
-func (st *SessionTracker) ShouldIdleReset(lastActivity time.Time) bool {
-        if !st.cfg.IdleResetEnabled || st.cfg.IdleTimeoutMins <= 0 {
+// 返回是否應該檢查
+func (st *SessionTracker) ShouldCheckTaskOnIdle(lastActivity time.Time) bool {
+        if !st.cfg.IdleTaskCheckEnabled || st.cfg.IdleTaskCheckMins <= 0 {
                 return false
         }
         if !st.started {
-                return false // 從未有活動，無需重置
+                return false // 從未有活動，無需檢查
         }
 
         st.mu.RLock()
         defer st.mu.RUnlock()
-        idleDeadline := lastActivity.Add(time.Duration(st.cfg.IdleTimeoutMins) * time.Minute)
-        return time.Now().After(idleDeadline)
-}
-
-// ConsumeAutoResetReason 消費自動重置原因（調用後清空，僅消費一次）
-// 用於向用戶通知會話已被重置
-func (st *SessionTracker) ConsumeAutoResetReason() string {
-        st.mu.Lock()
-        defer st.mu.Unlock()
-        reason := st.stats.AutoResetReason
-        hadActivity := st.stats.AutoResetHadActivity
-        st.stats.AutoResetReason = ""
-        st.stats.AutoResetHadActivity = false
-        if reason == "" {
-                return ""
+        if st.idleCheckPaused {
+                return false
         }
-        log.Printf("[SessionTracker] Consumed auto reset reason: %s (had_activity=%v)", reason, hadActivity)
-        return reason
+        idleDeadline := lastActivity.Add(time.Duration(st.cfg.IdleTaskCheckMins) * time.Minute)
+        return time.Now().After(idleDeadline)
 }
 
 // FormatStatsForPrompt 將會話統計格式化為注入到 system prompt 的信息
@@ -181,18 +165,28 @@ func formatTokenStats(stats SessionStats) string {
 }
 
 // ============================================================================
-// Idle Reset 通知消息構建
+// Idle Check 控制
 // ============================================================================
 
-// BuildIdleResetNotice 構建 idle 重置的通知消息
-// 當會話因 idle 超時被重置時，作為 system message 注入到新會話的第一條消息前
-func BuildIdleResetNotice(idleMinutes int, hadActivity bool) string {
-        var sb strings.Builder
-        sb.WriteString("[系統通知] 由於長時間無活動（超過 ")
-        sb.WriteString(fmt.Sprintf("%d 分鐘", idleMinutes))
-        sb.WriteString("），會話已自動重置。以下是新會話。\n")
-        if hadActivity {
-                sb.WriteString("之前的對話上下文已被清除，記憶系統仍保留重要信息。\n")
-        }
-        return sb.String()
+// PauseIdleCheck 暫停後續 idle 任務接續檢查（COMPLETE 後調用）
+func (st *SessionTracker) PauseIdleCheck() {
+        st.mu.Lock()
+        defer st.mu.Unlock()
+        st.idleCheckPaused = true
+        log.Printf("[SessionTracker] Idle check paused")
+}
+
+// ResumeIdleCheck 恢復 idle 任務接續檢查
+func (st *SessionTracker) ResumeIdleCheck() {
+        st.mu.Lock()
+        defer st.mu.Unlock()
+        st.idleCheckPaused = false
+        log.Printf("[SessionTracker] Idle check resumed")
+}
+
+// IsIdleCheckPaused 返回 idle 檢查是否已暫停
+func (st *SessionTracker) IsIdleCheckPaused() bool {
+        st.mu.RLock()
+        defer st.mu.RUnlock()
+        return st.idleCheckPaused
 }

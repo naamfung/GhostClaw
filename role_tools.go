@@ -46,11 +46,12 @@ func ProcessSlashCommand(input string, rm *RoleManager, am *ActorManager, stage 
                 return CommandResult{Handled: true, Response: "已断开连接，后台任务不受影响", IsQuit: true}
 
         case "stop":
-                return CommandResult{Handled: true, Response: "任务已取消", IsStop: true}
+                return CommandResult{Handled: true, Response: "[任务已取消]", IsStop: true}
         case "pause", "interrupt":
                 // /pause [message]: 中斷當前任務串流但唔取消，模型繼續任務時會收到訊息
                 // 若無任務運行中則為空操作
-                return CommandResult{Handled: true, Response: "任务已中断", IsPause: true, PauseMsg: args}
+                // 注意：Response 留空，唔向前端輸出任何文字 — 用戶點暫停後再輸入係自然行為
+                return CommandResult{Handled: true, IsPause: true, PauseMsg: args}
 
         case "role":
                 return CommandResult{Handled: true, Response: HandleRoleCommand(args, rm, am, stage)}

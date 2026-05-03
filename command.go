@@ -74,6 +74,7 @@ func HandleSlashCommandWithDefaults(line string, responder func(string), stopFun
 		if msg == "" {
 			msg = "已中斷。請繼續。" // 默認中斷訊息
 		}
+		log.Printf("[Command] 任務已中斷（pause），唔向前端輸出提示")
 		if pauseFunc != nil {
 			pauseFunc(msg)
 		} else {

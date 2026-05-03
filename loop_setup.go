@@ -118,27 +118,34 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 	}
 
 	// ====== LLM 二元分類：CHAT vs TASK ======
-	if !isNewSession {
-		if globalTaskTracker != nil {
-			var latestQuery string
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role == "user" {
-					if content, ok := messages[i].Content.(string); ok {
-						latestQuery = content
-					}
-					break
+	// 注意：新 session 第一條消息都要做分類 — 否則模型會繞過工作模式直接執行
+	// 但如果當前任務已經結構化（已用 todos 或已入 plan mode），跳過重新分類，
+	// 避免同一任務內嘅連續對話被重複要求做選擇
+	taskAlreadyStructured := globalTaskTracker != nil && globalTaskTracker.IsWorkMode() &&
+		(!TODO.IsEmpty() || (globalPlanMode != nil && globalPlanMode.IsActive()))
+
+	if globalTaskTracker != nil && !taskAlreadyStructured {
+		var latestQuery string
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "user" {
+				if content, ok := messages[i].Content.(string); ok {
+					latestQuery = content
 				}
-			}
-			if latestQuery != "" {
-				intent, err := ClassifyUserIntent(ctx, latestQuery, config.EffectiveAPIType, config.EffectiveBaseURL, config.EffectiveAPIKey, config.EffectiveModelID)
-				if err != nil {
-					log.Printf("[AgentLoop] LLM classification failed: %v, defaulting to TASK", err)
-					intent = IntentTask
-				}
-				globalTaskTracker.StartNewTask(latestQuery, intent)
-				log.Printf("[AgentLoop] Intent classified as: %d (0=CHAT, 1=TASK), query: %.100s", intent, latestQuery)
+				break
 			}
 		}
+		if latestQuery != "" {
+			intent, err := ClassifyUserIntent(ctx, latestQuery, config.EffectiveAPIType, config.EffectiveBaseURL, config.EffectiveAPIKey, config.EffectiveModelID)
+			if err != nil {
+				log.Printf("[AgentLoop] LLM classification failed: %v, defaulting to TASK", err)
+				intent = IntentTask
+			}
+			globalTaskTracker.StartNewTask(latestQuery, intent)
+			log.Printf("[AgentLoop] Intent classified as: %d (0=CHAT, 1=TASK), query: %.100s", intent, latestQuery)
+		}
+	} else if taskAlreadyStructured {
+		log.Printf("[AgentLoop] Task already structured (todos=%v, plan=%v), skipping re-classification",
+			!TODO.IsEmpty(), globalPlanMode != nil && globalPlanMode.IsActive())
 	}
 
 	// ====== 注入或更新系統提示 ======
@@ -196,22 +203,20 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 	}
 
 	// ====== 注入工作模式提示 ======
-	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() {
-		planModeActive := globalPlanMode != nil && globalPlanMode.IsActive()
-		if !planModeActive {
-			workModeHint := "\n\n[工作模式] 用戶的請求被識別為任務。\n" +
-				"在開始執行前，請先向用戶確認任務的具體需求、範圍和期望結果。\n\n" +
-				"根據用戶提供的詳細資訊，自行判斷任務複雜度並選擇合適的工作方式：\n" +
-				"- 簡單/明確任務（1-3 步驟）→ 使用 todos 工具規劃並執行\n" +
-				"- 複雜任務（涉及多檔案、多步驟、需要審慎規劃）→ 使用 EnterPlanMode 進入結構化規劃\n\n" +
-				"不要基於模糊的單句請求就做重大技術決策。"
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role == "system" {
-					if content, ok := messages[i].Content.(string); ok {
-						messages[i].Content = content + workModeHint
-					}
-					break
+	// 只在任務未結構化時注入（即模型尚未選擇 todos 或 EnterPlanMode）
+	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && !taskAlreadyStructured {
+		workModeHint := "\n\n[工作模式] 用戶的請求被識別為任務。你**必須**嚴格按照以下流程執行，不可跳過：\n\n" +
+			"1. 若需要了解任務背景，可先用讀取/搜索類工具蒐集所需資訊\n" +
+			"2. 充分了解後，**強制選擇**以下兩種方式之一進行規劃（不可跳過此步直接執行）：\n" +
+			"   - 簡單/明確任務（1-3 步驟）→ **必須使用 Todos 工具**設定待辦事項，逐項執行\n" +
+			"   - 複雜任務（涉及多步驟、需要審慎規劃）→ **必須使用 EnterPlanMode** 進入結構化規劃\n\n" +
+			"**嚴禁**：在未完成規劃（Todos 或 EnterPlanMode）之前，調用任何寫入/執行類工具。系統層面已強制攔截此類調用。"
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "system" {
+				if content, ok := messages[i].Content.(string); ok {
+					messages[i].Content = content + workModeHint
 				}
+				break
 			}
 		}
 	}

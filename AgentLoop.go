@@ -177,6 +177,47 @@ func parseSingleOpenAIToolCall(toolUse map[string]interface{}) *ParsedToolCall {
 	}
 }
 
+// ============================================================================
+// 工作模式協議守衛 — 工具分類
+// ============================================================================
+
+// isExecutionTool 判斷工具是否為寫入/執行類（需喺任務結構化之後先可用）
+// 放行：Todos/EnterPlanMode（規劃類）+ Read/Search/Info（讀取類）
+// 攔截：Shell 族、Write 族、Browser 操作、Plugin/Cron/Memory 寫入、Spawn/SSH 等
+func isExecutionTool(name string) bool {
+	lower := strings.ToLower(name)
+
+	// 規劃類工具 — 永遠放行
+	if lower == "todos" || lower == "enterplanmode" || lower == "exitplanmode" {
+		return false
+	}
+
+	// 讀取/搜索/資訊類工具 — 放行，模型需要蒐集資訊先做到合理計畫
+	readPatterns := []string{
+		"readfile", "fileinfo",
+		"textsearch", "textgrep",
+		"browsersearch", "browservisit", "browserextract",
+		"browserscreenshot", "browsersnapshot", "browserelementscreenshot",
+		"browserwait", "browserscroll", "browsergetcookies",
+		"browserpdf",
+		"memoryrecall", "memorylist",
+		"pluginlist", "plugindetail", "pluginapis",
+		"cronlist", "cronstatus",
+		"skilllist", "skillstats", "skillget", "skillsuggest", "skillevaluate",
+		"spawnlist", "sshlist", "shelldelayedlist", "shelldelayedcheck",
+		"profilecheck",
+		"opencli",
+	}
+	for _, p := range readPatterns {
+		if strings.HasPrefix(lower, p) {
+			return false
+		}
+	}
+
+	// 其餘全部視為寫入/執行類工具，攔截
+	return true
+}
+
 // parseToolCallsFromAnthropic 从 Anthropic 格式响应中提取工具调用
 func parseToolCallsFromAnthropic(content interface{}) []ParsedToolCall {
 	var calls []ParsedToolCall
@@ -339,9 +380,10 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		// ---- 中斷檢查：取出 /pause 設置的中斷訊息並注入為用戶輸入 ----
 		if interruptMsg := GetGlobalSession().takeInterruptMsg(); interruptMsg != "" {
 			messages = append(messages, Message{Role: "user", Content: interruptMsg})
-			ch.WriteChunk(StreamChunk{Content: "\n[任務已中斷，接收用戶輸入]\n", Done: true})
+			log.Printf("[AgentLoop] 任務已中斷，接收新輸入")
 			// 退出循環：中斷訊息已注入歷史，AgentLoop 返回後用戶發送新消息時
 			// ProcessUserInput 會用包含中斷訊息嘅歷史啟動新一輪 AgentLoop
+			// 注意：唔向前端輸出任何中斷提示，用戶點暫停後再輸入係自然行為
 			break
 		}
 
@@ -428,6 +470,36 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 			}
 		} else {
 			// Branch B: 有工具調用
+			// ====== 工作模式協議守衛 ======
+			// 任務未結構化時：放行規劃/讀取類工具，攔截寫入/執行類工具
+			// 模型可以先讀代碼蒐集資訊，再用 Todos/EnterPlanMode 做計畫
+			if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() &&
+				(globalPlanMode == nil || !globalPlanMode.IsActive()) {
+				blocked := false
+				for _, tc := range callResult.ToolCalls {
+					var toolName string
+					if tc["type"] == "function" {
+						if fn, ok := tc["function"].(map[string]interface{}); ok {
+							toolName, _ = fn["name"].(string)
+						}
+					}
+					if toolName != "" && isExecutionTool(toolName) {
+						blocked = true
+						log.Printf("[AgentLoop] Work mode guard: blocked '%s' — task not yet structured, injecting reminder", toolName)
+						break
+					}
+				}
+				if blocked {
+					reminderMsg := Message{
+						Role:      "user",
+						Content:   "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 Todos 或 EnterPlanMode 規劃任務。請使用讀取/搜索類工具蒐集所需資訊，然後用 Todos 將任務分解為可追蹤的子步驟，或使用 EnterPlanMode 進行結構化規劃。在完成規劃之前，不可調用寫入或執行類工具。",
+						Timestamp: time.Now().Unix(),
+					}
+					messages = append(messages, reminderMsg)
+					continue
+				}
+			}
+
 			results := RunBranchTool(ctx, callResult.ToolCalls, ch, config.CurrentRole, iteration)
 			if len(results) == 0 {
 				continue

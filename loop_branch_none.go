@@ -173,21 +173,20 @@ func RunBranchNone(messages []Message, respContent interface{},
 	}
 
 	// ========== todos 使用提醒守衛 ==========
-	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() && *todoReminderCount < 2 {
+	// 工作模式 + 未規劃 → 死循環，強制模型使用 Todos 或 EnterPlanMode
+	// plan mode active 時唔觸發 — 模型已選擇 EnterPlanMode 路徑
+	planModeActive := globalPlanMode != nil && globalPlanMode.IsActive()
+	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() && !planModeActive {
 		*todoReminderCount++
-		reminderHint := fmt.Sprintf(
-			"[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 todos 工具規劃任務。\n"+
-				"請使用 todos 將任務分解為可追蹤的子步驟。\n"+
-				"如果任務非常簡單（1 步驟可完成），請直接執行並完成。\n"+
-				"(此提醒不會再出現超過 %d 次)",
-			2-*todoReminderCount,
-		)
+		reminderHint := "[SYSTEM_REMINDER] 你正處於工作模式但尚未規劃任務。\n" +
+			"你可以繼續使用讀取/搜索類工具蒐集資訊，但必須使用 Todos 或 EnterPlanMode 進行規劃。\n" +
+			"系統已攔截寫入/執行類工具，完成規劃後先會放行。"
 		messages = append(messages, Message{
 			Role:      "user",
 			Content:   reminderHint,
 			Timestamp: time.Now().Unix(),
 		})
-		log.Printf("[AgentLoop] Todos reminder #%d injected", *todoReminderCount)
+		log.Printf("[AgentLoop] Todos reminder #%d injected (indefinite guard)", *todoReminderCount)
 		return BranchNoneResult{ShouldContinue: true, Messages: messages}
 	}
 

@@ -8,6 +8,7 @@ import (
         "log"
         "os"
         "path/filepath"
+        "strings"
         "sync"
         "time"
 
@@ -336,10 +337,8 @@ func (s *GlobalSession) takeInterruptMsg() string {
 
 // ProcessUserInput 处理用户输入并触发模型调用
 func ProcessUserInput(session *GlobalSession, input string) {
-        // === Idle 重置 + Token 上限檢查 ===
-        if resetNotice := session.CheckIdleReset(); resetNotice != "" {
-                session.EnqueueOutput(StreamChunk{Content: "\n" + resetNotice + "\n"})
-        }
+        // === Idle 任務接續檢查 ===
+        idleResult := session.CheckTaskOnIdle()
 
         // 記錄對話輪次
         if tracker := session.GetTracker(); tracker != nil {
@@ -353,8 +352,13 @@ func ProcessUserInput(session *GlobalSession, input string) {
         taskCtx := session.GetTaskCtx()
         session.EnqueueOutput(StreamChunk{TaskRunning: true})
         defer func() {
+                wasRunning := session.IsTaskRunning()
                 session.SetTaskRunning(false, taskID)
-                session.EnqueueOutput(StreamChunk{TaskRunning: false})
+                // 只有任務原本喺執行中先發送 TaskRunning: false，
+                // 避免 /stop 已由 command handler 處理後重複輸出
+                if wasRunning {
+                        session.EnqueueOutput(StreamChunk{TaskRunning: false})
+                }
 
                 // 处理输入队列中的下一条消息
                 go processInputQueue(session)
@@ -374,6 +378,15 @@ func ProcessUserInput(session *GlobalSession, input string) {
 
         outputChannel := NewSessionChannel(session)
         history := session.GetHistory()
+        historyLenBeforeInject := len(history)
+
+        // IdleInjectResume：喺 AgentLoop 嘅 messages slice 注入「繼續任務」喚醒模型
+        // 只喺 AgentLoop 嘅 messages，唔入 global history
+        if idleResult != nil && *idleResult == IdleInjectResume {
+                resumeMsg := Message{Role: "user", Content: "[SYSTEM_RESUME] 繼續任務。"}
+                // 注入喺用戶最後一條消息之前
+                history = append(history[:len(history)-1], resumeMsg, history[len(history)-1])
+        }
 
         // 获取当前模型配置
         effectiveAPIType := apiType
@@ -420,8 +433,23 @@ func ProcessUserInput(session *GlobalSession, input string) {
         if err != nil && err != context.Canceled {
                 session.EnqueueOutput(StreamChunk{Error: err.Error(), Done: true})
         }
-        if len(newHistory) > len(history) {
+
+        // 移除隱藏嘅 resume 消息，確保佢唔會入 global history
+        if idleResult != nil && *idleResult == IdleInjectResume {
+                newHistory = stripResumeMessage(newHistory)
+        }
+
+        if len(newHistory) > historyLenBeforeInject {
                 session.SetHistory(newHistory)
+        }
+
+        // Post-AgentLoop idle 結果處理
+        if idleResult != nil {
+                if *idleResult == IdlePauseCheck {
+                        session.GetTracker().PauseIdleCheck()
+                }
+                // InjectResume：任務完成檢查由現有嘅 AskModelTaskCompletion
+                // 喺 RunPostLoop → MarkTaskCompleted 入面處理
         }
 }
 
@@ -554,36 +582,136 @@ func (s *GlobalSession) persistEmptySession(reason string) {
         log.Printf("[GlobalSession] Persisted empty session after %s reset: %s", reason, saved.ID)
 }
 
-// CheckIdleReset 檢查是否需要 idle 重置，如果需要則重置會話並返回通知消息
-// 返回空字符串表示不需要重置
-func (s *GlobalSession) CheckIdleReset() string {
+// ============================================================================
+// Idle 任務接續檢查
+// ============================================================================
+
+// IdleCheckResult idle 任務接續檢查的結果
+type IdleCheckResult int
+
+const (
+        IdleNoAction     IdleCheckResult = iota // 無需處理（chat mode / blocked）
+        IdleInjectResume                        // 注入「繼續任務」喚醒模型
+        IdlePauseCheck                          // 標記完成，暫停後續 idle check
+)
+
+// CheckTaskOnIdle 檢查是否需要因 idle 超時進行任務接續檢查
+// 返回 nil 表示不需要檢查
+func (s *GlobalSession) CheckTaskOnIdle() *IdleCheckResult {
         s.mu.RLock()
         lastSeen := s.LastSeen
         s.mu.RUnlock()
 
         tracker := s.GetTracker()
         if tracker == nil {
-                return ""
+                return nil
         }
 
-        if tracker.ShouldIdleReset(lastSeen) {
-                cfg := EffectiveSessionConfig()
-                s.mu.RLock()
-                hadActivity := len(s.History) > 0
-                s.mu.RUnlock()
-
-                s.mu.Lock()
-                s.fullSessionReset("idle")
-                s.mu.Unlock()
-
-                go s.persistEmptySession("idle")
-
-                log.Printf("[GlobalSession] Idle reset triggered: idle_timeout=%d mins, had_activity=%v, full_state_cleared",
-                        cfg.IdleTimeoutMins, hadActivity)
-                return BuildIdleResetNotice(cfg.IdleTimeoutMins, hadActivity)
+        if !tracker.ShouldCheckTaskOnIdle(lastSeen) {
+                return nil
         }
 
-        return ""
+        s.mu.Lock()
+        s.LastSeen = time.Now() // 更新防止重覆觸發
+        s.mu.Unlock()
+
+        // Chat mode → return nil
+        if globalTaskTracker == nil || !globalTaskTracker.IsWorkMode() {
+                return nil
+        }
+
+        // Work mode：三元分類
+        history := s.GetHistory()
+        result := classifyTaskIdleStatus(history)
+
+        switch result {
+        case "COMPLETE":
+                r := IdlePauseCheck
+                return &r
+        case "BLOCKED":
+                r := IdleNoAction
+                return &r
+        default: // CONTINUE (or parse error safe default)
+                r := IdleInjectResume
+                return &r
+        }
+}
+
+// classifyTaskIdleStatus 使用強制模型做三元分類（COMPLETE / BLOCKED / CONTINUE）
+// 只判斷最後一個任務，不理會歷史中其他未完成的舊任務
+func classifyTaskIdleStatus(history []Message) string {
+        messages := []Message{
+                {
+                        Role: "system",
+                        Content: `你是一個任務狀態分類器。根據對話歷史，判斷用戶**最後一個請求的任務**當前所處的狀態。
+
+重要：只判斷最後一個任務，不要理會歷史中其他未完成的舊任務。
+只回覆一個詞：
+
+COMPLETE — 最後的任務已完成，所有步驟已執行完畢，無遺留工作
+BLOCKED  — 最後的任務受阻，需要用戶的決定或輸入才能繼續
+CONTINUE — 最後的任務可繼續執行，之前可能因異常中斷等原因暫停
+
+當前任務狀態：`,
+                },
+        }
+        messages = append(messages, history...)
+
+        // 解析當前有效的模型配置
+        effectiveAPIType := apiType
+        effectiveBaseURL := baseURL
+        effectiveAPIKey := apiKey
+        effectiveModelID := modelID
+
+        if globalConfigManager != nil && globalStage != nil {
+                currentActor := globalStage.GetCurrentActor()
+                if modelConfig := getActorModelConfig(currentActor); modelConfig != nil {
+                        if modelConfig.APIType != "" {
+                                effectiveAPIType = modelConfig.APIType
+                        }
+                        if modelConfig.BaseURL != "" {
+                                effectiveBaseURL = modelConfig.BaseURL
+                        }
+                        if modelConfig.APIKey != "" {
+                                effectiveAPIKey = modelConfig.ResolveAPIKey()
+                        }
+                        if modelConfig.Model != "" {
+                                effectiveModelID = modelConfig.Model
+                        }
+                }
+        }
+
+        ctx := context.Background()
+        resp, err := CallModelSync(ctx, messages, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID, 0.0, 10, false, false)
+        if err != nil {
+                log.Printf("[classifyTaskIdleStatus] CallModelSync error: %v, defaulting to CONTINUE", err)
+                return "CONTINUE"
+        }
+
+        content := strings.TrimSpace(extractContentString(resp.Content))
+        upper := strings.ToUpper(content)
+
+        if strings.HasPrefix(upper, "COMPLETE") {
+                return "COMPLETE"
+        }
+        if strings.HasPrefix(upper, "BLOCKED") {
+                return "BLOCKED"
+        }
+        // safe default: CONTINUE
+        log.Printf("[classifyTaskIdleStatus] Unrecognized response: %q, defaulting to CONTINUE", content)
+        return "CONTINUE"
+}
+
+// stripResumeMessage 從歷史中移除隱藏的 resume 消息
+func stripResumeMessage(history []Message) []Message {
+        var filtered []Message
+        for _, msg := range history {
+                if content, ok := msg.Content.(string); ok && content == "[SYSTEM_RESUME] 繼續任務。" {
+                        continue
+                }
+                filtered = append(filtered, msg)
+        }
+        return filtered
 }
 
 // Subscribe 注册一个输出广播订阅者
