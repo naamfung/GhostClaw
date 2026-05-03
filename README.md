@@ -273,10 +273,10 @@ Memory:
 
 | 工具 | 说明 |
 |------|------|
-| `memory_save` | 保存记忆 |
-| `memory_recall` | 检索记忆 |
-| `memory_forget` | 删除记忆 |
-| `memory_list` | 列出记忆 |
+| `MemorySave` | 保存记忆 |
+| `MemoryRecall` | 检索记忆 |
+| `MemoryForget` | 删除记忆 |
+| `MemoryList` | 列出记忆 |
 
 ---
 
@@ -286,17 +286,17 @@ GhostClaw 提供三种 Shell 执行模式，覆盖不同场景：
 
 | 工具 | 说明 | 适用场景 |
 |------|------|----------|
-| `shell` | 同步执行（有超时） | 快速命令：ls、cat、grep、git status |
-| `shell_delayed` | 后台执行（无超时） | 长时任务：编译、部署、下载 |
-| `smart_shell` | 智能判断执行方式 | 无需手动选择，自动匹配 |
+| `Shell` | 同步执行（有超时） | 快速命令：ls、cat、grep、git status |
+| `ShellDelayed` | 后台执行（无超时） | 长时任务：编译、部署、下载 |
+| `SmartShell` | 智能判断执行方式 | 无需手动选择，自动匹配 |
 
 后台任务管理：
 
 | 工具 | 说明 |
 |------|------|
-| `shell_delayed_check` | 检查后台任务状态 |
-| `shell_delayed_terminate` | 终止后台任务 |
-| `shell_delayed_list` | 列出所有后台任务 |
+| `ShellDelayedCheck` | 检查后台任务状态 |
+| `ShellDelayedTerminate` | 终止后台任务 |
+| `ShellDelayedList` | 列出所有后台任务 |
 
 后台任务完成后会自动唤醒模型，通知其查看结果。可在 `config.toon` 中调整超时：
 

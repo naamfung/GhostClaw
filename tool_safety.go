@@ -407,7 +407,7 @@ func minInt(a, b, c int) int {
 }
 
 // snakeToPascalCase 將 snake_case 工具名轉換為 PascalCase
-// 例如：ssh_connect → SSHConnect, browser_click → BrowserClick
+// 例如：SSHConnect, BrowserClick
 func snakeToPascalCase(s string) string {
         parts := strings.Split(s, "_")
         for i, part := range parts {

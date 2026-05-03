@@ -44,16 +44,16 @@
 ## 工具权限
 
 - 模式: allowlist
-- search
-- visit
-- read_file_line
-- read_file_lines
-- write_file_line
-- write_file_lines
-- memory_save
-- memory_recall
-- memory_list
-- todo
+- BrowserSearch
+- BrowserVisit
+- ReadFileLine
+- ReadFileLines
+- WriteFileLine
+- WriteFileLines
+- MemorySave
+- MemoryRecall
+- MemoryList
+- Todos
 
 ## 示例对话
 

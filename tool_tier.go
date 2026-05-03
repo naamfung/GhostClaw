@@ -405,18 +405,18 @@ func GetExtendedToolNames() []string {
 
 // GetConsolidatedBrowserTools 返回合并后的浏览器工具定义
 // 将 33 个独立浏览器工具合并为 5 个聚合工具：
-//   - browser_navigate: 导航/访问网页（合并 BrowserVisit, browser_navigate）
-//   - browser_interact: 页面交互（合并 browser_click, browser_DoubleClick,
-//     browser_hover, browser_type, browser_scroll, browser_RightClick, browser_drag）
-//   - browser_extract: 内容提取（合并 browser_screenshot, browser_ExecuteJs,
-//     browser_ExtractLinks, browser_ExtractImages, browser_ExtractElements,
-//     browser_snapshot, browser_ElementScreenshot, browser_pdf, browser_pdf_from_file）
-//   - browser_form_fill: 表单填写（合并 browser_fill_form, browser_select_option,
-//     browser_key_press, browser_upload_file）
+//   - BrowserNavigate: 导航/访问网页（合并 BrowserVisit, BrowserNavigate）
+//   - BrowserInteract: 页面交互（合并 BrowserClick, BrowserDoubleClick,
+//     BrowserHover, BrowserType, BrowserScroll, BrowserRightClick, BrowserDrag）
+//   - BrowserExtract: 内容提取（合并 BrowserScreenshot, BrowserExecuteJs,
+//     BrowserExtractLinks, BrowserExtractImages, BrowserExtractElements,
+//     BrowserSnapshot, BrowserElementScreenshot, BrowserPdf, BrowserPdfFromFile）
+//   - BrowserFormFill: 表单填写（合并 BrowserFillForm, BrowserSelectOption,
+//     BrowserKeyPress, BrowserUploadFile）
 //   - BrowserSearch: 搜索引擎查询（合并 BrowserSearch）
 func GetConsolidatedBrowserTools() []map[string]interface{} {
         return []map[string]interface{}{
-                // --- browser_navigate: 导航与访问 ---
+                // --- BrowserNavigate: 导航与访问 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
@@ -439,7 +439,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                 },
                         },
                 },
-                // --- browser_interact: 页面交互 ---
+                // --- BrowserInteract: 页面交互 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
@@ -484,7 +484,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                 },
                         },
                 },
-                // --- browser_extract: 内容提取 ---
+                // --- BrowserExtract: 内容提取 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
@@ -524,7 +524,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
                                 },
                         },
                 },
-                // --- browser_form_fill: 表单填写 ---
+                // --- BrowserFormFill: 表单填写 ---
                 {
                         "type": "function",
                         "function": map[string]interface{}{
@@ -586,7 +586,7 @@ func GetConsolidatedBrowserTools() []map[string]interface{} {
 // 不再依赖 convertToolsToAnthropic 转换，消除格式转换风险
 func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
         return []map[string]interface{}{
-                // --- browser_navigate: 导航与访问 ---
+                // --- BrowserNavigate: 导航与访问 ---
                 {
                         "name": "BrowserNavigate",
                         "description": "Navigate to a URL, visit a web page, and extract its text content. Supports optional wait time for dynamic pages.",
@@ -606,7 +606,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                 "additionalProperties": false,
                         },
                 },
-                // --- browser_interact: 页面交互 ---
+                // --- BrowserInteract: 页面交互 ---
                 {
                         "name": "BrowserInteract",
                         "description": "Interact with elements on a web page. Supports click, double-click, hover, type text, scroll, right-click, and drag. Uses CSS selectors to target elements.",
@@ -648,7 +648,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                 "additionalProperties": false,
                         },
                 },
-                // --- browser_extract: 内容提取 ---
+                // --- BrowserExtract: 内容提取 ---
                 {
                         "name": "BrowserExtract",
                         "description": "Extract content from a web page. Supports screenshot capture, JavaScript execution, link/image extraction, element scraping, and PDF generation.",
@@ -685,7 +685,7 @@ func GetConsolidatedBrowserToolsAnthropic() []map[string]interface{} {
                                 "additionalProperties": false,
                         },
                 },
-                // --- browser_form_fill: 表单填写 ---
+                // --- BrowserFormFill: 表单填写 ---
                 {
                         "name": "BrowserFormFill",
                         "description": "Fill out and submit web forms. Supports multi-field input, file uploads, select options, and key press simulation.",

@@ -49,12 +49,12 @@
 ## 工具权限
 
 - 模式: allowlist
-- search
-- visit
-- memory_save
-- memory_recall
-- memory_list
-- todo
+- BrowserSearch
+- BrowserVisit
+- MemorySave
+- MemoryRecall
+- MemoryList
+- Todos
 
 ## 标签
 

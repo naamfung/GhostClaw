@@ -583,7 +583,7 @@ func TestDetectXMLToolInvocation(t *testing.T) {
 		for i := range prefix {
 			prefix[i] = 'x'
 		}
-		within := string(prefix) + `<invoke name="grep">`
+		within := string(prefix) + `<invoke name="TextGrep">`
 		if !detectXMLToolInvocation(within) {
 			t.Error("should detect invoke within 500-rune boundary")
 		}

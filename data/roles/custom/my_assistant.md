@@ -34,9 +34,9 @@
 ## 工具权限
 
 - 模式: allowlist
-- search
-- memory_save
-- memory_recall
+- BrowserSearch
+- MemorySave
+- MemoryRecall
 
 ## 标签
 

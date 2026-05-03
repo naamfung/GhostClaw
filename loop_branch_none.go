@@ -204,17 +204,8 @@ func detectXMLToolInvocation(content string) bool {
 	}
 	lower := strings.ToLower(checkContent)
 
-	knownToolNames := []string{
-		"SmartShell", "Shell", "ShellDelayed", "ReadFileLines", "ReadFileLine", "ReadFileRange",
-		"write_file", "WriteFileLine", "WriteFileLines", "search_files",
-		"EnterPlanMode", "Spawn", "SpawnCheck", "SpawnList", "SpawnBatch",
-		"Menu", "todo", "Todos", "grep", "list_directory", "web_search",
-		"BrowserNavigate", "BrowserClick", "BrowserType", "BrowserSnapshot",
-		"mcp_call", "replace", "batch_replace", "file_exists",
-	}
-
 	if strings.Contains(lower, "<invoke") && strings.Contains(lower, "name=") {
-		for _, toolName := range knownToolNames {
+		for toolName := range toolRegistryMap {
 			lt := strings.ToLower(toolName)
 			if strings.Contains(lower, "name=\""+lt+"\"") || strings.Contains(lower, "name='"+lt+"'") {
 				return true
@@ -223,7 +214,7 @@ func detectXMLToolInvocation(content string) bool {
 	}
 
 	if strings.Contains(lower, "<tool_call") && strings.Contains(lower, "name=") {
-		for _, toolName := range knownToolNames {
+		for toolName := range toolRegistryMap {
 			lt := strings.ToLower(toolName)
 			if strings.Contains(lower, "name=\""+lt+"\"") || strings.Contains(lower, "name='"+lt+"'") {
 				return true

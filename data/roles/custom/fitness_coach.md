@@ -55,11 +55,11 @@
 ## 工具权限
 
 - 模式: allowlist
-- search
-- visit
-- memory_save
-- memory_recall
-- memory_list
+- BrowserSearch
+- BrowserVisit
+- MemorySave
+- MemoryRecall
+- MemoryList
 
 ## 标签
 

@@ -54,10 +54,10 @@
 ## 工具权限
 
 - 模式: allowlist
-- search
-- memory_save
-- memory_recall
-- memory_list
+- BrowserSearch
+- MemorySave
+- MemoryRecall
+- MemoryList
 
 ## 标签
 

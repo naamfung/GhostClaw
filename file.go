@@ -479,7 +479,6 @@ func getFileTypeDescription(path string) string {
 	sb.WriteString("\n💡 **建議**: 如需查看或操作此二進制文件的內容，可以使用以下工具：\n")
 	sb.WriteString("- 使用 `SmartShell` 執行 `xxd <file>`、`hexdump -C <file>` 或 `od -A x -t x1z <file>` 查看十六進制內容\n")
 	sb.WriteString("- 使用 `SmartShell` 執行 `file <file>` 獲取詳細文件類型信息\n")
-	sb.WriteString("- 如需讀取二進制數據塊，可以使用 `read_file_bytes` 工具\n")
 
 	return sb.String()
 }

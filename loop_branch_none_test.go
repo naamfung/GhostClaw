@@ -40,8 +40,8 @@ func TestDetectXML_InvokeWithKnownTool(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "invoke with grep",
-			content: `<invoke name="grep"><parameter name="pattern">test</parameter></invoke>`,
+			name:    "invoke with TextGrep",
+			content: `<invoke name="TextGrep"><parameter name="pattern">test</parameter></invoke>`,
 			want:    true,
 		},
 		{
@@ -190,22 +190,12 @@ func TestDetectXML_CaseInsensitive(t *testing.T) {
 }
 
 func TestDetectXML_AllKnownTools(t *testing.T) {
-	knownTools := []string{
-		"SmartShell", "Shell", "ShellDelayed", "ReadFileLines", "ReadFileLine", "ReadFileRange",
-		"write_file", "WriteFileLine", "WriteFileLines", "search_files",
-		"EnterPlanMode", "Spawn", "SpawnCheck", "SpawnList", "SpawnBatch",
-		"Menu", "todo", "Todos", "grep", "list_directory", "web_search",
-		"BrowserNavigate", "BrowserClick", "BrowserType", "BrowserSnapshot",
-		"mcp_call", "replace", "batch_replace", "file_exists",
-	}
-
-	for _, tool := range knownTools {
-		t.Run(tool, func(t *testing.T) {
-			content := `<invoke name="` + tool + `"><parameter name="command">test</parameter></invoke>`
-			if !detectXMLToolInvocation(content) {
-				t.Errorf("Should detect XML invoke for known tool %q", tool)
-			}
-		})
+	// 使用全局 toolRegistryMap，保證與實際註冊工具完全同步
+	for toolName := range toolRegistryMap {
+		content := `<invoke name="` + toolName + `"><parameter name="command">test</parameter></invoke>`
+		if !detectXMLToolInvocation(content) {
+			t.Errorf("Should detect XML invoke for known tool %q", toolName)
+		}
 	}
 }
 

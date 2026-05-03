@@ -188,7 +188,7 @@ type distributionConfigFile struct {
 //
 //      {
 //        "distributions": [
-//          {"name": "core", "tool_names": ["Shell", "read_file"], "weight": 1.0, "description": "Core tools"},
+//          {"name": "core", "tool_names": ["Shell", "ReadFileLines"], "weight": 1.0, "description": "Core tools"},
 //          {"name": "web", "tool_names": ["BrowserSearch", "BrowserVisit"], "weight": 0.5, "description": "Web tools"}
 //        ]
 //      }

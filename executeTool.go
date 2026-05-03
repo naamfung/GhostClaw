@@ -784,7 +784,7 @@ func execBrowserVisit(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserDownload(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_download tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserDownload tool call", TaskStatusFailed
         }
 
         fileName, err := Download(ec.Ch.GetSessionID(), url)
@@ -802,12 +802,12 @@ func execBrowserDownload(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserClick(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_click tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserClick tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_click tool call", TaskStatusFailed
+                return "Error: Empty selector in BrowserClick tool call", TaskStatusFailed
         }
 
         timeout := 0
@@ -829,17 +829,17 @@ func execBrowserClick(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserType(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_type tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserType tool call", TaskStatusFailed
         }
 
         selector, ok := ec.ArgsMap["selector"].(string)
         if !ok || selector == "" {
-                return "Error: Empty selector in browser_type tool call", TaskStatusFailed
+                return "Error: Empty selector in BrowserType tool call", TaskStatusFailed
         }
 
         text, ok := ec.ArgsMap["text"].(string)
         if !ok {
-                return "Error: Empty text in browser_type tool call", TaskStatusFailed
+                return "Error: Empty text in BrowserType tool call", TaskStatusFailed
         }
 
         submit, _ := ec.ArgsMap["submit"].(bool)
@@ -862,12 +862,12 @@ func execBrowserType(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserScroll(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_scroll tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserScroll tool call", TaskStatusFailed
         }
 
         direction, ok := ec.ArgsMap["direction"].(string)
         if !ok || direction == "" {
-                return "Error: Empty direction in browser_scroll tool call", TaskStatusFailed
+                return "Error: Empty direction in BrowserScroll tool call", TaskStatusFailed
         }
 
         amount := 500
@@ -992,7 +992,7 @@ func execBrowserExtractElements(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserScreenshot(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_screenshot tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserScreenshot tool call", TaskStatusFailed
         }
 
         fullPage, _ := ec.ArgsMap["FullPage"].(bool)
@@ -1210,12 +1210,12 @@ func execBrowserWaitSmart(ec *ToolExecContext) (string, TaskStatus) {
 func execBrowserNavigate(ec *ToolExecContext) (string, TaskStatus) {
         url, ok := ec.ArgsMap["url"].(string)
         if !ok || url == "" {
-                return "Error: Empty url in browser_navigate tool call", TaskStatusFailed
+                return "Error: Empty url in BrowserNavigate tool call", TaskStatusFailed
         }
 
         action, ok := ec.ArgsMap["action"].(string)
         if !ok || action == "" {
-                return "Error: Empty action in browser_navigate tool call", TaskStatusFailed
+                return "Error: Empty action in BrowserNavigate tool call", TaskStatusFailed
         }
 
         var result *BrowserNavigateResult

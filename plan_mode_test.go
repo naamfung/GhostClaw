@@ -521,7 +521,7 @@ func TestIsToolAllowedInPlanMode_Inactive(t *testing.T) {
 
 	// When inactive, all tools are allowed
 	if !globalPlanMode.IsToolAllowedInPlanMode("SmartShell") {
-		t.Error("smart_shell should be allowed when Plan Mode is inactive")
+		t.Error("SmartShell should be allowed when Plan Mode is inactive")
 	}
 	if !globalPlanMode.IsToolAllowedInPlanMode("WriteFileLines") {
 		t.Error("WriteFileLines should be allowed when Plan Mode is inactive")

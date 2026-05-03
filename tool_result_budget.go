@@ -40,11 +40,13 @@ var toolCategoryPrefixes = []struct {
 	{"SmartShell", ShellToolThreshold},
 	{"ssh", ShellToolThreshold},
 	{"browser", BrowserToolThreshold},
-	{"read_file", FileToolThreshold},
-	{"read_all", FileToolThreshold},
-	{"write_file", FileToolThreshold},
-	{"write_all", FileToolThreshold},
-	{"append_file", FileToolThreshold},
+	{"readfileline", FileToolThreshold},
+	{"readfilelines", FileToolThreshold},
+	{"readfilerange", FileToolThreshold},
+	{"writefileline", FileToolThreshold},
+	{"writefilelines", FileToolThreshold},
+	{"writefilerange", FileToolThreshold},
+	{"appendtofile", FileToolThreshold},
 	{"mcp", 10000},
 }
 

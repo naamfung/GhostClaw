@@ -57,9 +57,9 @@
 ## 工具权限
 
 - 模式: allowlist
-- memory_save
-- memory_recall
-- memory_list
+- MemorySave
+- MemoryRecall
+- MemoryList
 
 ## 标签
 

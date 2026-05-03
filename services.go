@@ -888,7 +888,7 @@ func Visit(sessionID, url string) (result *VisitResult, err error) {
                                 returnText = TruncateString(pageTextStr, maxDirectLen) + "\n... [内容已截断，原始长度: " + fmt.Sprintf("%d", originalLen) + " 字符，保存文件失败]"
                         } else {
                                 savedFilePath = filePath
-                                returnText = fmt.Sprintf("[内容过长已保存到文件]\n原始长度: %d 字符\n文件路径: %s\n可使用 read_file 工具读取完整内容", originalLen, filePath)
+                                returnText = fmt.Sprintf("[内容过长已保存到文件]\n原始长度: %d 字符\n文件路径: %s\n可使用 ReadFileLines 工具读取完整内容", originalLen, filePath)
                                 fmt.Println("Content saved to: " + filePath)
                         }
                 }

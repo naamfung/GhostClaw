@@ -139,11 +139,13 @@ func TestCheckAndPersistResult_FileToolThreshold(t *testing.T) {
 		tool      string
 		threshold int
 	}{
-		{"read_file", FileToolThreshold},
-		{"read_all", FileToolThreshold},
-		{"write_file", FileToolThreshold},
-		{"write_all", FileToolThreshold},
-		{"append_file", FileToolThreshold},
+		{"ReadFileLines", FileToolThreshold},
+		{"ReadFileLine", FileToolThreshold},
+		{"ReadFileRange", FileToolThreshold},
+		{"WriteFileLines", FileToolThreshold},
+		{"WriteFileLine", FileToolThreshold},
+		{"WriteFileRange", FileToolThreshold},
+		{"AppendToFile", FileToolThreshold},
 	}
 
 	for _, tt := range tests {
@@ -157,7 +159,7 @@ func TestCheckAndPersistResult_FileToolThreshold(t *testing.T) {
 func TestCheckAndPersistResult_BrowserToolThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	for _, tool := range []string{"browser", "browser_visit", "browser_screenshot"} {
+	for _, tool := range []string{"browser", "BrowserVisit", "BrowserScreenshot"} {
 		threshold := budget.resolveThreshold(tool)
 		if threshold != BrowserToolThreshold {
 			t.Errorf("%s threshold = %d, want %d", tool, threshold, BrowserToolThreshold)
