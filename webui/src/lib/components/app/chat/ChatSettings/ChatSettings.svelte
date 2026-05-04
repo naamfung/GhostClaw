@@ -214,7 +214,7 @@
                                 },
                                 {
                                         key: SETTINGS_KEYS.SMART_SHELL_DEFAULT_WAKE_MINS,
-                                        label: 'ShellDelayed 默认唤醒间隔（分）',
+                                        label: 'SmartShell 异步默认唤醒间隔（分）',
                                         type: SettingsFieldType.INPUT
                                 },
                                 {

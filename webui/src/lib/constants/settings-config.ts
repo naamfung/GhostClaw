@@ -97,7 +97,7 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         // SmartShell settings
         smartShellSyncTimeout: 'SmartShell 快速命令（已知命令）的超时时间（秒）。',
         smartShellUnknownTimeout: 'SmartShell 未知命令的超时时间（秒）。未知命令可能需要更长的等待时间。',
-        smartShellDefaultWakeMins: 'ShellDelayed 延迟任务的默认唤醒间隔（分钟）。',
+        smartShellDefaultWakeMins: 'SmartShell 异步任务的默认唤醒间隔（分钟）。',
         smartShellMaxDirectOutput: 'Shell 输出直接返回给模型的最大字符数。超过此值将保存为文件再返回。设为 0 使用默认值（1000）。Plan Mode 探索阶段自动提升至 2000。',
         // agent loop
         maxAgentIterations: 'Agent Loop 最大迭代次数。设为 0 则不限制（默认 100）。降低此值可防止模型无限制循环。',
