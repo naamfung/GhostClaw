@@ -158,9 +158,12 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
         isReconnect := hasOtherSubs || taskRunning
 
         wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
-        history := session.GetHistory()
-        if len(history) > 0 {
-                wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, HistorySync: history, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
+        // 前端從 DB 攞原始消息，唔係內存滑窗（滑窗可能含壓縮/摘要等非原始數據）
+        if globalSessionPersist != nil {
+                saved, err := globalSessionPersist.LoadSession(session.ID)
+                if err == nil && saved != nil && len(saved.History) > 0 {
+                        wsChannel.WriteChunk(StreamChunk{SessionID: session.ID, HistorySync: saved.History, TaskRunning: session.IsTaskRunning(), IsReconnect: isReconnect})
+                }
         }
 
         for {
