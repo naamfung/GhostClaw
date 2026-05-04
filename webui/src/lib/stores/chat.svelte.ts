@@ -828,6 +828,16 @@ class ChatStore {
                                         // Task ended — 必須同步清除 chatStreamingStates，
                                         // 否則 sendMessage 內部 guard (isChatLoadingInternal) 會
                                         // 阻止發送，令 UI 顯示「發送」但實際點擊無反應
+                                        //
+                                        // 防止舊 AgentLoop 嘅 TaskRunning: false 殘留事件
+                                        // 喺新 sendMessage 之後到逹，搶先消費 isFirstTaskRunning。
+                                        // 場景：用戶點停止後快速發新消息，舊 AgentLoop defer 嘅
+                                        // TaskRunning: false 比新 TaskRunning: true 更早到前端，
+                                        // 導致新 onTaskRunning(true) 被誤判為 wake notification。
+                                        // Guard：isFirstTaskRunning=true 表示尚未收到過任何
+                                        // TaskRunning: true，此時忽略所有 TaskRunning: false。
+                                        if (isFirstTaskRunning) return;
+
                                         this.setStreamingActive(false);
                                         this.setChatLoading(assistantMessage.convId, false);
                                         this.clearChatStreaming(assistantMessage.convId);
