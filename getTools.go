@@ -234,8 +234,8 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
         }
 
         // 如果 Plan Mode 已激活，只注入 Plan Mode 专用工具（替代所有其他动态工具）
-        if globalPlanMode != nil && globalPlanMode.IsActive() {
-                planTools := getPlanModeToolDefinitions()
+        if globalTasksMode != nil && globalTasksMode.IsActive() {
+                planTools := GetTasksModeToolDefs()
 
                 // 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
                 planToolNames := make(map[string]bool, len(planTools))
@@ -247,7 +247,7 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
 
                 // 根據當前 Phase 的 allow-list 物理移除不允許的工具
                 // 與 IsToolAllowedInPlanMode 用同一份 allow-list，確保一致性
-                phase := globalPlanMode.CurrentPhase()
+                phase := globalTasksMode.Phase()
 
                 filtered := make([]map[string]interface{}, 0, len(toolList))
                 for _, t := range toolList {
@@ -257,7 +257,7 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
                         }
                         // 改用 allow-list 檢查（與 IsToolAllowedInPlanMode 一致），
                         // 避免 model 睇到但 runtime block 嘅不一致導致死循環
-                        if !globalPlanMode.IsToolAllowedInPlanMode(name) {
+                        if !IsToolAllowedInTasksMode(name) {
                                 continue
                         }
                         if strings.HasPrefix(name, "browser_") {
@@ -265,7 +265,7 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
                         }
                         filtered = append(filtered, t)
                 }
-                log.Printf("[PlanMode] Phase %d: 過濾後工具數 %d（原始 %d，移除 %d）",
+                log.Printf("[TasksMode] Phase %s: 過濾後工具數 %d（原始 %d，移除 %d）",
                         phase, len(filtered), len(toolList), len(toolList)-len(filtered))
 
                 if apiType == "anthropic" {
@@ -349,7 +349,7 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 //
 //      MemoryRecall, MemoryList, 以及各 Phase 的動態工具
 //      ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行
-func getBlockedToolsForPlanPhase(phase PlanPhase) map[string]bool {
+func getBlockedToolsForPlanPhase(phase string) map[string]bool {
         blocked := make(map[string]bool)
 
         // ── 所有 Phase 禁止 ──

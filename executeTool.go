@@ -39,28 +39,18 @@ func execMenuTool(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execNextPhase(ec *ToolExecContext) (string, TaskStatus) {
-        // 支援新 TasksMode + 舊 PlanMode
         if globalTasksMode.IsActive() {
-                phaseName, msg, err := AdvancePhase()
+                phaseName, msg, err := advanceTasksPhase()
                 if err != nil {
                         return "錯誤：" + err.Error(), TaskStatusFailed
                 }
                 _ = phaseName
                 return msg, TaskStatusSuccess
         }
-        if globalPlanMode.IsActive() {
-                phaseName, msg, err := AdvancePhase()
-                if err != nil {
-                        return "錯誤：" + err.Error(), TaskStatusFailed
-                }
-                _ = phaseName
-                return msg, TaskStatusSuccess
-        }
-        return "錯誤：Tasks/Plan Mode 未激活。使用 Tasks(plan_phase=\"explore\") 進入。", TaskStatusFailed
+        return "錯誤：Tasks Mode 未激活。使用 Tasks(PlanPhase=\"explore\") 進入。", TaskStatusFailed
 }
 
 func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
-        // 支援新 TasksMode
         if globalTasksMode.IsActive() {
                 msg, ok := handleTasksPrevPhase()
                 if !ok {
@@ -68,15 +58,7 @@ func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
                 }
                 return msg, TaskStatusSuccess
         }
-        if globalPlanMode.IsActive() {
-                phaseName, msg, err := PrevPhase()
-                if err != nil {
-                        return "錯誤：" + err.Error(), TaskStatusFailed
-                }
-                _ = phaseName
-                return msg, TaskStatusSuccess
-        }
-        return "錯誤：Tasks/Plan Mode 未激活。", TaskStatusFailed
+        return "錯誤：Tasks Mode 未激活。", TaskStatusFailed
 }
 
 func execTasks(ec *ToolExecContext) (string, TaskStatus) {
@@ -1836,14 +1818,13 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
 
         // 支持 list_id 參數（Plan Mode 每階段使用不同列表）
         listID, _ := ec.ArgsMap["ListId"].(string)
-        // Plan Mode 自動檢測：如果在 Plan Mode 中且未指定 list_id，自動使用當前 Phase 的列表
-        if listID == "" && globalPlanMode != nil && globalPlanMode.IsActive() {
-                phase := globalPlanMode.CurrentPhase()
-                switch phase {
-                case PlanPhaseExplore:
-                        listID = "phase1"
-                case PlanPhaseDesign:
-                        listID = "phase2"
+        // Tasks Mode 自動檢測：如果在 Tasks Mode 中且未指定 ListId，自動使用當前 Phase 的列表
+        if listID == "" && globalTasksMode != nil && globalTasksMode.IsActive() {
+                switch globalTasksMode.Phase() {
+                case TasksPhaseExplore:
+                        listID = "explore"
+                case TasksPhaseDesign:
+                        listID = "design"
                 }
         }
 

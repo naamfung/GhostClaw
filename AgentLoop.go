@@ -474,7 +474,6 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 			// 任務未結構化時：放行規劃/讀取類工具，攔截寫入/執行類工具
 			// 模型可以先讀代碼蒐集資訊，再用 Todos/Tasks 做計畫
 			if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() &&
-				(globalPlanMode == nil || !globalPlanMode.IsActive()) &&
 				(globalTasksMode == nil || !globalTasksMode.IsActive()) {
 				blocked := false
 				for _, tc := range callResult.ToolCalls {

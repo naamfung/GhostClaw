@@ -175,7 +175,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 	// ========== todos 使用提醒守衛 ==========
 	// 工作模式 + 未規劃 → 死循環，強制模型使用 Todos 或 EnterPlanMode
 	// plan mode active 時唔觸發 — 模型已選擇 EnterPlanMode 路徑
-	planModeActive := globalPlanMode != nil && globalPlanMode.IsActive()
+	planModeActive := globalTasksMode != nil && globalTasksMode.IsActive()
 	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() && !planModeActive {
 		*todoReminderCount++
 		reminderHint := "[SYSTEM_REMINDER] 你正處於工作模式但尚未規劃任務。\n" +

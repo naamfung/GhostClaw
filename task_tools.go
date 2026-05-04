@@ -23,7 +23,7 @@ const PlanModeExploreMaxDirectOutput = 2000
 // Plan Mode 探索階段（Phase 1）時使用 2000 字臨時門檻，離開探索階段後恢復
 func getMaxDirectOutput() int {
         // Plan Mode 探索階段（Phase 1）使用更大的門檻，便於模型閱讀大量輸出
-        if globalPlanMode != nil && globalPlanMode.CurrentPhase() == PlanPhaseExplore {
+        if globalTasksMode != nil && globalTasksMode.Phase() == TasksPhaseExplore {
                 return PlanModeExploreMaxDirectOutput
         }
         v := globalToolsConfig.SmartShell.MaxDirectOutput

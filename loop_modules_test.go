@@ -72,7 +72,7 @@ func TestRunPlanModeChecks_NormalIteration(t *testing.T) {
 	}
 	originalLen := len(messages)
 
-	// Should not panic when globalPlanMode is nil (default state)
+	// Should not panic when globalTasksMode is nil (default state)
 	RunPlanModeChecks(&messages, 1)
 
 	if len(messages) != originalLen {
@@ -81,7 +81,7 @@ func TestRunPlanModeChecks_NormalIteration(t *testing.T) {
 	}
 }
 
-func TestRunPlanModeChecks_Iteration4_NoPlanMode(t *testing.T) {
+func TestRunPlanModeChecks_Iteration4_NoTasksMode(t *testing.T) {
 	messages := []Message{
 		{Role: "system", Content: "test system"},
 		{Role: "user", Content: "hello"},
@@ -90,7 +90,7 @@ func TestRunPlanModeChecks_Iteration4_NoPlanMode(t *testing.T) {
 	// Without plan mode initialized, should not panic
 	RunPlanModeChecks(&messages, 4)
 
-	// globalPlanMode is nil so no suggestion injected
+	// globalTasksMode is nil so no suggestion injected
 	if len(messages) != 2 {
 		t.Logf("Messages count after RunPlanModeChecks: %d", len(messages))
 	}

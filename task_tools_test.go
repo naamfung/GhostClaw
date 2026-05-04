@@ -35,12 +35,12 @@ func TestGetMaxDirectOutput_ConfigOverride(t *testing.T) {
 func TestGetMaxDirectOutput_ExplorePhase(t *testing.T) {
 	old := globalToolsConfig
 	defer func() { globalToolsConfig = old }()
-	defer resetGlobalPlanMode()
+	defer resetGlobalTasksMode()
 
 	// 進入 Plan Mode Explore Phase
-	globalPlanMode.mu.Lock()
-	globalPlanMode.Phase = PlanPhaseExplore
-	globalPlanMode.mu.Unlock()
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseExplore
+	globalTasksMode.mu.Unlock()
 
 	globalToolsConfig.SmartShell.MaxDirectOutput = 0
 
@@ -52,12 +52,12 @@ func TestGetMaxDirectOutput_ExplorePhase(t *testing.T) {
 func TestGetMaxDirectOutput_ExplorePhaseOverridesConfig(t *testing.T) {
 	old := globalToolsConfig
 	defer func() { globalToolsConfig = old }()
-	defer resetGlobalPlanMode()
+	defer resetGlobalTasksMode()
 
 	// 進入 Plan Mode Explore Phase
-	globalPlanMode.mu.Lock()
-	globalPlanMode.Phase = PlanPhaseExplore
-	globalPlanMode.mu.Unlock()
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseExplore
+	globalTasksMode.mu.Unlock()
 
 	// 配置設置為 500，但探索階段應該返回 2000
 	globalToolsConfig.SmartShell.MaxDirectOutput = 500
@@ -70,12 +70,12 @@ func TestGetMaxDirectOutput_ExplorePhaseOverridesConfig(t *testing.T) {
 func TestGetMaxDirectOutput_DesignPhase(t *testing.T) {
 	old := globalToolsConfig
 	defer func() { globalToolsConfig = old }()
-	defer resetGlobalPlanMode()
+	defer resetGlobalTasksMode()
 
 	// 進入 Plan Mode Design Phase (Phase 2)
-	globalPlanMode.mu.Lock()
-	globalPlanMode.Phase = PlanPhaseDesign
-	globalPlanMode.mu.Unlock()
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseDesign
+	globalTasksMode.mu.Unlock()
 
 	globalToolsConfig.SmartShell.MaxDirectOutput = 0
 
@@ -87,12 +87,12 @@ func TestGetMaxDirectOutput_DesignPhase(t *testing.T) {
 func TestGetMaxDirectOutput_ExecutePhase(t *testing.T) {
 	old := globalToolsConfig
 	defer func() { globalToolsConfig = old }()
-	defer resetGlobalPlanMode()
+	defer resetGlobalTasksMode()
 
 	// 進入 Plan Mode Execute Phase (Phase 3)
-	globalPlanMode.mu.Lock()
-	globalPlanMode.Phase = PlanPhaseExecute
-	globalPlanMode.mu.Unlock()
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseExecute
+	globalTasksMode.mu.Unlock()
 
 	globalToolsConfig.SmartShell.MaxDirectOutput = 0
 
@@ -258,15 +258,15 @@ func TestSaveOutputToFile_ExplorePhaseHigherThreshold(t *testing.T) {
 		globalToolsConfig = old
 		globalExecDir = oldExecDir
 	}()
-	defer resetGlobalPlanMode()
+	defer resetGlobalTasksMode()
 
 	globalToolsConfig.SmartShell.MaxDirectOutput = 1000
 	globalExecDir = t.TempDir()
 
 	// 進入 Plan Mode Explore Phase
-	globalPlanMode.mu.Lock()
-	globalPlanMode.Phase = PlanPhaseExplore
-	globalPlanMode.mu.Unlock()
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseExplore
+	globalTasksMode.mu.Unlock()
 
 	// 1500 字：超過普通門檻 1000，但低於探索階段門檻 2000，應該不會保存
 	content := strings.Repeat("g", 1500)

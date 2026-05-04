@@ -218,7 +218,7 @@ func TestIsWriteTool(t *testing.T) {
 	readTools := []string{
 		"ReadFileLine", "ReadFileLines", "TextSearch",
 		"Shell", "SmartShell", "Spawn", "mcp_call",
-		"EnterPlanMode", "Menu",
+		"Tasks", "Menu",
 	}
 	for _, name := range readTools {
 		if isWriteTool(name) {

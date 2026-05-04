@@ -122,7 +122,7 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 	// 但如果當前任務已經結構化（已用 todos 或已入 plan mode），跳過重新分類，
 	// 避免同一任務內嘅連續對話被重複要求做選擇
 	taskAlreadyStructured := globalTaskTracker != nil && globalTaskTracker.IsWorkMode() &&
-		(!TODO.IsEmpty() || (globalPlanMode != nil && globalPlanMode.IsActive()) || (globalTasksMode != nil && globalTasksMode.IsActive()))
+		(!TODO.IsEmpty() || (globalTasksMode != nil && globalTasksMode.IsActive()))
 
 	if globalTaskTracker != nil && !taskAlreadyStructured {
 		var latestQuery string
@@ -145,7 +145,7 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 		}
 	} else if taskAlreadyStructured {
 		log.Printf("[AgentLoop] Task already structured (todos=%v, plan=%v), skipping re-classification",
-			!TODO.IsEmpty(), globalPlanMode != nil && globalPlanMode.IsActive())
+			!TODO.IsEmpty(), globalTasksMode != nil && globalTasksMode.IsActive())
 	}
 
 	// ====== 注入或更新系統提示 ======

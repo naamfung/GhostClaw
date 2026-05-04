@@ -515,8 +515,8 @@ func TestExecMenuTool_Executes(t *testing.T) {
 // NextPhase / PrevPhase
 // ============================================================
 
-func TestExecNextPhase_NotInPlanMode(t *testing.T) {
-	defer resetGlobalPlanMode()
+func TestExecNextPhase_NotInTasksMode(t *testing.T) {
+	defer resetGlobalTasksMode()
 	ec := newTestEC(map[string]interface{}{})
 	result, _ := execNextPhase(ec)
 	if !strings.Contains(result, "不在 Plan Mode") && !strings.Contains(result, "not started") {
@@ -524,8 +524,8 @@ func TestExecNextPhase_NotInPlanMode(t *testing.T) {
 	}
 }
 
-func TestExecPrevPhase_NotInPhase2(t *testing.T) {
-	defer resetGlobalPlanMode()
+func TestExecPrevPhase_NotInDesign(t *testing.T) {
+	defer resetGlobalTasksMode()
 	ec := newTestEC(map[string]interface{}{})
 	result, _ := execPrevPhase(ec)
 	if strings.TrimSpace(result) == "" {

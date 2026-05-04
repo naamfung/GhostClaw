@@ -166,7 +166,7 @@ func enterTasksExplore() (string, bool) {
 	globalTasksMode.TaskDesc = taskDesc
 	globalTasksMode.DowngradeCount = 0
 
-	dataDir := getDataDir()
+	dataDir := globalDataDir
 	globalTasksMode.PlanFilePath = filepath.Join(dataDir, "plan.md")
 
 	// 初始化 Tasks todos（list_id="tasks_plan"）
@@ -622,8 +622,214 @@ func tasksToolDef() map[string]interface{} {
 }
 
 // ============================================================================
-// 獲取 phase 工具（同舊 getTools 兼容）
+// PhaseReadTools — 所有 phase 可用嘅只讀基礎工具
 // ============================================================================
+
+var PhaseReadTools = []string{
+	"ReadFileLine",
+	"ReadFileRange",
+	"ReadFileLines",
+	"TextSearch",
+	"TextGrep",
+	"MemoryRecall",
+	"MemoryList",
+}
+
+// ============================================================================
+// Phase 專用提示
+// ============================================================================
+
+func explorePhasePrompt() string {
+	return `## 探索階段
+
+目標：充分理解任務涉及的文件結構和依賴關係。
+
+操作指引：
+1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
+2. 使用 ReadFileLine / ReadFileRange / ReadFileLines 閱讀相關文件
+3. 對於複雜任務，使用 Spawn 創建最多 3 個並行子代理探索不同方面
+4. 使用 Todos(list_id="explore") 管理探索子任務
+
+探索要點：
+- 項目整體結構是什麼？
+- 需要修改哪些文件？每個文件的職責是什麼？
+- 有哪些依賴和約束？
+- 是否有類似的現有實現可以參考？
+
+完成探索後，調用 Tasks(PlanPhase="design", ...) 進入設計階段。`
+}
+
+func designPhasePrompt() string {
+	return `## 設計階段
+
+目標：基於探索結果，設計實現方案並定義 Tasks。
+
+操作指引：
+1. 綜合探索發現，設計實現方案
+2. 使用 Tasks(PlanPhase="design", PlanContent="...", Tasks=[...]) 寫入計劃 + 定義任務列表
+3. 重新審查關鍵文件，驗證方案可行性
+4. 確認無誤後，更新 Tasks 為最終版本
+
+計劃格式（PlanContent 必須包含）：
+  ## Context（上下文）
+  你已了解的信息、涉及哪些文件和模塊
+
+  ## Approach（方案）
+  按步驟列出要執行的操作，具體到文件路徑和位置
+
+  ## Verification（驗證方式）
+  如何驗證修改正確性
+
+Tasks 格式：
+  [{"id":"1", "title":"任務標題", "status":"Pending"}, ...]
+
+如有遺漏信息，可使用 PrevPhase 回溯到探索階段。
+
+完成設計後，調用 Tasks(PlanPhase="execute") 退出並開始執行。`
+}
+
+func executePhasePrompt() string {
+	return `## 執行階段
+
+系統正在處理退出...
+調用 Tasks(PlanPhase="execute") 完成退出。退出後：
+- 所有工具訪問權限恢復
+- Tasks 列表將注入會話歷史作為執行指引
+- 每個 Task 用 Todos(list_id="task_<id>") 管理子任務`
+}
+
+// ============================================================================
+// AdvancePhase — TasksMode 版本（取代舊 PlanMode AdvancePhase）
+// ============================================================================
+
+func advanceTasksPhase() (string, string, error) {
+	globalTasksMode.mu.Lock()
+
+	currentPhase := globalTasksMode.PlanPhase
+
+	if currentPhase >= TasksPhaseExecute {
+		globalTasksMode.mu.Unlock()
+		return "", "", fmt.Errorf("已是最終階段，無法繼續推進")
+	}
+
+	nextPhase := nextPhaseName(currentPhase)
+	if nextPhase == "" {
+		globalTasksMode.mu.Unlock()
+		return "", "", fmt.Errorf("無法從當前階段推進")
+	}
+
+	oldLabel := phaseLabel(currentPhase)
+	globalTasksMode.PlanPhase = nextPhase
+	globalTasksMode.PhaseStart = time.Now()
+
+	// 更新 tasks_plan todos
+	newPhaseOrder := phaseOrder(nextPhase)
+	todos := TODO
+	if todos != nil {
+		items := []TodoItem{
+			{ID: "1", Text: "Explore: 探索代碼結構", Status: "Pending"},
+			{ID: "2", Text: "Design: 設計實現方案", Status: "Pending"},
+			{ID: "3", Text: "Execute: 執行任務", Status: "Pending"},
+		}
+		for i := range items {
+			itemOrder := i + 1
+			if itemOrder < newPhaseOrder {
+				items[i].Status = "Completed"
+			} else if itemOrder == newPhaseOrder {
+				items[i].Status = "InProgress"
+			}
+		}
+		_, _ = todos.Update(items, "tasks_plan")
+	}
+
+	log.Printf("[TasksMode] Phase advance: %s → %s", oldLabel, phaseLabel(nextPhase))
+
+	// Execute 階段自動退出
+	if nextPhase == TasksPhaseExecute {
+		content := globalTasksMode.PlanContent
+		if globalTasksMode.PlanFilePath != "" {
+			data, _ := os.ReadFile(globalTasksMode.PlanFilePath)
+			if len(data) > 0 {
+				content = string(data)
+			}
+		}
+		tasks := make([]TaskItem, len(globalTasksMode.tasks))
+		copy(tasks, globalTasksMode.tasks)
+
+		if globalTasksMode.stopTimeout != nil {
+			close(globalTasksMode.stopTimeout)
+			globalTasksMode.stopTimeout = nil
+		}
+		globalTasksMode.PlanPhase = TasksPhaseInactive
+		globalTasksMode.PlanFilePath = ""
+		globalTasksMode.PlanContent = ""
+		globalTasksMode.TaskDesc = ""
+		globalTasksMode.tasks = nil
+		globalTasksMode.mu.Unlock()
+
+		if todos != nil {
+			_ = todos.Clear("tasks_plan")
+		}
+
+		var sb strings.Builder
+		sb.WriteString("Tasks 模式已退出")
+		if totalElapsed := time.Since(globalTasksMode.StartTime); totalElapsed > 0 {
+			sb.WriteString(fmt.Sprintf("（耗時 %v）", totalElapsed.Round(time.Second)))
+		}
+		sb.WriteString("。\n\n")
+		if len(tasks) > 0 {
+			sb.WriteString("## 任務列表\n\n")
+			for _, t := range tasks {
+				sb.WriteString(fmt.Sprintf("- [%s] **%s** (id=%s)\n", t.Status, t.Title, t.ID))
+			}
+			sb.WriteString("\n")
+		}
+		if content != "" {
+			sb.WriteString(fmt.Sprintf("## 計劃內容\n\n%s\n\n", content))
+		}
+		sb.WriteString("所有工具已恢復可用。按任務列表逐一執行。")
+
+		session := GetGlobalSession()
+		session.AddToHistory("system", sb.String())
+		return "已退出", sb.String(), nil
+	}
+
+	msg := fmt.Sprintf("已進入 %s\n\n可用工具已更新。%s",
+		phaseLabel(nextPhase), nextPhaseDesc(nextPhase))
+
+	globalTasksMode.mu.Unlock()
+	return phaseLabel(nextPhase), msg, nil
+}
+
+func nextPhaseDesc(phase string) string {
+	switch phase {
+	case TasksPhaseDesign:
+		return "使用 Tasks(PlanPhase=\"design\", PlanContent=\"...\", Tasks=[...]) 定義計劃和任務列表。"
+	case TasksPhaseExecute:
+		return ""
+	}
+	return ""
+}
+
+// ============================================================================
+// 獲取 phase 工具
+// ============================================================================
+
+func prevPhaseToolDef() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        "PrevPhase",
+			"description": "回溯到探索階段（僅設計階段可用）。當設計過程中發現需要更多探索時使用。最多回溯 2 次。",
+			"parameters": map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"required":             []string{},
+				"additionalProperties": false,
+			},
+		},
+	}
+}
 
 // GetTasksModeToolDefs 返回當前 phase 嘅額外工具定義
 func GetTasksModeToolDefs() []map[string]interface{} {
@@ -661,6 +867,11 @@ func ResetTasksMode() {
 	globalTasksMode.tasks = nil
 	globalTasksMode.DowngradeCount = 0
 	globalTasksMode.TimedOut = false
+}
+
+// resetGlobalTasksMode 測試用 helper
+func resetGlobalTasksMode() {
+	ResetTasksMode()
 }
 
 // GetTasksStatusJSON 返回 Tasks Mode JSON 狀態（用於 API）
