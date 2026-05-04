@@ -153,10 +153,9 @@ type CronConfig struct {
 // SmartShellConfig SmartShell 工具配置
 type SmartShellConfig struct {
         Enabled           *bool `toon:"Enabled,omitempty" json:"Enabled,omitempty"`
-        SyncTimeout       int   `toon:"SyncTimeout" json:"SyncTimeout"`                   // 快速命令超时（秒），默认60
-        UnknownTimeout    int   `toon:"UnknownTimeout" json:"UnknownTimeout"`              // 未知命令超时（秒），默认120
-        DefaultWakeMins   int   `toon:"DefaultWakeMins" json:"DefaultWakeMins"`             // 默认唤醒时间（分钟），默认5
-        MaxDirectOutput   int   `toon:"MaxDirectOutput,omitempty" json:"MaxDirectOutput,omitempty"` // stdout/stderr 超过此字符数则保存为文件返回，默认1000，最大1000
+        SyncTimeout       int   `toon:"SyncTimeout" json:"SyncTimeout"`           // 快速命令超时（秒），默认60
+        UnknownTimeout    int   `toon:"UnknownTimeout" json:"UnknownTimeout"`      // 未知命令超时（秒），默认120
+        DefaultWakeMins   int   `toon:"DefaultWakeMins" json:"DefaultWakeMins"`    // 默认唤醒时间（分钟），默认5
 }
 
 // MemoryConfig 记忆整合配置

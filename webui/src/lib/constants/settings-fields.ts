@@ -13,7 +13,6 @@ export const NUMERIC_FIELDS = [
         'smartShellSyncTimeout',
         'smartShellUnknownTimeout',
         'smartShellDefaultWakeMins',
-        'smartShellMaxDirectOutput',
         'maxAgentIterations',
         'compressionThreshold',
         'skillCleanupThresholdDays',

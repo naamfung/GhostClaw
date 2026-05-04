@@ -40,7 +40,6 @@ export const SETTINGS_KEYS = {
         SMART_SHELL_SYNC_TIMEOUT: 'smartShellSyncTimeout',
         SMART_SHELL_UNKNOWN_TIMEOUT: 'smartShellUnknownTimeout',
         SMART_SHELL_DEFAULT_WAKE_MINS: 'smartShellDefaultWakeMins',
-        SMART_SHELL_MAX_DIRECT_OUTPUT: 'smartShellMaxDirectOutput',
         // Agent Loop
         MAX_AGENT_ITERATIONS: 'maxAgentIterations',
         // Compression

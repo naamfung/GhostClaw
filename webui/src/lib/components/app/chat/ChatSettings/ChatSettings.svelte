@@ -415,7 +415,7 @@
                         // Tools configuration (SmartShell + AgentLoop)
                         const toolsFields = [
                                 'smartShellSyncTimeout', 'smartShellUnknownTimeout',
-                                'smartShellDefaultWakeMins', 'smartShellMaxDirectOutput',
+                                'smartShellDefaultWakeMins',
                                 'maxAgentIterations'
                         ];
                         const hasToolsConfig = toolsFields.some(f => processedConfig[f] !== undefined);
@@ -424,8 +424,7 @@
                                         SmartShell: {
                                                 SyncTimeout: Number(processedConfig.smartShellSyncTimeout) || 60,
                                                 UnknownTimeout: Number(processedConfig.smartShellUnknownTimeout) || 120,
-                                                DefaultWakeMins: Number(processedConfig.smartShellDefaultWakeMins) || 5,
-                                                MaxDirectOutput: Number(processedConfig.smartShellMaxDirectOutput) ?? 1000
+                                                DefaultWakeMins: Number(processedConfig.smartShellDefaultWakeMins) || 5
                                         },
                                         MaxAgentIterations: Number(processedConfig.maxAgentIterations) || 0
                                 };
