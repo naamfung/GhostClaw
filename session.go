@@ -2,6 +2,7 @@ package main
 
 import (
         "context"
+        "crypto/sha256"
         "encoding/json"
         "errors"
         "fmt"
@@ -59,6 +60,9 @@ type GlobalSession struct {
 
         // Token 追蹤器（idle 重置 + token 統計）
         tracker *SessionTracker
+
+        // 記錄上次持久化嘅 system prompt hash，避免每輪重複寫入相同 prompt
+        lastPromptHash string
 
         mu sync.RWMutex
 }
@@ -407,6 +411,8 @@ func ProcessUserInput(session *GlobalSession, input string) {
                 go processInputQueue(session)
         }()
 
+        // 記錄當前 system prompt（hash 變更時先寫入，保證 seq 順序：system → user）
+        session.recordSystemPrompt()
         // 将当前输入添加到历史记录
         session.AddToHistory("user", input)
 
@@ -559,6 +565,37 @@ func processInputQueue(session *GlobalSession) {
         ProcessUserInput(session, nextInput)
 }
 
+// recordSystemPrompt 記錄當前 system prompt 到 DB（hash 變更時先寫入）
+// 確保 seq 順序：system prompt → user message，同 AgentLoop 內部順序一致
+func (s *GlobalSession) recordSystemPrompt() {
+        if globalStage == nil || globalActorManager == nil || globalRoleManager == nil {
+                return
+        }
+        currentActor := globalStage.GetCurrentActor()
+        if currentActor == "" {
+                return
+        }
+        prompt := BuildSystemPromptForActor(currentActor, globalActorManager, globalRoleManager, globalStage)
+        if prompt == "" {
+                return
+        }
+
+        hash := fmt.Sprintf("%x", sha256.Sum256([]byte(prompt)))
+        if hash == s.lastPromptHash {
+                return // prompt 冇變，唔使重複記錄
+        }
+        s.lastPromptHash = hash
+
+        if globalSessionPersist != nil && s.persistID != "" {
+                msg := Message{Role: "system", Content: prompt, Timestamp: time.Now().Unix()}
+                if err := globalSessionPersist.AppendMessage(s.persistID, msg); err != nil {
+                        log.Printf("[GlobalSession] recordSystemPrompt failed: %v", err)
+                } else {
+                        log.Printf("[GlobalSession] System prompt recorded (hash=%s..., len=%d)", hash[:16], len(prompt))
+                }
+        }
+}
+
 // GetTaskCtx 返回当前任务的 context
 func (s *GlobalSession) GetTaskCtx() context.Context {
         s.mu.RLock()
@@ -593,7 +630,8 @@ func (s *GlobalSession) fullSessionReset(reason string) {
         s.LastSeen = time.Now()
         s.CreatedAt = time.Now()
         s.IsNewSession = true
-        s.persistID = "" // D11 修復：清除持久化 ID，防止新會話覆寫舊 DB 記錄
+        s.persistID = ""       // 清除持久化 ID，防止新會話覆寫舊 DB 記錄
+        s.lastPromptHash = ""  // 清除 prompt hash，確保新會話記錄新 prompt
 
         // === 輸入隊列（嵌套鎖，mu > inputMu）===
         s.inputMu.Lock()
