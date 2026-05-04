@@ -464,7 +464,8 @@ func GetHelpText() string {
         sb.WriteString("│\n")
         sb.WriteString("│  • Memories         长期记忆（键值对 + 分类 + 标签）\n")
         sb.WriteString("│  • Sessions         会话摘要记录\n")
-        sb.WriteString("│  • SessionHistories 完整会话历史（替代文件系统存储）\n")
+        sb.WriteString("│  • SessionHistory   会话元数据\n")
+        sb.WriteString("│  • SessionMessage   逐条消息记录\n")
         sb.WriteString("│  • Experiences       经验教训记录\n")
         sb.WriteString("│\n")
         sb.WriteString("│  备份只需拷贝 ghostclaw.db 文件即可。\n")
@@ -923,8 +924,8 @@ func HandleSessionCommand(args string) string {
                         if len(desc) > 30 {
                                 desc = desc[:30] + "..."
                         }
-                        sb.WriteString(fmt.Sprintf("  **%s** - %s\n    %s (%d 条消息)\n",
-                                s.ID, desc, s.UpdatedAt.Format("2006-01-02 15:04"), len(s.History)))
+                        sb.WriteString(fmt.Sprintf("  **%s** - %s\n    %s (%d 轮对话)\n",
+                                s.ID, desc, s.UpdatedAt.Format("2006-01-02 15:04"), s.TurnCount))
                 }
                 sb.WriteString("\n使用 /load <会话ID> 加载会话")
                 return sb.String()
@@ -987,7 +988,28 @@ func HandleSaveCommand(args string, session *GlobalSession) string {
                 return "❌ 当前会话没有消息可保存"
         }
 
-        saved, err := globalSessionPersist.SaveSession(session.ID, history, description)
+        // 获取当前角色和演员信息
+        var currentRole, currentActor string
+        if globalStage != nil {
+                currentActor = globalStage.GetCurrentActor()
+        }
+        if globalActorManager != nil && currentActor != "" {
+                if actor, ok := globalActorManager.GetActor(currentActor); ok {
+                        currentRole = actor.Role
+                }
+        }
+
+        // 获取 token 追蹤統計
+        var inputTokens, outputTokens, totalTokens, turnCount int
+        if tracker := session.GetTracker(); tracker != nil {
+                stats := tracker.GetStats()
+                inputTokens = stats.InputTokens
+                outputTokens = stats.OutputTokens
+                totalTokens = stats.TotalTokens
+                turnCount = stats.TurnCount
+        }
+
+        saved, err := globalSessionPersist.SaveSession(session.ID, description, currentRole, currentActor, inputTokens, outputTokens, totalTokens, turnCount, history)
         if err != nil {
                 return fmt.Sprintf("❌ 保存会话失败：%s", err)
         }
@@ -1045,7 +1067,7 @@ func HandleNewCommand() string {
         }
 
         session.mu.Lock()
-        session.ID = time.Now().Format("20060102_150405") + "_default"
+        session.ID = time.Now().Format("20060102_150405")
         session.fullSessionReset("new_command")
         session.mu.Unlock()
 

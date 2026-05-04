@@ -80,7 +80,7 @@ func GetGlobalSession() *GlobalSession {
 func newGlobalSession() *GlobalSession {
         taskCtx, taskCancel := context.WithCancel(context.Background())
         return &GlobalSession{
-                ID:            "default", // 可配置
+                ID:            time.Now().Format("20060102_150405"), // timestamp 格式，不再用 "default"
                 History:       make([]Message, 0),
                 CreatedAt:     time.Now(),
                 LastSeen:      time.Now(),
@@ -94,21 +94,49 @@ func newGlobalSession() *GlobalSession {
         }
 }
 
-// LoadFromPersist 从持久化存储加载历史记录
+// LoadFromPersist 从持久化存储加载历史记录（僅冷啟動時調用一次）
+// 根據 globalCompressionMode 選擇滑窗模式：
+//   - "token": 用 token 數量滑窗，按 contextWindow * threshold 累加，超過就退後
+//   - "message" / 其他: 用 CalculateAdaptiveMaxHistory 動態計算消息數上限
 func (s *GlobalSession) LoadFromPersist() error {
         if globalSessionPersist == nil {
                 return nil
         }
-        saved, err := globalSessionPersist.LoadSession(s.ID)
+
+        contextWindow := GetModelContextLengthSafe(modelID)
+        maxOutput := getMaxOutputTokens(modelID)
+
+        var saved *SavedSession
+        var err error
+
+        if globalCompressionMode == "token" {
+                // Token 模式：計算 token 上限 = contextWindow * threshold
+                maxTokens := int(float64(contextWindow) * globalCompressionThreshold)
+                saved, err = globalSessionPersist.LoadSessionWindowByTokens("", maxTokens)
+                if err == nil && saved != nil {
+                        log.Printf("[GlobalSession] Token window: contextWindow=%d, threshold=%.0f%%, maxTokens=%d",
+                                contextWindow, globalCompressionThreshold*100, maxTokens)
+                }
+        } else {
+                // 消息數模式：動態計算上限（同 AgentLoop 用嘅邏輯一致）
+                limit := MaxHistoryMessages
+                if contextWindow > 0 {
+                        limit = CalculateAdaptiveMaxHistory(contextWindow, 0, 0, maxOutput)
+                }
+                saved, err = globalSessionPersist.LoadSessionWindow("", limit)
+                if err == nil && saved != nil {
+                        log.Printf("[GlobalSession] Message window: contextWindow=%d, limit=%d", contextWindow, limit)
+                }
+        }
+
         if err != nil {
-                // 文件不存在是首次运行的正常情况
                 if errors.Is(err, os.ErrNotExist) {
                         return nil
                 }
                 return err
         }
         if saved == nil {
-                // 无持久化数据（首次运行）
+                // 无持久化数据（首次运行），保留 newGlobalSession 生成嘅 timestamp ID
                 return nil
         }
         s.mu.Lock()
@@ -120,20 +148,17 @@ func (s *GlobalSession) LoadFromPersist() error {
         s.LastSeen = time.Now()
         log.Printf("[GlobalSession] Loaded session %s from persist, %d messages", s.ID, len(s.History))
 
-        // 恢復 token 追蹤統計（從 DB 加載）
-        if s.tracker != nil && globalDB != nil && s.persistID != "" {
-                var row SessionHistories
-                if result := globalDB.Where("id = ?", s.persistID).First(&row); result.Error == nil && row.TotalTokens > 0 {
-                        s.tracker.mu.Lock()
-                        s.tracker.stats.InputTokens = row.InputTokens
-                        s.tracker.stats.OutputTokens = row.OutputTokens
-                        s.tracker.stats.TotalTokens = row.TotalTokens
-                        s.tracker.stats.TurnCount = row.TurnCount
-                        s.tracker.started = true
-                        s.tracker.mu.Unlock()
-                        log.Printf("[GlobalSession] Restored token stats: input=%d, output=%d, total=%d, turns=%d",
-                                row.InputTokens, row.OutputTokens, row.TotalTokens, row.TurnCount)
-                }
+        // 恢復 token 追蹤統計（SavedSession 已包含 token 數據）
+        if s.tracker != nil && saved.TotalTokens > 0 {
+                s.tracker.mu.Lock()
+                s.tracker.stats.InputTokens = saved.InputTokens
+                s.tracker.stats.OutputTokens = saved.OutputTokens
+                s.tracker.stats.TotalTokens = saved.TotalTokens
+                s.tracker.stats.TurnCount = saved.TurnCount
+                s.tracker.started = true
+                s.tracker.mu.Unlock()
+                log.Printf("[GlobalSession] Restored token stats: input=%d, output=%d, total=%d, turns=%d",
+                        saved.InputTokens, saved.OutputTokens, saved.TotalTokens, saved.TurnCount)
         }
 
         // 加载未处理消息队列
@@ -212,9 +237,18 @@ func (s *GlobalSession) loadPendingMessages() error {
 // AddToHistory 添加消息到历史并触发自动保存
 func (s *GlobalSession) AddToHistory(role, content string) {
         s.mu.Lock()
-        defer s.mu.Unlock()
-        s.History = append(s.History, Message{Role: role, Content: content, Timestamp: time.Now().Unix()})
+        msg := Message{Role: role, Content: content, Timestamp: time.Now().Unix()}
+        s.History = append(s.History, msg)
+        persistID := s.persistID
         s.LastSeen = time.Now()
+        s.mu.Unlock()
+
+        // 單條消息追加寫入 session_messages
+        if globalSessionPersist != nil && persistID != "" {
+                if err := globalSessionPersist.AppendMessage(persistID, msg); err != nil {
+                        log.Printf("[GlobalSession] AppendMessage failed: %v", err)
+                }
+        }
         go s.autoSaveHistory()
 }
 
@@ -227,7 +261,8 @@ func (s *GlobalSession) GetHistory() []Message {
         return h
 }
 
-// SetHistory 替换历史并触发保存
+// SetHistory 替换历史并触发元数据保存
+// 注意：唔將內存滑窗數據寫入 DB（DB 只保留 AddToHistory 寫入嘅原始消息）
 func (s *GlobalSession) SetHistory(h []Message) {
         s.mu.Lock()
         s.History = h
@@ -273,6 +308,10 @@ func (s *GlobalSession) CancelTask() {
                 s.TaskCtx, s.TaskCancel = context.WithCancel(context.Background())
                 s.TaskRunning = false
                 s.currentTaskID = ""
+                // 用戶手動停止 → 暫停 idle check，避免閒置後自動觸發任務接續檢查
+                if tracker := s.GetTracker(); tracker != nil {
+                        tracker.PauseIdleCheck()
+                }
         }
 }
 
@@ -309,6 +348,10 @@ func (s *GlobalSession) InterruptTask(msg string) {
         if cancel != nil {
                 log.Printf("[GlobalSession] InterruptTask: interrupting current LLM call (msg=%q)", msg)
                 cancel()
+                // 用戶手動中斷 → 暫停 idle check，避免閒置後自動觸發任務接續檢查
+                if tracker := s.GetTracker(); tracker != nil {
+                        tracker.PauseIdleCheck()
+                }
         }
 }
 
@@ -339,9 +382,9 @@ func (s *GlobalSession) takeInterruptMsg() string {
 func ProcessUserInput(session *GlobalSession, input string) {
         // === Idle 任務接續檢查 ===
         idleResult := session.CheckTaskOnIdle()
-
-        // 記錄對話輪次
+        // 用戶主動發新消息 → 恢復 idle check（清除 /stop /pause 或 COMPLETE 設置嘅暫停）
         if tracker := session.GetTracker(); tracker != nil {
+                tracker.ResumeIdleCheck()
                 tracker.RecordTurn()
         }
         ok, taskID := session.TryStartTask()
@@ -469,6 +512,25 @@ func processInputQueue(session *GlobalSession) {
                 return
         }
 
+        // 用户手動暫停/停止 → 過濾掉異步任務喚醒通知，避免模型自動續工
+        if tracker := session.GetTracker(); tracker != nil && tracker.IsIdleCheckPaused() {
+                session.inputMu.Lock()
+                var filtered []string
+                for _, msg := range session.InputMessages {
+                        if !IsWakeNotification(msg) {
+                                filtered = append(filtered, msg)
+                        }
+                }
+                discarded := len(session.InputMessages) - len(filtered)
+                session.InputMessages = filtered
+                session.inputMu.Unlock()
+                if len(filtered) == 0 {
+                        log.Printf("[Session] Input queue cleared: user paused, %d wake notification(s) discarded", discarded)
+                        return
+                }
+                log.Printf("[Session] Input queue filtered: user paused, kept %d real user message(s)", len(filtered))
+        }
+
         // 检查输入消息列表是否有消息
         session.inputMu.Lock()
         if len(session.InputMessages) == 0 {
@@ -571,7 +633,7 @@ func (s *GlobalSession) persistEmptySession(reason string) {
         sessionID := s.ID
         s.mu.RUnlock()
 
-        saved, err := globalSessionPersist.SaveSession(sessionID, []Message{}, fmt.Sprintf("auto_reset_%s", reason))
+        saved, err := globalSessionPersist.SaveSession(sessionID, fmt.Sprintf("auto_reset_%s", reason), "", "", 0, 0, 0, 0, []Message{})
         if err != nil {
                 log.Printf("[GlobalSession] Failed to persist empty session after %s reset: %v", reason, err)
                 return
@@ -782,7 +844,8 @@ func (s *GlobalSession) EnqueueOutput(chunk StreamChunk) {
         }
 }
 
-// autoSaveHistory 自动保存当前会话
+// autoSaveHistory 自动保存当前会话元数据（token stats、description）
+// DB 只保存元數據，唔保存內存滑窗消息（原始消息由 AddToHistory → AppendMessage 逐條寫入）
 func (s *GlobalSession) autoSaveHistory() {
         s.persistMu.Lock()
         defer s.persistMu.Unlock()
@@ -811,28 +874,46 @@ func (s *GlobalSession) autoSaveHistory() {
                 }
         }
 
+        // 获取当前角色和演员信息
+        var currentRole, currentActor string
+        if globalStage != nil {
+                currentActor = globalStage.GetCurrentActor()
+        }
+        if globalActorManager != nil && currentActor != "" {
+                if actor, ok := globalActorManager.GetActor(currentActor); ok {
+                        currentRole = actor.Role
+                }
+        }
+
+        // 获取 token 追蹤統計
+        var inputTokens, outputTokens, totalTokens, turnCount int
+        if tracker := s.GetTracker(); tracker != nil {
+                stats := tracker.GetStats()
+                inputTokens = stats.InputTokens
+                outputTokens = stats.OutputTokens
+                totalTokens = stats.TotalTokens
+                turnCount = stats.TurnCount
+        }
+
         if s.persistID == "" {
-                saved, err := globalSessionPersist.SaveSession(sessionID, historyCopy, description)
+                // 首次保存：元數據 + 原始消息一齊寫入
+                saved, err := globalSessionPersist.SaveSession(sessionID, description, currentRole, currentActor, inputTokens, outputTokens, totalTokens, turnCount, historyCopy)
                 s.mu.RUnlock()
                 if err != nil {
-                        log.Printf("[GlobalSession] Auto save failed: %v", err)
+                        log.Printf("[GlobalSession] Auto save (new) failed: %v", err)
                         return
                 }
                 s.persistID = saved.ID
-                log.Printf("[GlobalSession] Auto saved (new) with ID %s", sessionID)
+                log.Printf("[GlobalSession] Auto saved (new) with ID %s, %d messages", sessionID, len(historyCopy))
         } else {
-                err := globalSessionPersist.UpdateSession(s.persistID, historyCopy)
+                // 後續保存：只更新元數據（token stats），唔覆寫消息
+                // 原始消息已由 AddToHistory → AppendMessage 逐條寫入 DB
                 s.mu.RUnlock()
+                err := globalSessionPersist.UpdateSessionMeta(s.persistID, description, currentRole, currentActor, inputTokens, outputTokens, totalTokens, turnCount)
                 if err != nil {
-                        saved, err2 := globalSessionPersist.SaveSession(sessionID, historyCopy, description)
-                        if err2 != nil {
-                                log.Printf("[GlobalSession] Auto save re-create failed: %v", err2)
-                                return
-                        }
-                        s.persistID = saved.ID
-                        log.Printf("[GlobalSession] Auto saved (re-created) with ID %s", sessionID)
-                } else {
-                        log.Printf("[GlobalSession] Auto saved (update)")
+                        log.Printf("[GlobalSession] Auto save (meta) failed: %v", err)
+                        return
                 }
+                log.Printf("[GlobalSession] Auto saved (meta) for %s", s.persistID)
         }
 }

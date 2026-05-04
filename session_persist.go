@@ -13,17 +13,22 @@ import (
         "time"
 
         "github.com/toon-format/toon-go"
+        "gorm.io/gorm"
 )
 
 // SavedSession 保存的会话数据结构（内存中使用）
 type SavedSession struct {
-        ID          string
-        Description string
-        CreatedAt   time.Time
-        UpdatedAt   time.Time
-        History     []Message
-        Role        string
-        Actor       string
+        ID           string
+        Description  string
+        CreatedAt    time.Time
+        UpdatedAt    time.Time
+        History      []Message
+        Role         string
+        Actor        string
+        InputTokens  int
+        OutputTokens int
+        TotalTokens  int
+        TurnCount    int
 }
 
 // SessionEntry TOON 兼容的会话条目（用于导入/导出文件格式）
@@ -173,10 +178,13 @@ type SessionFile struct {
 // ============================================================
 // SessionPersistManager — 基于 GORM/SQLite 的会话持久化管理器
 // 完全替代文件系统存储，所有会话数据存储在 ghostclaw.db 中
+// v2：兩表設計 — session_histories（元數據）+ session_messages（逐條消息）
 // ============================================================
 
 // SessionPersistManager 会话持久化管理器
-type SessionPersistManager struct{}
+type SessionPersistManager struct {
+        appendMu sync.Mutex // 保護 AppendMessage 的 SELECT+INSERT 原子性
+}
 
 // NewSessionPersistManager 创建会话持久化管理器（基于数据库）
 func NewSessionPersistManager() *SessionPersistManager {
@@ -186,88 +194,180 @@ func NewSessionPersistManager() *SessionPersistManager {
         return &SessionPersistManager{}
 }
 
-// SaveSession 保存会话到数据库
-func (m *SessionPersistManager) SaveSession(sessionID string, history []Message, description string) (*SavedSession, error) {
-        now := time.Now()
-
-        // 使用传入的 sessionID 作为 persistID（不再额外拼接时间戳）
-        persistID := sessionID
-
-        // 获取当前角色和演员信息
-        var currentRole, currentActor string
-        if globalStage != nil {
-                currentActor = globalStage.GetCurrentActor()
+// messageToRow 将 Message 转换为 SessionMessage 行
+func messageToRow(msg Message, sessionID string, seq int) SessionMessage {
+        row := SessionMessage{
+                SessionID:         sessionID,
+                Seq:               seq,
+                Role:              msg.Role,
+                ToolCallID:        msg.ToolCallID,
+                ThinkingSignature: msg.ThinkingSignature,
+                Timestamp:         msg.Timestamp,
+                CreatedAt:         time.Now(),
         }
-        if globalActorManager != nil && currentActor != "" {
-                if actor, ok := globalActorManager.GetActor(currentActor); ok {
-                        currentRole = actor.Role
+
+        if msg.Content != nil {
+                if str, ok := msg.Content.(string); ok {
+                        row.Content = str
+                } else {
+                        if data, err := json.Marshal(msg.Content); err == nil {
+                                row.ContentJSON = string(data)
+                        }
                 }
         }
 
-        // 获取 token 追蹤統計
-        var inputTokens, outputTokens, totalTokens, turnCount int
-        session := GetGlobalSession()
-        if tracker := session.GetTracker(); tracker != nil {
-                stats := tracker.GetStats()
-                inputTokens = stats.InputTokens
-                outputTokens = stats.OutputTokens
-                totalTokens = stats.TotalTokens
-                turnCount = stats.TurnCount
+        if msg.ToolCalls != nil {
+                if data, err := json.Marshal(msg.ToolCalls); err == nil {
+                        row.ToolCalls = string(data)
+                }
         }
 
-        // 序列化消息历史为 JSON
-        historyJSON, err := json.Marshal(history)
-        if err != nil {
-                return nil, fmt.Errorf("序列化会话历史失败: %w", err)
+        if msg.ReasoningContent != nil {
+                if str, ok := msg.ReasoningContent.(string); ok {
+                        row.ReasoningContent = str
+                } else {
+                        if data, err := json.Marshal(msg.ReasoningContent); err == nil {
+                                row.ReasoningContent = string(data)
+                        }
+                }
         }
 
-        row := SessionHistories{
-                ID:          persistID,
-                Description: description,
-                Role:        currentRole,
-                Actor:       currentActor,
-                HistoryJSON: string(historyJSON),
-                CreatedAt:   now,
-                UpdatedAt:   now,
+        // 估算 token 數量（用於 token 模式滑窗）
+        row.TokenCount = estimateMessageTokens(row)
+        return row
+}
+
+// estimateMessageTokens 估算一條 SessionMessage 嘅 token 數量
+func estimateMessageTokens(row SessionMessage) int {
+        total := 0
+        if row.Content != "" {
+                total += ImprovedEstimateTokens(row.Content)
+        }
+        if row.ContentJSON != "" {
+                total += ImprovedEstimateTokens(row.ContentJSON)
+        }
+        if row.ToolCalls != "" {
+                total += ImprovedEstimateTokens(row.ToolCalls)
+        }
+        if row.ReasoningContent != "" {
+                total += ImprovedEstimateTokens(row.ReasoningContent)
+        }
+        // 至少 1 token（避免空消息被完全忽略）
+        if total == 0 {
+                return 1
+        }
+        return total
+}
+
+// rowToMessage 将 SessionMessage 行转换为 Message
+func rowToMessage(row SessionMessage) Message {
+        m := Message{
+                Role:              row.Role,
+                ToolCallID:        row.ToolCallID,
+                ThinkingSignature: row.ThinkingSignature,
+                Timestamp:         row.Timestamp,
+        }
+
+        if row.Content != "" {
+                m.Content = row.Content
+        } else if row.ContentJSON != "" {
+                var content interface{}
+                if err := json.Unmarshal([]byte(row.ContentJSON), &content); err == nil {
+                        m.Content = content
+                }
+        }
+
+        if row.ReasoningContent != "" {
+                if strings.HasPrefix(row.ReasoningContent, "{") || strings.HasPrefix(row.ReasoningContent, "[") {
+                        var rc interface{}
+                        if err := json.Unmarshal([]byte(row.ReasoningContent), &rc); err == nil {
+                                m.ReasoningContent = rc
+                        } else {
+                                m.ReasoningContent = row.ReasoningContent
+                        }
+                } else {
+                        m.ReasoningContent = row.ReasoningContent
+                }
+        }
+
+        if row.ToolCalls != "" {
+                var toolCalls interface{}
+                if err := json.Unmarshal([]byte(row.ToolCalls), &toolCalls); err == nil {
+                        m.ToolCalls = toolCalls
+                }
+        }
+
+        return m
+}
+
+// SaveSession 保存会话元数据到 session_histories + 批量写入消息到 session_messages
+func (m *SessionPersistManager) SaveSession(sessionID, description, role, actor string, inputTokens, outputTokens, totalTokens, turnCount int, messages []Message) (*SavedSession, error) {
+        now := time.Now()
+
+        // 1. 保存会话元数据
+        sess := SessionHistory{
+                ID:           sessionID,
+                Description:  description,
+                Role:         role,
+                Actor:        actor,
+                CreatedAt:    now,
+                UpdatedAt:    now,
                 InputTokens:  inputTokens,
                 OutputTokens: outputTokens,
                 TotalTokens:  totalTokens,
                 TurnCount:    turnCount,
         }
-
-        // 使用 Save 而非 Create：Save 在主鍵存在時執行 UPDATE，不存在時執行 INSERT（UPSERT），
-        // 避免 idle/token 重置後 persistEmptySession 再次插入相同 ID 導致 UNIQUE constraint 失敗。
-        if result := globalDB.Save(&row); result.Error != nil {
-                return nil, fmt.Errorf("保存会话到数据库失败: %w", result.Error)
+        if result := globalDB.Save(&sess); result.Error != nil {
+                return nil, fmt.Errorf("保存会话元数据失败: %w", result.Error)
         }
 
-        saved := &SavedSession{
-                ID:          persistID,
-                Description: description,
-                CreatedAt:   now,
-                UpdatedAt:   now,
-                History:     history,
-                Role:        currentRole,
-                Actor:       currentActor,
+        // 2. 批量替换消息
+        if err := m.SaveMessages(sessionID, messages); err != nil {
+                return nil, err
         }
 
-        return saved, nil
+        return &SavedSession{
+                ID:           sessionID,
+                Description:  description,
+                CreatedAt:    now,
+                UpdatedAt:    now,
+                History:      messages,
+                Role:         role,
+                Actor:        actor,
+                InputTokens:  inputTokens,
+                OutputTokens: outputTokens,
+                TotalTokens:  totalTokens,
+                TurnCount:    turnCount,
+        }, nil
 }
 
-// UpdateSession 更新数据库中已有的会话
-func (m *SessionPersistManager) UpdateSession(sessionID string, history []Message) error {
-        // 序列化消息历史为 JSON
-        historyJSON, err := json.Marshal(history)
-        if err != nil {
-                return fmt.Errorf("序列化会话历史失败: %w", err)
-        }
+// SaveMessages 批量保存消息 — 先刪舊消息再插入新消息（事務包裹）
+func (m *SessionPersistManager) SaveMessages(sessionID string, messages []Message) error {
+        return globalDB.Transaction(func(tx *gorm.DB) error {
+                // 刪除舊消息
+                if err := tx.Where("session_id = ?", sessionID).Delete(&SessionMessage{}).Error; err != nil {
+                        return fmt.Errorf("删除旧消息失败: %w", err)
+                }
 
-        // 获取 token 追蹤統計
-        updates := map[string]interface{}{
-                "history_json": string(historyJSON),
-                "updated_at":   time.Now(),
-        }
+                // 批量插入新消息
+                for i, msg := range messages {
+                        row := messageToRow(msg, sessionID, i)
+                        if err := tx.Create(&row).Error; err != nil {
+                                return fmt.Errorf("插入消息失败 (seq=%d): %w", i, err)
+                        }
+                }
+                return nil
+        })
+}
+
+// UpdateSession 更新会话元数据和消息
+func (m *SessionPersistManager) UpdateSession(sessionID string, messages []Message) error {
         session := GetGlobalSession()
+        now := time.Now()
+
+        updates := map[string]interface{}{
+                "updated_at": now,
+        }
         if tracker := session.GetTracker(); tracker != nil {
                 stats := tracker.GetStats()
                 updates["input_tokens"] = stats.InputTokens
@@ -276,98 +376,271 @@ func (m *SessionPersistManager) UpdateSession(sessionID string, history []Messag
                 updates["turn_count"] = stats.TurnCount
         }
 
-        result := globalDB.Model(&SessionHistories{}).
+        result := globalDB.Model(&SessionHistory{}).
                 Where("id = ?", sessionID).
                 Updates(updates)
         if result.Error != nil {
-                return fmt.Errorf("更新会话失败: %w", result.Error)
+                return fmt.Errorf("更新会话元数据失败: %w", result.Error)
         }
-        if result.RowsAffected == 0 {
-                return fmt.Errorf("会话 %s 不存在", sessionID)
+
+        // 替換消息
+        if err := m.SaveMessages(sessionID, messages); err != nil {
+                return err
         }
 
         return nil
 }
 
-// LoadSession 從數據庫加載指定會話
-// 傳入空 sessionID 時回退到載入最新會話（向後兼容）
+// UpdateSessionMeta 只更新会话元数据（token stats、description），唔改消息
+// 用於 autoSaveHistory：內存滑窗數據唔寫入 DB，DB 只保留 AddToHistory 寫入嘅原始消息
+func (m *SessionPersistManager) UpdateSessionMeta(sessionID, description, role, actor string, inputTokens, outputTokens, totalTokens, turnCount int) error {
+        updates := map[string]interface{}{
+                "updated_at":    time.Now(),
+                "description":   description,
+                "role":          role,
+                "actor":         actor,
+                "input_tokens":  inputTokens,
+                "output_tokens": outputTokens,
+                "total_tokens":  totalTokens,
+                "turn_count":    turnCount,
+        }
+        result := globalDB.Model(&SessionHistory{}).
+                Where("id = ?", sessionID).
+                Updates(updates)
+        if result.Error != nil {
+                return fmt.Errorf("更新会话元数据失败: %w", result.Error)
+        }
+        return nil
+}
+
+// LoadSession 從新兩表加載會話元數據和消息
 func (m *SessionPersistManager) LoadSession(sessionID string) (*SavedSession, error) {
-        var rows []SessionHistories
+        // 1. 加載會話元數據
+        var sess SessionHistory
         query := globalDB.Order("updated_at DESC").Limit(1)
         if sessionID != "" {
                 query = query.Where("id = ?", sessionID)
         }
-        query.Find(&rows)
-        if len(rows) > 0 {
-                return dbRowToSavedSession(&rows[0])
+        if result := query.First(&sess); result.Error != nil {
+                if result.Error == gorm.ErrRecordNotFound {
+                        return nil, nil // 首次運行，正常
+                }
+                return nil, fmt.Errorf("查询会话失败: %w", result.Error)
         }
 
-        // 未找到記錄（首次運行屬於正常情況）
-        return nil, nil
-}
+        // 2. 加載消息（按 seq 排序）
+        var rows []SessionMessage
+        if err := globalDB.Where("session_id = ?", sess.ID).
+                Order("seq ASC").
+                Find(&rows).Error; err != nil {
+                return nil, fmt.Errorf("查询会话消息失败: %w", err)
+        }
 
-// dbRowToSavedSession 将数据库行转换为 SavedSession
-func dbRowToSavedSession(row *SessionHistories) (*SavedSession, error) {
-        var history []Message
-        if row.HistoryJSON != "" {
-                if err := json.Unmarshal([]byte(row.HistoryJSON), &history); err != nil {
-                        return nil, fmt.Errorf("解析会话历史失败: %w", err)
-                }
+        messages := make([]Message, 0, len(rows))
+        for i := range rows {
+                messages = append(messages, rowToMessage(rows[i]))
         }
 
         return &SavedSession{
-                ID:          row.ID,
-                Description: row.Description,
-                CreatedAt:   row.CreatedAt,
-                UpdatedAt:   row.UpdatedAt,
-                History:     history,
-                Role:        row.Role,
-                Actor:       row.Actor,
+                ID:           sess.ID,
+                Description:  sess.Description,
+                CreatedAt:    sess.CreatedAt,
+                UpdatedAt:    sess.UpdatedAt,
+                History:      messages,
+                Role:         sess.Role,
+                Actor:        sess.Actor,
+                InputTokens:  sess.InputTokens,
+                OutputTokens: sess.OutputTokens,
+                TotalTokens:  sess.TotalTokens,
+                TurnCount:    sess.TurnCount,
         }, nil
 }
 
-// ListSessions 列出数据库中所有保存的会话
+// ListSessions 列出所有保存的会话（不含消息内容）
 func (m *SessionPersistManager) ListSessions() ([]SavedSession, error) {
-        var rows []SessionHistories
+        var rows []SessionHistory
         if result := globalDB.Order("updated_at DESC").Find(&rows); result.Error != nil {
                 return nil, fmt.Errorf("查询会话列表失败: %w", result.Error)
         }
 
         sessions := make([]SavedSession, 0, len(rows))
         for i := range rows {
-                saved, err := dbRowToSavedSession(&rows[i])
-                if err != nil {
-                        log.Printf("[SessionPersist] 跳过损坏的会话 %s: %v", rows[i].ID, err)
-                        continue
-                }
-                sessions = append(sessions, *saved)
+                sessions = append(sessions, SavedSession{
+                        ID:           rows[i].ID,
+                        Description:  rows[i].Description,
+                        CreatedAt:    rows[i].CreatedAt,
+                        UpdatedAt:    rows[i].UpdatedAt,
+                        Role:         rows[i].Role,
+                        Actor:        rows[i].Actor,
+                        InputTokens:  rows[i].InputTokens,
+                        OutputTokens: rows[i].OutputTokens,
+                        TotalTokens:  rows[i].TotalTokens,
+                        TurnCount:    rows[i].TurnCount,
+                })
         }
-
-        // 已按 updated_at DESC 排序，无需再次排序
-        sort.Slice(sessions, func(i, j int) bool {
-                return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
-        })
 
         return sessions, nil
 }
 
-// DeleteSession 从数据库删除会话
+// DeleteSession 删除会话及其所有消息
 func (m *SessionPersistManager) DeleteSession(sessionID string) error {
-        // 精确匹配
-        result := globalDB.Where("id = ?", sessionID).Delete(&SessionHistories{})
-        if result.Error != nil {
-                return fmt.Errorf("删除会话失败: %w", result.Error)
-        }
-
-        // 模糊匹配：如果精确匹配没有删除，尝试前缀匹配
-        if result.RowsAffected == 0 {
-                result = globalDB.Where("id LIKE ?", sessionID+"%").Delete(&SessionHistories{})
+        return globalDB.Transaction(func(tx *gorm.DB) error {
+                // 先刪消息（FK CASCADE 可能唔生效，手動刪）
+                if err := tx.Where("session_id = ?", sessionID).Delete(&SessionMessage{}).Error; err != nil {
+                        return fmt.Errorf("删除会话消息失败: %w", err)
+                }
+                // 再刪會話
+                result := tx.Where("id = ?", sessionID).Delete(&SessionHistory{})
                 if result.Error != nil {
                         return fmt.Errorf("删除会话失败: %w", result.Error)
                 }
+                if result.RowsAffected == 0 {
+                        // 精確匹配冇結果，嘗試前綴匹配（向後兼容）
+                        var sess SessionHistory
+                        if err := tx.Where("id LIKE ?", sessionID+"%").First(&sess).Error; err == nil {
+                                tx.Where("session_id = ?", sess.ID).Delete(&SessionMessage{})
+                                tx.Where("id = ?", sess.ID).Delete(&SessionHistory{})
+                        }
+                }
+                return nil
+        })
+}
+
+// AppendMessage 追加單條消息到 session_messages
+// 使用 mutex + 事務確保 SELECT MAX(seq) + INSERT 原子性
+func (m *SessionPersistManager) AppendMessage(sessionID string, msg Message) error {
+        m.appendMu.Lock()
+        defer m.appendMu.Unlock()
+
+        return globalDB.Transaction(func(tx *gorm.DB) error {
+                var maxSeq int
+                tx.Model(&SessionMessage{}).
+                        Where("session_id = ?", sessionID).
+                        Select("COALESCE(MAX(seq), -1)").
+                        Scan(&maxSeq)
+
+                row := messageToRow(msg, sessionID, maxSeq+1)
+                return tx.Create(&row).Error
+        })
+}
+
+// LoadRecentMessages 加載會話中最近 N 條消息（俾自學習系統用）
+func (m *SessionPersistManager) LoadRecentMessages(sessionID string, limit int) ([]Message, error) {
+        var rows []SessionMessage
+        if err := globalDB.Where("session_id = ?", sessionID).
+                Order("seq DESC").
+                Limit(limit).
+                Find(&rows).Error; err != nil {
+                return nil, fmt.Errorf("查询最近消息失败: %w", err)
         }
 
-        return nil
+        // 因為係 DESC 排序，要反轉返 seq 順序
+        messages := make([]Message, 0, len(rows))
+        for i := len(rows) - 1; i >= 0; i-- {
+                messages = append(messages, rowToMessage(rows[i]))
+        }
+        return messages, nil
+}
+
+// LoadSessionWindow 加載會話元數據 + 最近 N 條消息（滑窗模式）
+// 用於啟動時按滑窗限制載入，避免載入全部歷史
+func (m *SessionPersistManager) LoadSessionWindow(sessionID string, limit int) (*SavedSession, error) {
+        // 1. 加載會話元數據
+        var sess SessionHistory
+        query := globalDB.Order("updated_at DESC").Limit(1)
+        if sessionID != "" {
+                query = query.Where("id = ?", sessionID)
+        }
+        if result := query.First(&sess); result.Error != nil {
+                if result.Error == gorm.ErrRecordNotFound {
+                        return nil, nil
+                }
+                return nil, fmt.Errorf("查询会话失败: %w", result.Error)
+        }
+
+        // 2. 加載最近 N 條消息
+        messages, err := m.LoadRecentMessages(sess.ID, limit)
+        if err != nil {
+                return nil, err
+        }
+
+        return &SavedSession{
+                ID:           sess.ID,
+                Description:  sess.Description,
+                CreatedAt:    sess.CreatedAt,
+                UpdatedAt:    sess.UpdatedAt,
+                History:      messages,
+                Role:         sess.Role,
+                Actor:        sess.Actor,
+                InputTokens:  sess.InputTokens,
+                OutputTokens: sess.OutputTokens,
+                TotalTokens:  sess.TotalTokens,
+                TurnCount:    sess.TurnCount,
+        }, nil
+}
+
+// LoadSessionWindowByTokens 用 token 數量滑窗載入會話
+// 從最新消息開始累加 TokenCount，超過 maxTokens 就停止，返還未超過嘅最近消息
+func (m *SessionPersistManager) LoadSessionWindowByTokens(sessionID string, maxTokens int) (*SavedSession, error) {
+        // 1. 加載會話元數據
+        var sess SessionHistory
+        query := globalDB.Order("updated_at DESC").Limit(1)
+        if sessionID != "" {
+                query = query.Where("id = ?", sessionID)
+        }
+        if result := query.First(&sess); result.Error != nil {
+                if result.Error == gorm.ErrRecordNotFound {
+                        return nil, nil
+                }
+                return nil, fmt.Errorf("查询会话失败: %w", result.Error)
+        }
+
+        // 2. 加載消息（從最新到最舊），累加 token 直到超過上限
+        var rows []SessionMessage
+        if err := globalDB.Where("session_id = ?", sess.ID).
+                Order("seq DESC").
+                Find(&rows).Error; err != nil {
+                return nil, fmt.Errorf("查询会话消息失败: %w", err)
+        }
+
+        // 3. 從最新開始累加 token，超過 maxTokens 就停
+        accumulated := 0
+        cutoff := 0
+        for i, row := range rows {
+                accumulated += row.TokenCount
+                if accumulated > maxTokens && i > 0 {
+                        // 超過上限，退後到上一條（唔包當前呢條）
+                        cutoff = i
+                        break
+                }
+        }
+
+        // 取 cutoff 之前嘅消息（最新嗰批），反轉返 seq 順序
+        var kept []SessionMessage
+        if cutoff > 0 {
+                kept = rows[:cutoff]
+        } else {
+                kept = rows
+        }
+
+        messages := make([]Message, 0, len(kept))
+        for i := len(kept) - 1; i >= 0; i-- {
+                messages = append(messages, rowToMessage(kept[i]))
+        }
+
+        return &SavedSession{
+                ID:           sess.ID,
+                Description:  sess.Description,
+                CreatedAt:    sess.CreatedAt,
+                UpdatedAt:    sess.UpdatedAt,
+                History:      messages,
+                Role:         sess.Role,
+                Actor:        sess.Actor,
+                InputTokens:  sess.InputTokens,
+                OutputTokens: sess.OutputTokens,
+                TotalTokens:  sess.TotalTokens,
+                TurnCount:    sess.TurnCount,
+        }, nil
 }
 
 // ExportSession 导出会话到 TOON 文件（供备份/迁移使用）
@@ -426,27 +699,30 @@ func (m *SessionPersistManager) ImportSession(importPath string) (*SavedSession,
         session.CreatedAt = now
         session.UpdatedAt = now
 
-        // 序列化消息历史为 JSON
-        historyJSON, err := json.Marshal(session.History)
+        // 獲取當前 role / actor
+        var currentRole, currentActor string
+        if globalStage != nil {
+                currentActor = globalStage.GetCurrentActor()
+        }
+        if globalActorManager != nil && currentActor != "" {
+                if actor, ok := globalActorManager.GetActor(currentActor); ok {
+                        currentRole = actor.Role
+                }
+        }
+        if session.Role == "" {
+                session.Role = currentRole
+        }
+        if session.Actor == "" {
+                session.Actor = currentActor
+        }
+
+        // 使用新兩表保存
+        saved, err := m.SaveSession(session.ID, session.Description, session.Role, session.Actor, 0, 0, 0, 0, session.History)
         if err != nil {
-                return nil, fmt.Errorf("序列化导入会话历史失败: %w", err)
+                return nil, fmt.Errorf("保存导入会话到数据库失败: %w", err)
         }
 
-        // 写入数据库
-        row := SessionHistories{
-                ID:          session.ID,
-                Description: session.Description,
-                Role:        session.Role,
-                Actor:       session.Actor,
-                HistoryJSON: string(historyJSON),
-                CreatedAt:   now,
-                UpdatedAt:   now,
-        }
-        if result := globalDB.Create(&row); result.Error != nil {
-                return nil, fmt.Errorf("保存导入会话到数据库失败: %w", result.Error)
-        }
-
-        return &session, nil
+        return saved, nil
 }
 
 // InitSessionPersist 初始化会话持久化管理器（基于数据库）
@@ -612,7 +888,7 @@ func RebuildFromBackups() bool {
 
         // 先檢查數據庫中是否已有會話記錄
         var count int64
-        globalDB.Model(&SessionHistories{}).Count(&count)
+        globalDB.Model(&SessionHistory{}).Count(&count)
         if count > 0 {
                 return false // 數據庫中已有數據，無需重建
         }
@@ -658,25 +934,26 @@ func RebuildFromBackups() bool {
                         continue
                 }
 
-                historyJSON, err := json.Marshal(session.History)
-                if err != nil {
-                        log.Printf("[Backup-Rebuild] Failed to marshal history from backup %s: %v", fname, err)
-                        continue
-                }
-
-                row := SessionHistories{
+                // 使用新兩表保存
+                sessRow := SessionHistory{
                         ID:          session.ID,
                         Description: session.Description,
                         Role:        session.Role,
                         Actor:       session.Actor,
-                        HistoryJSON: string(historyJSON),
                         CreatedAt:   session.CreatedAt,
                         UpdatedAt:   session.UpdatedAt,
                 }
-
-                if result := globalDB.Create(&row); result.Error != nil {
-                        log.Printf("[Backup-Rebuild] Failed to import backup %s to DB: %v", fname, result.Error)
+                if result := globalDB.Create(&sessRow); result.Error != nil {
+                        log.Printf("[Backup-Rebuild] Failed to import backup session %s to DB: %v", fname, result.Error)
                         continue
+                }
+
+                // 批量插入消息
+                for i, msg := range session.History {
+                        row := messageToRow(msg, session.ID, i)
+                        if err := globalDB.Create(&row).Error; err != nil {
+                                log.Printf("[Backup-Rebuild] Failed to import message seq=%d: %v", i, err)
+                        }
                 }
 
                 log.Printf("[Backup-Rebuild] Successfully rebuilt session from backup: %s (%d messages, created: %s)",

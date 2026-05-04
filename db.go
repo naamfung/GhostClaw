@@ -68,21 +68,40 @@ type Experiences struct {
         UpdatedAt time.Time
 }
 
-// SessionHistories 表模型 — 存储完整会话持久化数据（替代文件系统 .session.toon）
-type SessionHistories struct {
+// SessionHistory 會話元數據表模型
+type SessionHistory struct {
         ID          string    `gorm:"primaryKey;type:text"`
         Description string    `gorm:"type:text"`
         Role        string    `gorm:"type:text"`
         Actor       string    `gorm:"type:text"`
-        HistoryJSON string    `gorm:"type:text"` // 完整消息历史 JSON 序列化
         CreatedAt   time.Time
         UpdatedAt   time.Time
+        InputTokens  int `gorm:"default:0"`
+        OutputTokens int `gorm:"default:0"`
+        TotalTokens  int `gorm:"default:0"`
+        TurnCount    int `gorm:"default:0"`
+}
 
-        // Token 追蹤欄位
-        InputTokens  int `gorm:"default:0" json:"input_tokens"`   // 累計輸入 token
-        OutputTokens int `gorm:"default:0" json:"output_tokens"`  // 累計輸出 token
-        TotalTokens  int `gorm:"default:0" json:"total_tokens"`   // 累計總 token
-        TurnCount    int `gorm:"default:0" json:"turn_count"`     // 會話輪次
+// SessionMessage 逐條消息表模型
+type SessionMessage struct {
+        ID                uint      `gorm:"primaryKey;autoIncrement"`
+        SessionID         string    `gorm:"type:text;not null;index:idx_msg_session_seq,priority:1"`
+        Seq               int       `gorm:"not null;index:idx_msg_session_seq,priority:2"`
+        Role              string    `gorm:"type:text;not null"`
+        Content           string    `gorm:"type:text"`
+        ContentJSON       string    `gorm:"type:text"`
+        ToolCallID        string    `gorm:"type:text"`
+        ToolCalls         string    `gorm:"type:text"`
+        ReasoningContent  string    `gorm:"type:text"`
+        ThinkingSignature string    `gorm:"type:text"`
+        Timestamp         int64
+        TokenCount        int       `gorm:"default:0"`
+        CreatedAt         time.Time
+}
+
+// TableName 自定義表名
+func (SessionMessage) TableName() string {
+        return "session_messages"
 }
 
 // FTSSearchResult represents a full-text search result
@@ -231,7 +250,7 @@ func recoverViaGo(dbPath string) bool {
         defer sqlDB.Close()
 
         // AutoMigrate 修復 schema
-        if err := srcDB.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistories{}); err != nil {
+        if err := srcDB.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistory{}, &SessionMessage{}); err != nil {
                 log.Printf("[DB] AutoMigrate during recovery failed: %v", err)
                 return false
         }
@@ -303,7 +322,7 @@ func InitDB(dataDir string) error {
         }
 
         // 自动迁移（建表/更新列）
-        if err := db.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistories{}); err != nil {
+        if err := db.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistory{}, &SessionMessage{}); err != nil {
                 return err
         }
 
@@ -426,16 +445,16 @@ func initFTS5(db *gorm.DB) {
                         columns: "session_key, summary, tags",
                 },
                 {
-                        name:    "session_histories_fts",
-                        columns: "description, history_json",
+                        name:    "session_messages_fts",
+                        columns: "content",
                 },
         }
 
         contentMap := map[string]string{
-                "memories_fts":          "memories",
-                "experiences_fts":       "experiences",
-                "sessions_fts":          "sessions",
-                "session_histories_fts": "session_histories",
+                "memories_fts":         "memories",
+                "experiences_fts":      "experiences",
+                "sessions_fts":         "sessions",
+                "session_messages_fts": "session_messages",
         }
 
         // Track which FTS tables were successfully created
@@ -499,16 +518,16 @@ END;`,
     INSERT INTO sessions_fts(session_key, summary, tags) VALUES(new.session_key, new.summary, new.tags);
 END;`,
                 },
-                "session_histories_fts": {
-                        `CREATE TRIGGER IF NOT EXISTS session_histories_ai AFTER INSERT ON session_histories BEGIN
-    INSERT INTO session_histories_fts(description, history_json) VALUES(new.description, new.history_json);
+                "session_messages_fts": {
+                        `CREATE TRIGGER IF NOT EXISTS session_messages_ai AFTER INSERT ON session_messages BEGIN
+    INSERT INTO session_messages_fts(content) VALUES(new.content);
 END;`,
-                        `CREATE TRIGGER IF NOT EXISTS session_histories_ad AFTER DELETE ON session_histories BEGIN
-    INSERT INTO session_histories_fts(session_histories_fts, rowid) VALUES('delete', old.rowid);
+                        `CREATE TRIGGER IF NOT EXISTS session_messages_ad AFTER DELETE ON session_messages BEGIN
+    INSERT INTO session_messages_fts(session_messages_fts, rowid) VALUES('delete', old.rowid);
 END;`,
-                        `CREATE TRIGGER IF NOT EXISTS session_histories_au AFTER UPDATE ON session_histories BEGIN
-    INSERT INTO session_histories_fts(session_histories_fts, rowid) VALUES('delete', old.rowid);
-    INSERT INTO session_histories_fts(description, history_json) VALUES(new.description, new.history_json);
+                        `CREATE TRIGGER IF NOT EXISTS session_messages_au AFTER UPDATE ON session_messages BEGIN
+    INSERT INTO session_messages_fts(session_messages_fts, rowid) VALUES('delete', old.rowid);
+    INSERT INTO session_messages_fts(content) VALUES(new.content);
 END;`,
                 },
         }
@@ -654,7 +673,7 @@ func handleDBMalformedRuntime() {
         db.Exec("PRAGMA synchronous=NORMAL")
 
         // 5. 重新遷移
-        if err := db.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistories{}); err != nil {
+        if err := db.AutoMigrate(&Memories{}, &Sessions{}, &Experiences{}, &SessionHistory{}, &SessionMessage{}); err != nil {
                 log.Printf("[DB] Runtime recovery: AutoMigrate failed after recovery: %v", err)
                 return
         }
@@ -820,7 +839,7 @@ func RebuildFTS() error {
                 "INSERT INTO memories_fts(memories_fts) VALUES('rebuild')",
                 "INSERT INTO experiences_fts(experiences_fts) VALUES('rebuild')",
                 "INSERT INTO sessions_fts(sessions_fts) VALUES('rebuild')",
-                "INSERT INTO session_histories_fts(session_histories_fts) VALUES('rebuild')",
+                "INSERT INTO session_messages_fts(session_messages_fts) VALUES('rebuild')",
         }
 
         for _, sql := range rebuilds {

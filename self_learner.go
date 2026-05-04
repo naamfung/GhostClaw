@@ -25,7 +25,8 @@ var globalSelfLearner = &SelfLearner{
 }
 
 // Reflect 在任務完成後進行 LLM 自省。
-func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, messages []Message) {
+// sessionID 用於從 DB 加載最近消息，避免攞成個 history blob
+func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, sessionID string) {
 	sl.mu.Lock()
 	if time.Since(sl.lastReflection) < sl.minInterval {
 		sl.mu.Unlock()
@@ -33,6 +34,20 @@ func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, messages []
 	}
 	sl.lastReflection = time.Now()
 	sl.mu.Unlock()
+
+	// 用 LoadRecentMessages 從 DB 加載最近 50 條消息
+	var messages []Message
+	if globalSessionPersist != nil && sessionID != "" {
+		var err error
+		messages, err = globalSessionPersist.LoadRecentMessages(sessionID, 50)
+		if err != nil {
+			log.Printf("[SelfLearner] LoadRecentMessages failed: %v, falling back to in-memory", err)
+			messages = GetGlobalSession().GetHistory()
+		}
+	}
+	if len(messages) == 0 {
+		messages = GetGlobalSession().GetHistory()
+	}
 
 	prompt := sl.buildReflectionPrompt(taskDesc, messages)
 	if prompt == "" {

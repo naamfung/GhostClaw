@@ -113,7 +113,8 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 	// ====== LLM 自省學習 ======
 	if globalSelfLearner != nil {
 		taskDesc := getCurrentTaskDescriptionFromMessages(messages)
-		go globalSelfLearner.Reflect(context.Background(), taskDesc, messages)
+		sessionID := GetGlobalSession().ID
+		go globalSelfLearner.Reflect(context.Background(), taskDesc, sessionID)
 	}
 
 	// ====== 記憶整合 ======
