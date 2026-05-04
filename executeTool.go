@@ -1777,43 +1777,69 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execTodos(ec *ToolExecContext) (string, TaskStatus) {
-        itemsInterface, ok := ec.ArgsMap["Todos"].([]interface{})
-        if !ok {
-                return "Error: Invalid todos in todos tool call", TaskStatusFailed
+        // 智能解析 Todos 參數：支援 array、巢狀 object、JSON string 三種格式
+        rawTodos := ec.ArgsMap["Todos"]
+        var itemsInterface []interface{}
+
+        switch v := rawTodos.(type) {
+        case []interface{}:
+                itemsInterface = v
+        case map[string]interface{}:
+                // 巢狀格式：{"Todos": [...], "summary": "..."} → 提取內層 Todos
+                if nested, ok := v["Todos"].([]interface{}); ok {
+                        itemsInterface = nested
+                } else {
+                        return fmt.Sprintf("Error: Todos 必須是 array。你傳入咗 object，但入面冇 Todos 陣列。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}", ), TaskStatusFailed
+                }
+        case string:
+                // JSON string 格式：嘗試 parse
+                var parsed interface{}
+                if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+                        if arr, ok := parsed.([]interface{}); ok {
+                                itemsInterface = arr
+                        } else if obj, ok := parsed.(map[string]interface{}); ok {
+                                if nested, ok := obj["Todos"].([]interface{}); ok {
+                                        itemsInterface = nested
+                                }
+                        }
+                }
+                if itemsInterface == nil {
+                        return fmt.Sprintf("Error: Todos 必須係 JSON array，你傳入咗 string 但 parse 唔到。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅係：%.100s", v), TaskStatusFailed
+                }
+        default:
+                return fmt.Sprintf("Error: Todos 必須係 array，你傳入咗 %T 類型。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}", rawTodos), TaskStatusFailed
         }
 
         var items []TodoItem
-        valid := true
-        var content string
-        for _, itemInterface := range itemsInterface {
+        var errs []string
+        for i, itemInterface := range itemsInterface {
                 itemMap, ok := itemInterface.(map[string]interface{})
                 if !ok {
-                        content = "Error: Invalid item format"
-                        valid = false
-                        break
+                        errs = append(errs, fmt.Sprintf("item[%d]: 必須係 object，但你傳入咗 %T", i, itemInterface))
+                        continue
                 }
                 item := TodoItem{}
                 if id, ok := itemMap["id"].(string); ok {
                         item.ID = id
+                } else if idFloat, ok := itemMap["id"].(float64); ok {
+                        item.ID = fmt.Sprintf("%.0f", idFloat)
                 }
                 if text, ok := itemMap["content"].(string); ok {
                         item.Text = text
                 } else {
-                        content = "Error: Item missing content"
-                        valid = false
-                        break
+                        errs = append(errs, fmt.Sprintf("item[%d]: 缺少 content 欄位或唔係 string（必填）", i))
+                        continue
                 }
                 if status, ok := itemMap["status"].(string); ok {
                         item.Status = status
                 } else {
-                        content = "Error: Item missing status"
-                        valid = false
-                        break
+                        errs = append(errs, fmt.Sprintf("item[%d]: 缺少 status 欄位或唔係 string（必填，可選：Pending/InProgress/Completed/Waiting）", i))
+                        continue
                 }
                 items = append(items, item)
         }
-        if !valid {
-                return content, TaskStatusFailed
+        if len(errs) > 0 {
+                return "Error: " + strings.Join(errs, "; "), TaskStatusFailed
         }
 
         // 支持 list_id 參數（Plan Mode 每階段使用不同列表）
