@@ -1864,6 +1864,10 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
         if err != nil {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
+        if !TODO.HasUnfinishedItems() && globalTaskTracker != nil {
+                globalTaskTracker.MarkCompleted()
+                globalTaskTracker.ResetStuckState()
+        }
         return output, TaskStatusSuccess
 }
 

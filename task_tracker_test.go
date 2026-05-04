@@ -124,6 +124,12 @@ func TestTaskTracker_StuckRecoversOnSuccess(t *testing.T) {
 	if tt.GetConsecutiveFails() != 0 {
 		t.Error("consecutive fails should reset after success")
 	}
+
+	// Verify stuck is cleared and ShouldPromptTodo returns false
+	stuckAfter, reasonAfter := tt.ShouldPromptTodo()
+	if stuckAfter {
+		t.Errorf("should not be stuck after success recovery, got reason: %s", reasonAfter)
+	}
 }
 
 func TestTaskTracker_MultipleStuckReasons(t *testing.T) {
@@ -135,10 +141,11 @@ func TestTaskTracker_MultipleStuckReasons(t *testing.T) {
 	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
 
-	// Manually set condition 4: too many steps
+	// Manually set condition 4: too many steps and consecutive no progress
 	tt.mu.Lock()
 	tt.currentTask.CompletedSteps = 30
 	tt.currentTask.FailedSteps = 5
+	tt.currentTask.ConsecutiveNoProgress = 11
 	tt.mu.Unlock()
 
 	// 再觸發一次 RecordToolCall 以重新運行 detectStuckState

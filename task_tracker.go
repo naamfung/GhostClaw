@@ -52,10 +52,12 @@ type TaskState struct {
         RepeatedFailures map[string]int // 按工具統計重複失敗
 
         // 狀態標記
-        IsStuck          bool           // 是否卡住
-        IsCompleted      bool           // 是否完成
-        StuckReason      string         // 卡住原因
+        IsStuck           bool          // 是否卡住
+        IsCompleted       bool          // 是否完成
+        StuckReason       string        // 卡住原因
         NeedsIntervention bool          // 是否需要用戶干預
+        LastAlertStep     int           // 最後注入 alert 時的 totalSteps（用於冷卻）
+        ConsecutiveNoProgress int       // 連續無進展步數
 }
 
 // ToolCallRecord 工具調用記錄
@@ -141,12 +143,14 @@ func (tt *TaskTracker) RecordToolCall(toolName string, status TaskStatus, inputS
                 task.CompletedSteps++
                 task.LastSuccessTime = now
                 task.ConsecutiveFails = 0
-                task.RepeatedFailures[toolName] = 0
+                task.ConsecutiveNoProgress = 0
+                task.RepeatedFailures = make(map[string]int)
         case TaskStatusFailed:
                 task.FailedSteps++
                 task.LastFailedTime = now
                 task.LastFailedTool = toolName
                 task.ConsecutiveFails++
+                task.ConsecutiveNoProgress++
                 task.RepeatedFailures[toolName]++
         case TaskStatusCancelled:
                 task.CancelledSteps++
@@ -187,10 +191,10 @@ func (tt *TaskTracker) detectStuckState() {
                 reasons = append(reasons, "High failure rate over extended period")
         }
 
-        // 條件4：總步驟數過多（可能是無限循環）
+        // 條件4：總步數過多 且 連續 >10 步無進展
         totalSteps := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
-        if totalSteps > 30 {
-                reasons = append(reasons, "Too many steps, possible infinite loop")
+        if totalSteps > 30 && task.ConsecutiveNoProgress > 10 {
+                reasons = append(reasons, "Too many steps without progress, possible infinite loop")
         }
 
         if len(reasons) > 0 {
@@ -213,10 +217,22 @@ func (tt *TaskTracker) MarkCompleted() {
         }
 }
 
+// ResetStuckState 重置卡住狀態
+func (tt *TaskTracker) ResetStuckState() {
+        tt.mu.Lock()
+        defer tt.mu.Unlock()
+        if tt.currentTask != nil {
+                tt.currentTask.IsStuck = false
+                tt.currentTask.NeedsIntervention = false
+                tt.currentTask.ConsecutiveNoProgress = 0
+                tt.currentTask.RepeatedFailures = make(map[string]int)
+        }
+}
+
 // ShouldPromptTodo 是否應該提示更新 todo
 func (tt *TaskTracker) ShouldPromptTodo() (bool, string) {
-        tt.mu.RLock()
-        defer tt.mu.RUnlock()
+        tt.mu.Lock()
+        defer tt.mu.Unlock()
 
         if tt.currentTask == nil {
                 return false, ""
@@ -231,6 +247,16 @@ func (tt *TaskTracker) ShouldPromptTodo() (bool, string) {
 
         // 如果已經卡住，提示用戶干預
         if task.IsStuck && task.NeedsIntervention {
+                totalSteps := task.CompletedSteps + task.FailedSteps + task.CancelledSteps
+                // 冷卻：至少隔 5 步（LastAlertStep > 0 表示曾經 alert 過）
+                if task.LastAlertStep > 0 && totalSteps-task.LastAlertStep < 5 {
+                        return false, ""
+                }
+                // 所有 todos 已完成就唔再 alert（但有 todo 列表先檢查）
+                if !TODO.IsEmpty() && !TODO.HasUnfinishedItems() {
+                        return false, ""
+                }
+                task.LastAlertStep = totalSteps
                 return true, fmt.Sprintf(
                         "[SYSTEM_ALERT]The task appears to be stuck: %s. Please either: (1) try a different approach, (2) ask the user for guidance, or (3) update your todo list to reflect current progress.[/SYSTEM_ALERT]",
                         task.StuckReason,

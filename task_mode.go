@@ -287,6 +287,10 @@ func enterTasksExecute() (string, bool) {
 
 	globalTasksMode.mu.Unlock()
 
+	if globalTaskTracker != nil {
+		globalTaskTracker.ResetStuckState()
+	}
+
 	// 清理 todos
 	todos := TODO
 	if todos != nil {
