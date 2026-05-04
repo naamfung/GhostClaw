@@ -159,16 +159,6 @@ type SmartShellConfig struct {
         MaxDirectOutput   int   `toon:"MaxDirectOutput,omitempty" json:"MaxDirectOutput,omitempty"` // stdout/stderr 超过此字符数则保存为文件返回，默认1000，最大1000
 }
 
-// ShellToolConfig shell 工具配置
-type ShellToolConfig struct {
-        Enabled bool `toon:"Enabled" json:"Enabled"`
-}
-
-// ShellDelayedConfig ShellDelayed 工具配置
-type ShellDelayedConfig struct {
-        Enabled bool `toon:"Enabled" json:"Enabled"`
-}
-
 // MemoryConfig 记忆整合配置
 type MemoryConfig struct {
         MinMessagesToConsolidate int     `toon:"MinMessagesToConsolidate" json:"MinMessagesToConsolidate"` // 最小整合消息数
@@ -179,8 +169,6 @@ type MemoryConfig struct {
 // ToolsConfig 工具开关配置
 type ToolsConfig struct {
         SmartShell           SmartShellConfig   `toon:"SmartShell" json:"SmartShell"`
-        Shell                ShellToolConfig    `toon:"Shell" json:"Shell"`
-        ShellDelayed         ShellDelayedConfig `toon:"ShellDelayed" json:"ShellDelayed"`
         MaxAgentIterations         int     `toon:"MaxAgentIterations,omitempty" json:"MaxAgentIterations,omitempty"`                 // Agent Loop 最大迭代次数（0=使用默认值100）
         CompressionMode            string  `toon:"CompressionMode,omitempty" json:"CompressionMode,omitempty"`                       // "token"（預設）或 "message"
         CompressionThreshold       float64 `toon:"CompressionThreshold,omitempty" json:"CompressionThreshold,omitempty"`           // 0.1-0.9，預設 0.8

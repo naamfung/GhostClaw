@@ -630,7 +630,7 @@ func TestExecCronRemove_NoJobID(t *testing.T) {
 }
 
 // ============================================================
-// ShellDelayed
+// ShellDelayed (deprecated, kept as dead code)
 // ============================================================
 
 func TestExecShellDelayed_NoCommand(t *testing.T) {
@@ -639,16 +639,16 @@ func TestExecShellDelayed_NoCommand(t *testing.T) {
 	requireFailed(t, status, "ShellDelayed no command")
 }
 
-func TestExecShellDelayedCheck_NoTaskID(t *testing.T) {
+func TestExecTaskCheck_NoTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execShellDelayedCheck(ec)
-	requireFailed(t, status, "ShellDelayedCheck no task_id")
+	_, status := execTaskCheck(ec)
+	requireFailed(t, status, "TaskCheck no task_id")
 }
 
-func TestExecShellDelayedTerminate_NoTaskID(t *testing.T) {
+func TestExecTaskTerminate_NoTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execShellDelayedTerminate(ec)
-	requireFailed(t, status, "ShellDelayedTerminate no task_id")
+	_, status := execTaskTerminate(ec)
+	requireFailed(t, status, "TaskTerminate no task_id")
 }
 
 // ============================================================
@@ -1021,28 +1021,28 @@ func TestExecActorIdentityClear_MissingActor(t *testing.T) {
 }
 
 // ============================================================
-// ShellDelayed family (missing members)
+// Task management tools (missing members)
 // ============================================================
 
-func TestExecShellDelayedList_Executes(t *testing.T) {
+func TestExecTaskList_Executes(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execShellDelayedList(ec)
+	_, status := execTaskList(ec)
 	if status != TaskStatusSuccess {
-		t.Log("ShellDelayedList failed (expected without manager init): OK")
+		t.Log("TaskList failed (expected without manager init): OK")
 	}
 }
 
-func TestExecShellDelayedWait_MissingTaskID(t *testing.T) {
+func TestExecTaskWait_MissingTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execShellDelayedWait(ec)
+	_, status := execTaskWait(ec)
 	// May fail with "task manager not initialized" or "missing TaskId"
-	requireFailed(t, status, "ShellDelayedWait missing/bad args")
+	requireFailed(t, status, "TaskWait missing/bad args")
 }
 
-func TestExecShellDelayedRemove_MissingTaskID(t *testing.T) {
+func TestExecTaskRemove_MissingTaskID(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execShellDelayedRemove(ec)
-	requireFailed(t, status, "ShellDelayedRemove missing/bad args")
+	_, status := execTaskRemove(ec)
+	requireFailed(t, status, "TaskRemove missing/bad args")
 }
 
 // ============================================================

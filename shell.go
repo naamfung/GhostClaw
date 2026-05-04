@@ -121,7 +121,7 @@ func detectBlockingCommand(command string) BlockingCommandInfo {
                         info.Suggestions = []string{
                                 "Linux: 使用 setsid 创建新会话: setsid /path/to/program < /dev/null > /tmp/prog.log 2>&1 &",
                                 "GhostBSD/FreeBSD: 使用 daemon 命令: daemon -p /var/run/prog.pid /path/to/program",
-                                "也可以考虑使用 ShellDelayed 工具异步执行此命令。",
+                                "也可以考虑使用 SmartShell(mode=\"async\") 工具异步执行此命令。",
                                 iSuggestion,
                                 "若确认命令不会启动守护进程，可使用 force: true 强制执行",
                         }
@@ -195,7 +195,7 @@ func detectBlockingCommand(command string) BlockingCommandInfo {
                         info.Suggestions = []string{
                                 fmt.Sprintf("使用非交互模式运行 %s", prog),
                                 fmt.Sprintf("使用 %s 的批处理模式", prog),
-                                "若确认需要交互，请使用 ShellDelayed 工具",
+                                "若确认需要交互，请使用 SmartShell(mode=\"async\") 工具",
                         }
                         return info
                 }

@@ -38,7 +38,6 @@ var toolCategoryPrefixes = []struct {
 	prefix    string
 	threshold int
 }{
-	{"Shell", dynamicThresholdSentinel},
 	{"SmartShell", dynamicThresholdSentinel},
 	{"ssh", dynamicThresholdSentinel},
 	{"browser", dynamicThresholdSentinel},

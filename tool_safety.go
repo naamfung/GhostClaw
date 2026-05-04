@@ -853,7 +853,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 switch toolName {
                 case "EnterPlanMode":
                         content = fmt.Sprintf("你已經在 Tasks Mode 中（%s）。使用 Tasks(PlanPhase=\"design\") 進入設計階段，或 Tasks(PlanPhase=\"execute\") 退出。", currentPhase)
-                case "SmartShell", "Shell":
+                case "SmartShell":
                         content = fmt.Sprintf("Tasks Mode %s 中不允許使用 shell。此階段僅允許只讀工具（TextSearch、ReadFileLines 等）。", currentPhase)
                 case "WriteFileLine", "WriteFileLines", "AppendToFile", "WriteFileRange", "TextReplace":
                         content = fmt.Sprintf("Tasks Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行。", currentPhase, toolName)

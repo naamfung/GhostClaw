@@ -97,7 +97,7 @@ func TestDetectXML_InvokeWithKnownTool(t *testing.T) {
 		},
 		{
 			name:    "DSML tool_calls with known tool",
-			content: `<DSML_tool_calls><DSML_invoke name="ShellDelayedCheck"><DSML_parameter name="TaskId">task_123</DSML_parameter></DSML_invoke></DSML_tool_calls>`,
+			content: `<DSML_tool_calls><DSML_invoke name="TaskCheck"><DSML_parameter name="TaskId">task_123</DSML_parameter></DSML_invoke></DSML_tool_calls>`,
 			want:    true,
 		},
 		{
@@ -319,7 +319,7 @@ func TestParseInlineXMLToolCalls_Invoke(t *testing.T) {
 
 func TestParseInlineXMLToolCalls_DSML(t *testing.T) {
 	content := `<DSML_tool_calls>
-<DSML_invoke name="ShellDelayedCheck">
+<DSML_invoke name="TaskCheck">
 <DSML_parameter name="TaskId">task_e91084df</DSML_parameter>
 </DSML_invoke>
 <DSML_invoke name="SmartShell">
@@ -331,13 +331,13 @@ func TestParseInlineXMLToolCalls_DSML(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("expected 2 calls (from DSML_tool_calls wrapper), got %d", len(calls))
 	}
-	if calls[0].Name != "ShellDelayedCheck" {
-		t.Errorf("expected ShellDelayedCheck somewhere, got %v", calls)
+	if calls[0].Name != "TaskCheck" {
+		t.Errorf("expected TaskCheck somewhere, got %v", calls)
 	}
 	// Verify TaskId parameter gets parsed
 	found := false
 	for _, c := range calls {
-		if c.Name == "ShellDelayedCheck" {
+		if c.Name == "TaskCheck" {
 			var args map[string]interface{}
 			json.Unmarshal([]byte(c.ArgsJSON), &args)
 			if args["TaskId"] == "task_e91084df" {
@@ -346,7 +346,7 @@ func TestParseInlineXMLToolCalls_DSML(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("ShellDelayedCheck with TaskId not found")
+		t.Error("TaskCheck with TaskId not found")
 	}
 }
 

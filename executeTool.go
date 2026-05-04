@@ -2446,7 +2446,7 @@ func execShellDelayed(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execShellDelayedCheck(ec *ToolExecContext) (string, TaskStatus) {
+func execTaskCheck(ec *ToolExecContext) (string, TaskStatus) {
         content, ok := handleTaskCheck(ec.Ctx, ec.ArgsMap, ec.Ch)
         if !ok {
         	return content, TaskStatusFailed
@@ -2454,7 +2454,7 @@ func execShellDelayedCheck(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execShellDelayedTerminate(ec *ToolExecContext) (string, TaskStatus) {
+func execTaskTerminate(ec *ToolExecContext) (string, TaskStatus) {
         content, ok := handleTaskTerminate(ec.Ctx, ec.ArgsMap, ec.Ch)
         if !ok {
         	return content, TaskStatusFailed
@@ -2462,7 +2462,7 @@ func execShellDelayedTerminate(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execShellDelayedList(ec *ToolExecContext) (string, TaskStatus) {
+func execTaskList(ec *ToolExecContext) (string, TaskStatus) {
         content, ok := handleTaskList(ec.Ctx, ec.ArgsMap, ec.Ch)
         if !ok {
                 return content, TaskStatusFailed
@@ -2470,7 +2470,7 @@ func execShellDelayedList(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execShellDelayedWait(ec *ToolExecContext) (string, TaskStatus) {
+func execTaskWait(ec *ToolExecContext) (string, TaskStatus) {
         content, ok := handleTaskWait(ec.Ctx, ec.ArgsMap, ec.Ch)
         if !ok {
         	return content, TaskStatusFailed
@@ -2478,7 +2478,7 @@ func execShellDelayedWait(ec *ToolExecContext) (string, TaskStatus) {
         return content, TaskStatusSuccess
 }
 
-func execShellDelayedRemove(ec *ToolExecContext) (string, TaskStatus) {
+func execTaskRemove(ec *ToolExecContext) (string, TaskStatus) {
         content, ok := handleTaskRemove(ec.Ctx, ec.ArgsMap, ec.Ch)
         if !ok {
         	return content, TaskStatusFailed
@@ -2902,7 +2902,6 @@ func init() {
 
                 // Shell tools
                 "SmartShell": execSmartShellTool,
-                "Shell":       execShellTool,
                 "Opencli":     execOpenCLITool,
 
                 // SSH tools
@@ -3015,13 +3014,12 @@ func init() {
                 "PluginApis":    execPluginAPIs,
                 "PluginDetail":  execPluginDetail,
 
-                // Shell delayed tools
-                "ShellDelayed":          execShellDelayed,
-                "ShellDelayedCheck":    execShellDelayedCheck,
-                "ShellDelayedTerminate": execShellDelayedTerminate,
-                "ShellDelayedList":     execShellDelayedList,
-                "ShellDelayedWait":     execShellDelayedWait,
-                "ShellDelayedRemove":   execShellDelayedRemove,
+                // Task management tools
+                "TaskCheck":    execTaskCheck,
+                "TaskTerminate": execTaskTerminate,
+                "TaskList":     execTaskList,
+                "TaskWait":     execTaskWait,
+                "TaskRemove":   execTaskRemove,
 
                 // Spawn tools
                 "Spawn":         execSpawn,

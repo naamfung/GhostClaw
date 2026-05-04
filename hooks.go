@@ -320,7 +320,7 @@ func hookDangerousCommand(ctx context.Context, event HookEvent, payload interfac
         }
 
         // 只检查 shell 工具
-        if beforeTool.ToolName != "Shell" && beforeTool.ToolName != "shell_exec" {
+        if beforeTool.ToolName != "SmartShell" && beforeTool.ToolName != "shell_exec" {
                 return &HookResult{Action: HookOutcomeAllow}
         }
 
@@ -389,7 +389,7 @@ func hookRepeatedCommands(ctx context.Context, event HookEvent, payload interfac
         }
 
         // 只检查可能重复的工具（shell 相关）
-        if afterTool.ToolName != "Shell" && afterTool.ToolName != "shell_exec" &&
+        if afterTool.ToolName != "shell_exec" &&
                 afterTool.ToolName != "SmartShell" && afterTool.ToolName != "bash" {
                 return &HookResult{Action: HookOutcomeAllow}
         }

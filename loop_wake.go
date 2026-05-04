@@ -10,7 +10,7 @@ import (
 // loop_wake.go — 即時喚醒通知注入
 // ============================================================================
 // 從 AgentLoop L607-652 抽出：
-//   - 將 ShellDelayed/spawn 後台任務的完成/失敗通知注入到 user 消息中
+//   - 將 SmartShell async/spawn 後台任務的完成/失敗通知注入到 user 消息中
 //   - 安全注入策略：合併到現有 user 消息，避免破壞 tool_use→tool_result 鄰接性
 
 // RunWakeInjection checks InputMessages queue for pending wake notifications

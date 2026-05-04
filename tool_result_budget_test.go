@@ -114,9 +114,9 @@ func TestCheckAndPersistResult_SSHExecThreshold(t *testing.T) {
 func TestCheckAndPersistResult_ShellToolThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	// Shell, SmartShell 匹配 "Shell" prefix，使用動態閾值
+	// SmartShell 匹配 "SmartShell" prefix，使用動態閾值
 	dynamicThreshold := DynamicToolThreshold()
-	for _, tool := range []string{"Shell", "SmartShell"} {
+	for _, tool := range []string{"SmartShell"} {
 		threshold := budget.resolveThreshold(tool)
 		if threshold != dynamicThreshold {
 			t.Errorf("%s threshold = %d, want dynamic %d", tool, threshold, dynamicThreshold)

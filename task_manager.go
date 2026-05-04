@@ -867,9 +867,7 @@ func (lec *LoopEventCollector) GetEvents() []LoopDetectionEvent {
 
 // 需要循环检测的工具黑名单列表（只在列表中的工具方进行检测）
 var monitoredTools = map[string]bool{
-        "Shell":         true,
         "SmartShell":   true,
-        "ShellDelayed": true,
         "SSHExec":      true,
 }
 
@@ -982,7 +980,7 @@ func NewLoopDetectorWithConfig(config *LoopDetectionConfig) *LoopDetector {
 // generateFingerprint 生成工具调用的指纹（用于快速比较）
 func generateFingerprint(toolName string, args map[string]interface{}) string {
         // 对于shell命令，使用命令内容作为指纹
-        if toolName == "Shell" || toolName == "SmartShell" || toolName == "ShellDelayed" {
+        if toolName == "SmartShell" {
                 if cmd, ok := args["command"].(string); ok {
                         return toolName + ":" + cmd
                 }

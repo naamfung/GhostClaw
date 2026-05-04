@@ -105,18 +105,18 @@ func TestLevenshteinDistance(t *testing.T) {
 
 func TestFindSimilarTool(t *testing.T) {
 	t.Run("精确匹配自身", func(t *testing.T) {
-		result := FindSimilarTool("Shell")
+		result := FindSimilarTool("SmartShell")
 		// 精确匹配应返回自身（编辑距离 0，满足 threshold）
-		if result != "Shell" {
-			t.Errorf("expected 'shell', got %q", result)
+		if result != "SmartShell" {
+			t.Errorf("expected 'SmartShell', got %q", result)
 		}
 	})
 
 	t.Run("小笔误", func(t *testing.T) {
-		result := FindSimilarTool("shel")
-		// 编辑距离 1，接近 "Shell"
-		if result != "Shell" {
-			t.Errorf("expected 'shell', got %q", result)
+		result := FindSimilarTool("smart_shel")
+		// 编辑距离 1，接近 "SmartShell"（替换 _ 为 t）
+		if result != "SmartShell" {
+			t.Errorf("expected 'SmartShell', got %q", result)
 		}
 	})
 
@@ -128,16 +128,25 @@ func TestFindSimilarTool(t *testing.T) {
 	})
 
 	t.Run("带空格输入", func(t *testing.T) {
-		result := FindSimilarTool("  shell  ")
-		if result != "Shell" {
-			t.Errorf("expected 'shell', got %q", result)
+		result := FindSimilarTool("  smart_shell  ")
+		// 空格会被规范化，smart_shell 最接近 SmartShell
+		if result != "SmartShell" {
+			t.Errorf("expected 'SmartShell', got %q", result)
 		}
 	})
 
 	t.Run("大小写不敏感", func(t *testing.T) {
-		result := FindSimilarTool("SHELL")
-		if result != "Shell" {
-			t.Errorf("expected 'shell', got %q", result)
+		result := FindSimilarTool("SMARTSHELL")
+		if result != "SmartShell" {
+			t.Errorf("expected 'SmartShell', got %q", result)
+		}
+	})
+
+	t.Run("Shell 笔误仍然有效（用于 typo 检测）", func(t *testing.T) {
+		result := FindSimilarTool("Shell")
+		// Shell 已从注册表移除，应匹配到 SmartShell
+		if result == "" {
+			t.Error("expected non-empty result for 'Shell' typo detection")
 		}
 	})
 
@@ -179,9 +188,9 @@ func TestFindSimilarTool(t *testing.T) {
 
 func TestGetUnknownToolErrorMessage(t *testing.T) {
 	t.Run("已知近似工具会建议", func(t *testing.T) {
-		msg := GetUnknownToolErrorMessage("shel")
-		if !strings.Contains(msg, "Shell") {
-			t.Errorf("expected suggestion for 'shell', got: %s", msg)
+		msg := GetUnknownToolErrorMessage("smart_shel")
+		if !strings.Contains(msg, "SmartShell") {
+			t.Errorf("expected suggestion for 'SmartShell', got: %s", msg)
 		}
 		if !strings.Contains(msg, "shel") {
 			t.Errorf("expected original tool name in message, got: %s", msg)
@@ -326,8 +335,8 @@ func TestIsReadOnlyTool(t *testing.T) {
 		}
 	}
 
-	if IsReadOnlyTool("Shell") {
-		t.Error("shell should NOT be read-only")
+	if IsReadOnlyTool("SmartShell") {
+		t.Error("SmartShell should NOT be read-only")
 	}
 	if IsReadOnlyTool("unknown_tool_xyz") {
 		t.Error("unknown tool should not be read-only by default")
@@ -1558,7 +1567,7 @@ func TestDynamicToolThreshold_AllToolsUseDynamic(t *testing.T) {
 	toolNames := []string{
 		"ReadFileLines", "ReadFileLine", "ReadFileRange",
 		"WriteFileLine", "WriteFileLines", "WriteFileRange", "AppendToFile",
-		"Shell", "SmartShell",
+		"SmartShell",
 		"ssh_connect", "browser_navigate",
 		"mcp_some_server",
 	}

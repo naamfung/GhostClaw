@@ -86,44 +86,13 @@ func init() {
                                         "type":        "integer",
                                         "description": "异步唤醒时间（分钟，默认5分钟）",
                                 },
-                        },
-                        "required":             []string{"command"},
-                        "additionalProperties": false,
-                })
-
-        reg("Shell", `Execute a shell command synchronously with a timeout (default 60s). This tool BLOCKS until the command completes or times out.
-
-✅ USE THIS FOR: ls, cat, mkdir, rm, cp, mv, grep, find, echo, pwd, which, stat, date, simple git commands, and other quick operations under 60 seconds.
-
-🚫 CRITICAL WARNING - USE ShellDelayed INSTEAD:
-❌ Package managers: apt, apt-get, yum, dnf, pacman, pkg (FreeBSD/GhostBSD)
-❌ Compilation: make, cmake, npm install, pip install, cargo build, go build
-❌ Downloads: wget, curl, git clone, rsync, scp, sftp
-❌ Docker: docker build, docker-compose build
-❌ System updates: apt update, yum update, pkg update, freebsd-update
-❌ Archives: tar, unzip, 7z (for large files)
-❌ Media: ffmpeg, handbrake
-❌ Any command that MAY take more than 60 seconds
-
-⚠️ REMOTE DAEMON STARTUP:
-   - Linux: setsid /path/to/program < /dev/null > /tmp/program.log 2>&1 &
-   - GhostBSD/FreeBSD: daemon -p /var/run/program.pid /path/to/program
-   Otherwise the process will die when the SSH session ends.
-
-Using 'shell' for long-running commands will cause TIMEOUT and FAIL the task!
-
-⚠️ INTERACTIVE COMMANDS: ssh, scp, rsync, sudo, su, vim, top etc. may require interactive input and will trigger a confirmation request.`,
-                "core", "expert",
-                map[string]interface{}{
-                        "type": "object",
-                        "properties": map[string]interface{}{
-                                "command": map[string]interface{}{
-                                        "type":        "string",
-                                        "description": "The shell command to execute. For example, use 'ls' or 'ls -la' (Unix/Linux) to list files, 'mkdir test' to create a directory, 'echo hello' to print text.",
-                                },
                                 "force": map[string]interface{}{
                                         "type":        "boolean",
-                                        "description": "Set to true to bypass confirmation for potentially blocking commands (ssh, scp, sudo, etc.). Use with caution - the command will execute without user confirmation.",
+                                        "description": "设为 true 可绕过阻塞命令检测，直接执行（默认 false）",
+                                },
+                                "description": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "异步任务描述（可选，仅在 mode=\"async\" 时有效）",
                                 },
                         },
                         "required":             []string{"command"},
@@ -2028,28 +1997,8 @@ validate + 可选冒烟测试。
                 })
 
         // ========== 后台任务管理工具 ==========
-        reg("ShellDelayed", "Execute a shell command in background with NO timeout. Use this for long-running commands that may take minutes or hours.\n\n✅ USE THIS FOR:\n• Package managers: apt/yum/dnf/pacman (Linux), pkg (FreeBSD/GhostBSD)\n• System updates: apt update, yum update, pkg update, freebsd-update, portsnap\n• Compilation: make, cmake, npm install, pip install, cargo build, go build\n• Network transfers: ssh, scp, rsync, sftp, wget, curl, git clone\n• Docker: docker build, docker-compose build\n• Archives: tar, unzip, 7z (large files)\n• Media encoding: ffmpeg, handbrake\n• Backups, long scripts, any command > 60 seconds\n\n❌ DO NOT USE THIS FOR: quick commands like ls, cat, mkdir - use 'shell' instead.\n\n⏱️ The command runs in background. You specify when to wake up (1-1440 minutes).\n\n🚫 DO NOT POLL: After starting the task, DO NOT call ShellDelayed_check repeatedly. The system will automatically notify you when the task completes or wake time arrives.",
-                "core", "expert",
-                map[string]interface{}{
-                        "type": "object",
-                        "properties": map[string]interface{}{
-                                "command": map[string]interface{}{
-                                        "type":        "string",
-                                        "description": "要执行的 shell 命令",
-                                },
-                                "WakeAfterMinutes": map[string]interface{}{
-                                        "type":        "integer",
-                                        "description": "唤醒时间（分钟），最小1分钟，最大1440分钟(24小时)，默认5分钟",
-                                },
-                                "description": map[string]interface{}{
-                                        "type":        "string",
-                                        "description": "任务描述（可选，用于后续识别）",
-                                },
-                        },
-                        "required": []string{"command"},
-                })
 
-        reg("ShellDelayedCheck", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
+        reg("TaskCheck", "检查后台任务的状态与结果。返回任务的当前状态、已运行时间、输出内容等信息。\n\n🚫 DO NOT POLL: 不要轮询！不要频繁调用此工具检查任务状态。系统会在唤醒时间主动通知你。只有在特殊情况下才需要调用此工具。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -2062,8 +2011,8 @@ validate + 可选冒烟测试。
                         "required": []string{"TaskId"},
                 })
 
-        reg("ShellDelayedTerminate",
-                "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 ShellDelayed_list 获取任务ID。",
+        reg("TaskTerminate",
+                "终止后台运行的任务。默认使用 SIGTERM 优雅终止，设置 force=true 使用 SIGKILL 强制终止。先用 TaskList 获取任务ID。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -2080,7 +2029,7 @@ validate + 可选冒烟测试。
                         "required": []string{"TaskId"},
                 })
 
-        reg("ShellDelayedList",
+        reg("TaskList",
                 "列出所有后台任务，显示任务ID、命令、状态和运行时长。无参数。",
                 "core", "expert",
                 map[string]interface{}{
@@ -2088,7 +2037,7 @@ validate + 可选冒烟测试。
                         "properties": map[string]interface{}{},
                 })
 
-        reg("ShellDelayedWait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
+        reg("TaskWait", "延长后台任务的唤醒时间。\n\n🚫 DO NOT POLL: 调用此工具后，不需要轮询！系统会在新的唤醒时间主动通知你。请继续其他工作或停止，等待系统通知。",
                 "core", "expert",
                 map[string]interface{}{
                         "type": "object",
@@ -2105,7 +2054,7 @@ validate + 可选冒烟测试。
                         "required": []string{"TaskId", "WaitMinutes"},
                 })
 
-        reg("ShellDelayedRemove",
+        reg("TaskRemove",
                 "从任务列表中移除已完成或已终止的任务。运行中的任务需要先终止才能移除。",
                 "core", "expert",
                 map[string]interface{}{

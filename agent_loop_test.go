@@ -88,12 +88,12 @@ func TestGetAllowedToolsList(t *testing.T) {
 		role := &Role{
 			ToolPermission: ToolPermission{
 				Mode:         ToolPermissionAllowlist,
-				AllowedTools: []string{"Shell", "ReadFileLine", "grep"},
+				AllowedTools: []string{"SmartShell", "ReadFileLine", "grep"},
 			},
 		}
 		got := getAllowedToolsList(role)
-		if got != "Shell, ReadFileLine, grep" {
-			t.Errorf("expected 'Shell, ReadFileLine, grep', got %q", got)
+		if got != "SmartShell, ReadFileLine, grep" {
+			t.Errorf("expected 'SmartShell, ReadFileLine, grep', got %q", got)
 		}
 	})
 
@@ -114,11 +114,11 @@ func TestGetAllowedToolsList(t *testing.T) {
 		role := &Role{
 			ToolPermission: ToolPermission{
 				Mode:        ToolPermissionDenylist,
-				DeniedTools: []string{"Shell", "BrowserVisit"},
+				DeniedTools: []string{"SmartShell", "BrowserVisit"},
 			},
 		}
 		got := getAllowedToolsList(role)
-		if got != "除 Shell, BrowserVisit 以外的工具" {
+		if got != "除 SmartShell, BrowserVisit 以外的工具" {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -134,7 +134,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "call_123",
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":      "Shell",
+				"name":      "SmartShell",
 				"arguments": `{"command":"ls"}`,
 			},
 		}
@@ -145,7 +145,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 		if got.ID != "call_123" {
 			t.Errorf("ID mismatch: %q", got.ID)
 		}
-		if got.Name != "Shell" {
+		if got.Name != "SmartShell" {
 			t.Errorf("Name mismatch: %q", got.Name)
 		}
 		if got.ArgsJSON != `{"command":"ls"}` {
@@ -157,7 +157,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 		toolUse := map[string]interface{}{
 			"type": "function",
 			"function": map[string]interface{}{
-				"name": "Shell",
+				"name": "SmartShell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -171,7 +171,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "",
 			"type": "function",
 			"function": map[string]interface{}{
-				"name": "Shell",
+				"name": "SmartShell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -185,7 +185,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   42,
 			"type": "function",
 			"function": map[string]interface{}{
-				"name":      "Shell",
+				"name":      "SmartShell",
 				"arguments": `{}`,
 			},
 		}
@@ -203,7 +203,7 @@ func TestParseSingleOpenAIToolCall(t *testing.T) {
 			"id":   "call_456",
 			"type": "unknown",
 			"function": map[string]interface{}{
-				"name": "Shell",
+				"name": "SmartShell",
 			},
 		}
 		got := parseSingleOpenAIToolCall(toolUse)
@@ -259,7 +259,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 				"id":   "call_1",
 				"type": "function",
 				"function": map[string]interface{}{
-					"name":      "Shell",
+					"name":      "SmartShell",
 					"arguments": `{"command":"ls"}`,
 				},
 			},
@@ -268,7 +268,7 @@ func TestParseToolCallsFromOpenAI(t *testing.T) {
 		if len(calls) != 1 {
 			t.Fatalf("expected 1 call, got %d", len(calls))
 		}
-		if calls[0].Name != "Shell" {
+		if calls[0].Name != "SmartShell" {
 			t.Errorf("expected 'shell', got %q", calls[0].Name)
 		}
 	})
@@ -358,7 +358,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    "toolu_001",
-				"name":  "Shell",
+				"name":  "SmartShell",
 				"input": map[string]interface{}{"command": "ls"},
 			},
 		}
@@ -369,7 +369,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 		if calls[0].ID != "toolu_001" {
 			t.Errorf("ID mismatch: %q", calls[0].ID)
 		}
-		if calls[0].Name != "Shell" {
+		if calls[0].Name != "SmartShell" {
 			t.Errorf("Name mismatch: %q", calls[0].Name)
 		}
 
@@ -425,7 +425,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type": "tool_use",
 				"id":   "toolu_004",
-				"name": "Shell",
+				"name": "SmartShell",
 			},
 		}
 		calls := parseToolCallsFromAnthropic(content)
@@ -439,7 +439,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    12345,
-				"name":  "Shell",
+				"name":  "SmartShell",
 				"input": map[string]interface{}{},
 			},
 		}
@@ -471,7 +471,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 			map[string]interface{}{
 				"type":  "tool_use",
 				"id":    "tu_a",
-				"name":  "Shell",
+				"name":  "SmartShell",
 				"input": map[string]interface{}{"command": "a"},
 			},
 			map[string]interface{}{
@@ -494,7 +494,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 
 func TestDetectXMLToolInvocation(t *testing.T) {
 	t.Run("invoke + 已知工具名 → true", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<invoke name="Shell">`) {
+		if !detectXMLToolInvocation(`<invoke name="SmartShell">`) {
 			t.Error("should detect invoke with known tool")
 		}
 	})
@@ -560,7 +560,7 @@ func TestDetectXMLToolInvocation(t *testing.T) {
 	})
 
 	t.Run("大小写不敏感", func(t *testing.T) {
-		if !detectXMLToolInvocation(`<INVOKE NAME="SHELL">`) {
+		if !detectXMLToolInvocation(`<INVOKE NAME="SMARTSHELL">`) {
 			t.Error("should be case-insensitive")
 		}
 	})
@@ -571,7 +571,7 @@ func TestDetectXMLToolInvocation(t *testing.T) {
 		for i := range prefix {
 			prefix[i] = 'x'
 		}
-		long := string(prefix) + `<invoke name="Shell">`
+		long := string(prefix) + `<invoke name="SmartShell">`
 		// invoke 部分在第 500 字符之后，应被截断检测不到
 		if detectXMLToolInvocation(long) {
 			t.Error("should NOT detect invoke beyond 500-rune boundary")

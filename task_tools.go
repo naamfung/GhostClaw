@@ -7,6 +7,7 @@ import (
         "os"
         "path/filepath"
         "strconv"
+        "strings"
         "time"
 
         "github.com/toon-format/toon-go"
@@ -103,6 +104,18 @@ func handleSmartShell(ctx context.Context, argsMap map[string]interface{}, ch Ch
                 }
         }
 
+        // 解析 force：繞過阻塞命令檢測
+        force := false
+        if forceVal, ok := argsMap["force"].(bool); ok {
+                force = forceVal
+        }
+
+        // 解析 description：異步任務描述
+        description := ""
+        if desc, ok := argsMap["description"].(string); ok {
+                description = desc
+        }
+
         var execMode string
         var suggestion CommandSuggestion
 
@@ -117,21 +130,22 @@ func handleSmartShell(ctx context.Context, argsMap map[string]interface{}, ch Ch
 
         switch execMode {
         case "quick", "sync_forced":
-                return handleSmartShellSync(ctx, command, ch, false, timeoutSecs)
+                return handleSmartShellSync(ctx, command, ch, false, timeoutSecs, force)
         case "interactive":
-                return handleSmartShellAsync(command, wakeAfterMinutes, ch, timeoutSecs)
+                return handleSmartShellInteractive(command, suggestion, wakeAfterMinutes, ch, description)
         case "long_running", "async_forced":
-                return handleSmartShellAsync(command, wakeAfterMinutes, ch, timeoutSecs)
+                return handleSmartShellAsync(command, wakeAfterMinutes, ch, timeoutSecs, description)
         case "unknown":
-                return handleSmartShellSync(ctx, command, ch, true, timeoutSecs)
+                return handleSmartShellSync(ctx, command, ch, true, timeoutSecs, force)
         default:
-                return handleSmartShellSync(ctx, command, ch, true, timeoutSecs)
+                return handleSmartShellSync(ctx, command, ch, true, timeoutSecs, force)
         }
 }
 
 // handleSmartShellSync 同步执行命令
 // timeoutSecs: 用戶通過 SmartShell 參數傳入的超時秒數，0 表示使用默認值
-func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnknown bool, timeoutSecs int) (string, bool) {
+// force: 繞過阻塞命令檢測，直接執行
+func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnknown bool, timeoutSecs int, force bool) (string, bool) {
         timeout := globalToolsConfig.SmartShell.SyncTimeout
         if timeout <= 0 {
                 timeout = 60
@@ -151,7 +165,7 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
         ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
         defer cancel()
 
-        result := runShellWithTimeout(ctxWithTimeout, command, false, false)
+        result := runShellWithTimeout(ctxWithTimeout, command, force, false)
 
         if result.ConfirmRequired {
                 response := map[string]interface{}{
@@ -225,6 +239,15 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                 )
         }
 
+        // OpenCLI 未知命令 help fallback：只有當命令本身係 opencli 開頭先觸發
+        if strings.HasPrefix(strings.TrimSpace(command), "opencli") &&
+                strings.Contains(strings.ToLower(result.Stderr), "error: unknown command") {
+                helpResult := runShellWithTimeout(context.Background(), "opencli help", false, false)
+                if helpResult.Err == nil && helpResult.Stdout != "" {
+                        stderr += "\n\n=== OpenCLI 帮助信息 ===\n" + helpResult.Stdout
+                }
+        }
+
         response := map[string]interface{}{
                 "Mode":      "sync",
                 "Command":   command,
@@ -247,14 +270,14 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
 }
 
 // handleSmartShellAsync 异步执行命令
-func handleSmartShellAsync(command string, wakeAfterMinutes int, ch Channel, timeoutSecs int) (string, bool) {
+func handleSmartShellAsync(command string, wakeAfterMinutes int, ch Channel, timeoutSecs int, description string) (string, bool) {
         if globalTaskManager == nil {
                 return "Error: task manager not initialized", false
         }
 
         sessionID := ch.GetSessionID()
 
-        task, err := globalTaskManager.StartDelayedExec(command, wakeAfterMinutes, "", sessionID, timeoutSecs)
+        task, err := globalTaskManager.StartDelayedExec(command, wakeAfterMinutes, description, sessionID, timeoutSecs)
         if err != nil {
                 return fmt.Sprintf("Error: failed to start async execution: %v", err), false
         }
@@ -281,14 +304,14 @@ func handleSmartShellAsync(command string, wakeAfterMinutes int, ch Channel, tim
 }
 
 // handleSmartShellInteractive 处理交互式命令
-func handleSmartShellInteractive(command string, suggestion CommandSuggestion, wakeAfterMinutes int, ch Channel) (string, bool) {
+func handleSmartShellInteractive(command string, suggestion CommandSuggestion, wakeAfterMinutes int, ch Channel, description string) (string, bool) {
         if globalTaskManager == nil {
                 return "Error: task manager not initialized", false
         }
 
         sessionID := ch.GetSessionID()
 
-        task, err := globalTaskManager.StartDelayedExec(command, wakeAfterMinutes, "", sessionID, 0)
+        task, err := globalTaskManager.StartDelayedExec(command, wakeAfterMinutes, description, sessionID, 0)
         if err != nil {
                 return fmt.Sprintf("Error: failed to start async execution: %v", err), false
         }
@@ -365,9 +388,9 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
                         "⏳ **重要提示**：你现在不需要调用 check 工具轮询任务状态。\n"+
                         "系统会在 %d 分钟后主动通知你任务的执行结果。\n\n"+
                         "你可以继续处理其他工作。如需提前检查或终止，可使用：\n"+
-                        "• ShellDelayed_check - 检查任务状态（不建议频繁调用）\n"+
-                        "• ShellDelayed_wait - 延长等待时间\n"+
-                        "• ShellDelayed_terminate - 终止任务", task.PID, wakeAfterMinutes, wakeAfterMinutes),
+                        "• TaskCheck - 检查任务状态（不建议频繁调用）\n"+
+                        "• TaskWait - 延长等待时间\n"+
+                        "• TaskTerminate - 终止任务", task.PID, wakeAfterMinutes, wakeAfterMinutes),
         }
 
         resultTOON, _ := toon.Marshal(result)
@@ -396,8 +419,8 @@ func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Cha
                 runtimeMinutes := info["RuntimeMinutes"].(float64)
                 message = fmt.Sprintf("\n\n⏳ 任务仍在运行中（已运行 %.1f 分钟）。\n\n"+
                         "📋 可选操作：\n"+
-                        "• 如需继续等待：调用 ShellDelayed_wait 工具设置等待时间，**然后停止检查，等待系统通知**\n"+
-                        "• 如需终止任务：使用 ShellDelayed_terminate 工具\n\n"+
+                        "• 如需继续等待：调用 TaskWait 工具设置等待时间，**然后停止检查，等待系统通知**\n"+
+                        "• 如需终止任务：使用 TaskTerminate 工具\n\n"+
                         "⚠️ **注意**：调用 wait 工具后，不要继续调用 check 工具轮询，系统会在唤醒时间主动通知你。", runtimeMinutes)
         case "Completed":
                 message = "\n\n✅ 任务已完成！退出码为 0。"

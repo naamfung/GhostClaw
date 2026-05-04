@@ -91,9 +91,9 @@ func TestTaskTracker_StuckAfterConsecutiveFails(t *testing.T) {
 	tt.StartNewTask("test", IntentTask)
 
 	// 3 consecutive failures → stuck
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
 
 	stuck, reason := tt.ShouldPromptTodo()
 	if !stuck {
@@ -108,9 +108,9 @@ func TestTaskTracker_StuckRecoversOnSuccess(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
 
 	// Verify stuck
 	stuck, _ := tt.ShouldPromptTodo()
@@ -137,9 +137,9 @@ func TestTaskTracker_MultipleStuckReasons(t *testing.T) {
 	tt.StartNewTask("test", IntentTask)
 
 	// Trigger condition 1: consecutive failures
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
 
 	// Manually set condition 4: too many steps and consecutive no progress
 	tt.mu.Lock()
@@ -177,7 +177,7 @@ func TestTaskTracker_StuckHighFailureRateOverTime(t *testing.T) {
 	tt.mu.Unlock()
 
 	// Trigger detectStuckState via RecordToolCall
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
 
 	stuck, reason := tt.ShouldPromptTodo()
 	if !stuck {
@@ -291,8 +291,8 @@ func TestTaskTracker_GetStatusSummary_WithFailures(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
-	tt.RecordToolCall("Shell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
+	tt.RecordToolCall("SmartShell", TaskStatusFailed, "cmd", "err")
 
 	summary := tt.GetStatusSummary()
 	if !strings.Contains(summary, "Failed attempts") {
@@ -304,8 +304,8 @@ func TestTaskTracker_GetStatusSummary_WithCancelled(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "cancelled")
-	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "cancelled")
+	tt.RecordToolCall("SmartShell", TaskStatusCancelled, "cmd", "cancelled")
+	tt.RecordToolCall("SmartShell", TaskStatusCancelled, "cmd", "cancelled")
 
 	summary := tt.GetStatusSummary()
 	if !strings.Contains(summary, "User cancelled") {
@@ -425,8 +425,8 @@ func TestTaskTracker_CancelledDoesNotIncrementFails(t *testing.T) {
 	tt := NewTaskTracker()
 	tt.StartNewTask("test", IntentTask)
 
-	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "user cancelled")
-	tt.RecordToolCall("Shell", TaskStatusCancelled, "cmd", "user cancelled")
+	tt.RecordToolCall("SmartShell", TaskStatusCancelled, "cmd", "user cancelled")
+	tt.RecordToolCall("SmartShell", TaskStatusCancelled, "cmd", "user cancelled")
 
 	if tt.GetConsecutiveFails() != 0 {
 		t.Error("cancelled should not increment consecutive fails")

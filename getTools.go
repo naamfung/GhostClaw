@@ -181,21 +181,6 @@ func filterToolsByConfig(apiType string, tools interface{}) interface{} {
                 disabledTools["SmartShell"] = true
         }
 
-        // 检查 shell 是否启用
-        if !globalToolsConfig.Shell.Enabled {
-                disabledTools["Shell"] = true
-        }
-
-        // 检查 ShellDelayed 及相关工具是否启用
-        if !globalToolsConfig.ShellDelayed.Enabled {
-                disabledTools["ShellDelayed"] = true
-                disabledTools["ShellDelayedCheck"] = true
-                disabledTools["ShellDelayedWait"] = true
-                disabledTools["ShellDelayedTerminate"] = true
-                disabledTools["ShellDelayedList"] = true
-                disabledTools["ShellDelayedRemove"] = true
-        }
-
         // 预先计算 opencli 状态（isOpenCLIAvailable 已有 sync.Once 缓存，但此处短路避免重复调用）
         opencliAvail := isOpenCLIAvailable()
         disableBrowser := opencliAvail && DisableBrowserTools
@@ -315,7 +300,7 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
         }
 
         // 至少保留核心工具（shell, SmartShell），避免工具集為空
-        coreTools := []string{"SmartShell", "Shell", "Menu"}
+        coreTools := []string{"SmartShell", "Menu"}
         hasCore := false
         for _, name := range coreTools {
                 if allowed[name] {
@@ -359,13 +344,11 @@ func getBlockedToolsForPlanPhase(phase string) map[string]bool {
 
         // Shell 類工具（Plan Mode 中使用 spawn 執行只讀探索任務）
         blocked["SmartShell"] = true
-        blocked["Shell"] = true
-        blocked["ShellDelayed"] = true
-        blocked["ShellDelayedCheck"] = true
-        blocked["ShellDelayedWait"] = true
-        blocked["ShellDelayedTerminate"] = true
-        blocked["ShellDelayedList"] = true
-        blocked["ShellDelayedRemove"] = true
+        blocked["TaskCheck"] = true
+        blocked["TaskWait"] = true
+        blocked["TaskTerminate"] = true
+        blocked["TaskList"] = true
+        blocked["TaskRemove"] = true
 
         // 文件寫入工具（Plan Mode 僅允許通過 PlanWrite 寫計劃文件）
         blocked["WriteFileLine"] = true
