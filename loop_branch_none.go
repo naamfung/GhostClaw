@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -11,7 +14,7 @@ import (
 // loop_branch_none.go — Branch A: 無工具調用時的分支邏輯
 // ============================================================================
 // 從 AgentLoop L1054-1235 抽出：
-//   - XML 工具調用偵測 + 重新提示
+//   - XML 工具調用偵測 + 直接解析執行（不再 re-prompt）
 //   - Auto-switch 標記處理
 //   - 工作模式退出守衛（基於 todo 狀態）
 //   - 子代理運行守衛
@@ -25,8 +28,6 @@ type BranchNoneResult struct {
 }
 
 // RunBranchNone handles the branch when the model returned no tool calls.
-// It manages XML re-prompt, auto-switch, work mode exit guard,
-// subagent running guard, and todos reminder.
 func RunBranchNone(messages []Message, respContent interface{},
 	reasoningContent, thinkingSignature string,
 	xmlRePromptCount *int, resumeCount *int, subagentResumeCount *int,
@@ -35,22 +36,26 @@ func RunBranchNone(messages []Message, respContent interface{},
 
 	contentStr, _ := respContent.(string)
 
-	// ========== XML 工具調用偵測 ==========
+	// ========== Inline XML 工具調用偵測 + 直接解析執行 ==========
+	// 當模型以文字形式輸出 XML/DSML 格式工具調用（非原生 API tool_calls），
+	// 唔再 re-prompt，而係直接 parse 出 tool name + args，行正常執行路徑。
+	// 支援格式：<invoke>, <tool_call>, <DSML_invoke>, <DSML_tool_calls>
 	if contentStr != "" && detectXMLToolInvocation(contentStr) {
-		*xmlRePromptCount++
-		if *xmlRePromptCount > maxXMLRePromptRounds {
-			log.Printf("[AgentLoop] XML re-prompt limit reached (%d), stopping re-prompt", *xmlRePromptCount)
-		} else {
-			log.Printf("[AgentLoop] Detected XML tool invocation in text response, re-prompting model (%d/%d)", *xmlRePromptCount, maxXMLRePromptRounds)
-			rePromptMsg := "[系统提示] 你的回复包含了 XML 格式的工具调用，但该工具当前不可用或未被正确识别。" +
-				"请使用下方工具列表中可用的工具，通过标准的 tool_calls 机制调用。" +
-				"不要在文本中手动编写工具调用 XML。如果需要的工具不在可用列表中，" +
-				"请使用其他可用工具完成任务，或向用户说明情况。"
-			messages = append(messages, Message{
-				Role:      "user",
-				Content:   rePromptMsg,
-				Timestamp: time.Now().Unix(),
-			})
+		parsedCalls := parseInlineXMLToolCalls(contentStr)
+		if len(parsedCalls) > 0 && *xmlRePromptCount < maxXMLRePromptRounds {
+			*xmlRePromptCount++
+			log.Printf("[AgentLoop] Parsed %d inline XML tool call(s) from text response (%d/%d)",
+				len(parsedCalls), *xmlRePromptCount, maxXMLRePromptRounds)
+
+			for _, call := range parsedCalls {
+				result := executeSingleToolCall(context.TODO(), call, ch, nil, iteration)
+				messages = append(messages, Message{
+					Role:       "tool",
+					Content:    result.Content,
+					ToolCallID: call.ID,
+					Timestamp:  time.Now().Unix(),
+				})
+			}
 			return BranchNoneResult{ShouldContinue: true, Messages: messages}
 		}
 	}
@@ -192,6 +197,62 @@ func RunBranchNone(messages []Message, respContent interface{},
 
 	*loopExitedNaturally = true
 	return BranchNoneResult{ShouldBreak: true, Messages: messages}
+}
+
+// parseInlineXMLToolCalls 從文字內容中提取 XML/DSML 格式嘅工具調用，
+// 轉換為 ParsedToolCall 格式，兼容現有工具執行路徑。
+// 支援格式：
+//   <invoke name="ToolName"><parameter name="k">v</parameter></invoke>
+//   <DSML_invoke name="ToolName"><DSML_parameter name="k">v</DSML_parameter></DSML_invoke>
+func parseInlineXMLToolCalls(content string) []ParsedToolCall {
+	var calls []ParsedToolCall
+
+	// 提取所有 invoke / DSML_invoke block（(?s) 令 . 匹配換行）
+	invokePattern := regexp.MustCompile(`(?s)<(?:DSML_)?invoke\s+name\s*=\s*["']([^"']+)["'][^>]*>(.*?)</(?:DSML_)?invoke>`)
+
+	// 如果內容包含 tool_calls / DSML_tool_calls wrapper，只 parse wrapper 內部
+	toolCallPattern := regexp.MustCompile(`(?s)<(?:DSML_)?tool_calls[^>]*>(.*?)</(?:DSML_)?tool_calls>`)
+	var matches [][]string
+	if tcMatches := toolCallPattern.FindStringSubmatch(content); len(tcMatches) > 1 {
+		matches = invokePattern.FindAllStringSubmatch(tcMatches[1], -1)
+	} else {
+		matches = invokePattern.FindAllStringSubmatch(content, -1)
+	}
+
+	for i, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		toolName := strings.TrimSpace(match[1])
+		paramBlock := match[2]
+
+		// parse parameters
+		args := make(map[string]interface{})
+		paramPattern := regexp.MustCompile(`(?s)<(?:DSML_)?parameter\s+name\s*=\s*["']([^"']+)["'][^>]*>(.*?)</(?:DSML_)?parameter>`)
+		paramMatches := paramPattern.FindAllStringSubmatch(paramBlock, -1)
+		for _, pm := range paramMatches {
+			if len(pm) >= 3 {
+				key := strings.TrimSpace(pm[1])
+				val := strings.TrimSpace(pm[2])
+				// 嘗試解析 JSON value
+				var jsonVal interface{}
+				if err := json.Unmarshal([]byte(val), &jsonVal); err == nil {
+					args[key] = jsonVal
+				} else {
+					args[key] = val
+				}
+			}
+		}
+
+		argsJSON, _ := json.Marshal(args)
+		calls = append(calls, ParsedToolCall{
+			ID:       fmt.Sprintf("inline_xml_%d", i),
+			Name:     toolName,
+			ArgsJSON: string(argsJSON),
+		})
+	}
+
+	return calls
 }
 
 // detectXMLToolInvocation 检測模型文本回覆中是否包含 XML 格式的工具調用

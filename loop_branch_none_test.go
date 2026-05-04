@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -246,7 +247,7 @@ func TestRunBranchNone_EmptyRespContent(t *testing.T) {
 	}
 }
 
-func TestRunBranchNone_XMLRePrompt(t *testing.T) {
+func TestRunBranchNone_XMLParseAndContinue(t *testing.T) {
 	var xmlCount int
 	var resume, subResume, todoReminder int
 	var exited bool
@@ -262,17 +263,18 @@ func TestRunBranchNone_XMLRePrompt(t *testing.T) {
 		dc, 1, 4096)
 
 	if !result.ShouldContinue {
-		t.Error("XML detection should trigger re-prompt (ShouldContinue)")
+		t.Error("XML detection should parse+execute and continue (ShouldContinue)")
 	}
 	if xmlCount != 1 {
 		t.Errorf("xmlRePromptCount should be 1, got %d", xmlCount)
 	}
+	// 應該追加咗 tool result message，唔係 re-prompt message
 	if len(result.Messages) <= len(messages) {
-		t.Error("Should have appended re-prompt user message")
+		t.Error("Should have appended tool result message(s)")
 	}
 }
 
-func TestRunBranchNone_XMLRePromptLimit(t *testing.T) {
+func TestRunBranchNone_XMLLimitExceeded(t *testing.T) {
 	var xmlCount int = maxXMLRePromptRounds + 1 // already exceeded
 	var resume, subResume, todoReminder int
 	var exited bool
@@ -288,11 +290,98 @@ func TestRunBranchNone_XMLRePromptLimit(t *testing.T) {
 		dc, 1, 4096)
 
 	if result.ShouldContinue {
-		t.Error("XML re-prompt should not trigger when limit exceeded")
+		t.Error("XML parse should not trigger when limit exceeded")
 	}
-	// Should fall through to normal exit
 	if !result.ShouldBreak {
 		t.Error("Should break when XML limit exceeded and no other guards trigger")
+	}
+}
+
+// ============================================================================
+// parseInlineXMLToolCalls Tests
+// ============================================================================
+
+func TestParseInlineXMLToolCalls_Invoke(t *testing.T) {
+	content := `<invoke name="SmartShell"><parameter name="command">ls -la</parameter><parameter name="mode">sync</parameter></invoke>`
+	calls := parseInlineXMLToolCalls(content)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "SmartShell" {
+		t.Errorf("expected SmartShell, got %s", calls[0].Name)
+	}
+	var args map[string]interface{}
+	json.Unmarshal([]byte(calls[0].ArgsJSON), &args)
+	if args["command"] != "ls -la" {
+		t.Errorf("expected command 'ls -la', got '%v'", args["command"])
+	}
+}
+
+func TestParseInlineXMLToolCalls_DSML(t *testing.T) {
+	content := `<DSML_tool_calls>
+<DSML_invoke name="ShellDelayedCheck">
+<DSML_parameter name="TaskId">task_e91084df</DSML_parameter>
+</DSML_invoke>
+<DSML_invoke name="SmartShell">
+<DSML_parameter name="command">ls</DSML_parameter>
+<DSML_parameter name="mode">sync</DSML_parameter>
+</DSML_invoke>
+</DSML_tool_calls>`
+	calls := parseInlineXMLToolCalls(content)
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 calls (from DSML_tool_calls wrapper), got %d", len(calls))
+	}
+	if calls[0].Name != "ShellDelayedCheck" {
+		t.Errorf("expected ShellDelayedCheck somewhere, got %v", calls)
+	}
+	// Verify TaskId parameter gets parsed
+	found := false
+	for _, c := range calls {
+		if c.Name == "ShellDelayedCheck" {
+			var args map[string]interface{}
+			json.Unmarshal([]byte(c.ArgsJSON), &args)
+			if args["TaskId"] == "task_e91084df" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("ShellDelayedCheck with TaskId not found")
+	}
+}
+
+func TestParseInlineXMLToolCalls_NoToolCalls(t *testing.T) {
+	calls := parseInlineXMLToolCalls("普通聊天文字，無任何工具調用")
+	if len(calls) != 0 {
+		t.Errorf("expected 0 calls, got %d", len(calls))
+	}
+}
+
+func TestParseInlineXMLToolCalls_JSONArgs(t *testing.T) {
+	content := `<invoke name="TestTool"><parameter name="config">{"key":"value","num":42}</parameter></invoke>`
+	calls := parseInlineXMLToolCalls(content)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	var args map[string]interface{}
+	json.Unmarshal([]byte(calls[0].ArgsJSON), &args)
+	config, ok := args["config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected config to be map, got %T", args["config"])
+	}
+	if config["num"] != float64(42) {
+		t.Errorf("expected num 42, got %v", config["num"])
+	}
+}
+
+func TestParseInlineXMLToolCalls_MixedQuotes(t *testing.T) {
+	content := `<invoke name='ReadFileLines'><parameter name='filename'>/tmp/test</parameter></invoke>`
+	calls := parseInlineXMLToolCalls(content)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "ReadFileLines" {
+		t.Errorf("expected ReadFileLines, got %s", calls[0].Name)
 	}
 }
 
