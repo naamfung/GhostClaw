@@ -16,12 +16,18 @@ func ClassifyUserIntent(ctx context.Context, query string, apiType, baseURL, api
 		{
 			Role: "system",
 			Content: `Classify this user message. Reply with EXACTLY ONE WORD:
-  CHAT - casual conversation, question, information lookup
-  TASK - user wants you to DO something (build, fix, create, modify, install, run, etc.)
+  CHAT - casual chat, factual knowledge question ("what is X?", "how does Y work?")
+  TASK - user wants you to investigate, check, verify, build, fix, create, modify, install, run, or take ANY action
+
+Key distinction: asking "can X work?" or "does X support Y?" implies the user wants you to CHECK — that is a TASK.
+Only pure factual questions ("what is X?") or casual conversation are CHAT.
 
 Examples:
   "what is Go?" → CHAT
   "how does Docker work?" → CHAT
+  "can my system run with bun?" → TASK
+  "is FreeBSD good for servers?" → CHAT
+  "check if bun is installed" → TASK
   "fix the login bug" → TASK
   "add a delete button" → TASK
   "帮我重構個模組" → TASK
@@ -30,15 +36,17 @@ Examples:
 		{Role: "user", Content: "User message: \"\"\"" + sanitized + "\"\"\"\n\nClassification:"},
 	}
 
-	resp, err := CallModelSync(ctx, messages, apiType, baseURL, apiKey, modelID, 0, 5, false, false)
+	resp, err := CallModelSync(ctx, messages, apiType, baseURL, apiKey, modelID, 0, 10, false, false)
 	if err != nil {
 		// 安全默認：API 失敗時假設為任務，觸發工作模式
 		return IntentTask, err
 	}
 
 	content := strings.TrimSpace(extractContentString(resp.Content))
-	// 用精確匹配取代前綴匹配，避免 "TASKING" / "TASKED" 誤判
+	// 移除標點、換行等干擾字符
 	upper := strings.ToUpper(content)
+	upper = strings.TrimRight(upper, ".\n\r,;:!? \t")
+	// 精確匹配 "TASK"，避免 "TASKING" / "TASKED" 誤判
 	if upper == "TASK" || strings.HasPrefix(upper, "TASK\n") || strings.HasPrefix(upper, "TASK ") {
 		return IntentTask, nil
 	}
