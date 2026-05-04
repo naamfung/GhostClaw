@@ -182,7 +182,7 @@ func parseSingleOpenAIToolCall(toolUse map[string]interface{}) *ParsedToolCall {
 // ============================================================================
 
 // isExecutionTool 判斷工具是否為寫入/執行類（需喺任務結構化之後先可用）
-// 放行：Todos/EnterPlanMode（規劃類）+ Read/Search/Info（讀取類）
+// 放行：Todos/Tasks（規劃類）+ Read/Search/Info（讀取類）
 // 攔截：Shell 族、Write 族、Browser 操作、Plugin/Cron/Memory 寫入、Spawn/SSH 等
 func isExecutionTool(name string) bool {
 	lower := strings.ToLower(name)
@@ -472,9 +472,10 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 			// Branch B: 有工具調用
 			// ====== 工作模式協議守衛 ======
 			// 任務未結構化時：放行規劃/讀取類工具，攔截寫入/執行類工具
-			// 模型可以先讀代碼蒐集資訊，再用 Todos/EnterPlanMode 做計畫
+			// 模型可以先讀代碼蒐集資訊，再用 Todos/Tasks 做計畫
 			if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() &&
-				(globalPlanMode == nil || !globalPlanMode.IsActive()) {
+				(globalPlanMode == nil || !globalPlanMode.IsActive()) &&
+				(globalTasksMode == nil || !globalTasksMode.IsActive()) {
 				blocked := false
 				for _, tc := range callResult.ToolCalls {
 					var toolName string
@@ -492,7 +493,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 				if blocked {
 					reminderMsg := Message{
 						Role:      "user",
-						Content:   "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 Todos 或 EnterPlanMode 規劃任務。請使用讀取/搜索類工具蒐集所需資訊，然後用 Todos 將任務分解為可追蹤的子步驟，或使用 EnterPlanMode 進行結構化規劃。在完成規劃之前，不可調用寫入或執行類工具。",
+						Content:   "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 Todos 或 Tasks 規劃任務。請使用讀取/搜索類工具蒐集所需資訊，然後用 Todos 將任務分解為可追蹤的子步驟，或使用 Tasks(PlanPhase=\"explore\") 進行結構化規劃。在完成規劃之前，不可調用寫入或執行類工具。",
 						Timestamp: time.Now().Unix(),
 					}
 					messages = append(messages, reminderMsg)

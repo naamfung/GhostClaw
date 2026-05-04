@@ -653,6 +653,9 @@ func (s *GlobalSession) fullSessionReset(reason string) {
                 globalFeedbackCollector.ClearTaskCompleted()
         }
 
+        // === Tasks Mode ===
+        ResetTasksMode()
+
         // === Stage auto-switch 輪次計數器（C9 修復）===
         if globalStage != nil {
                 globalStage.ResetAutoTurns()

@@ -560,20 +560,39 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
         // 參數名歸一化：將 snake_case key 轉為 PascalCase 兼容版本
         normalizeArgsMapKeys(argsMap)
 
-        // Plan Mode 权限检查（分階段工具控制）
-        if globalPlanMode.IsActive() && !globalPlanMode.IsToolAllowedInPlanMode(toolName) {
-                currentPhase := globalPlanMode.PhaseName()
+        // Plan/Tasks Mode 权限检查（分階段工具控制）
+        planActive := globalPlanMode.IsActive()
+        tasksActive := globalTasksMode.IsActive()
+        if tasksActive && !IsToolAllowedInTasksMode(toolName) {
+                currentPhase := globalTasksMode.Phase()
                 var content string
-                // 針對模型常見誤操作給出明確指引，防止死循環
                 switch toolName {
                 case "EnterPlanMode":
-                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 EnterPlanMode。\n\n當前可用操作：\n- 使用只讀工具（ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep）探索專案文件\n- 使用 Spawn 創建並行子代理\n- 完成當前階段後調用 NextPhase 推進\n- 如需退出 Plan Mode，使用 ExitPlanMode", currentPhase)
+                        content = fmt.Sprintf("你已經在 Tasks Mode 中（%s）。不要重複進入。\n\n當前可用操作：\n- 使用只讀工具（ReadFileLine, TextSearch 等）探索\n- 使用 Tasks(PlanPhase=\"design\") 進入設計階段\n- 使用 Tasks(PlanPhase=\"execute\") 退出", currentPhase)
                 case "SmartShell", "Shell":
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell/SmartShell。此階段僅允許只讀工具。\n\n請改用：\n- ReadFileLine / ReadFileRange / ReadFileLines 讀取文件\n- TextSearch / TextGrep 搜索內容\n- Spawn 創建只讀子代理\n\n完成當前階段後調用 NextPhase 進入下一階段（設計階段起可以使用寫入工具）。", currentPhase)
                 case "WriteFileLine", "WriteFileLines", "AppendToFile", "WriteFileRange", "TextReplace":
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。先完成探索和設計，最終計劃確認後再執行寫入操作。\n\n當前階段請使用只讀工具。完成後調用 NextPhase。", currentPhase, toolName)
                 default:
                         content = fmt.Sprintf("Plan Mode %s 中不允許使用工具 '%s'。當前階段可用工具有限。完成後請調用 NextPhase 推進到下一階段。", currentPhase, toolName)
+                }
+                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
+                return EnrichedMessage{
+                        Content: content,
+                        Meta:    MessageMeta{Status: TaskStatusFailed},
+                }
+        } else if planActive && !globalPlanMode.IsToolAllowedInPlanMode(toolName) {
+                currentPhase := globalPlanMode.PhaseName()
+                var content string
+                switch toolName {
+                case "EnterPlanMode":
+                        content = fmt.Sprintf("你已經在 Plan Mode 中（%s）。不要重複調用 EnterPlanMode。", currentPhase)
+                case "SmartShell", "Shell":
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用 shell。此階段僅允許只讀工具。", currentPhase)
+                case "WriteFileLine", "WriteFileLines", "AppendToFile", "WriteFileRange", "TextReplace":
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用寫入工具 '%s'。", currentPhase, toolName)
+                default:
+                        content = fmt.Sprintf("Plan Mode %s 中不允許使用工具 '%s'。", currentPhase, toolName)
                 }
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
                 return EnrichedMessage{
@@ -607,62 +626,45 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                         Meta:    MessageMeta{Status: status},
                 }
         case "EnterPlanMode":
-                // EnterPlanMode 仍然作為靜態 Core 工具存在。
-                // 當 Plan Mode 已激活時，權限閘（line 540）已攔截並返回友好提示，
-                // 此處僅在 Plan Mode 未激活時才會到達。
-
-                // 檢查是否有未完成的非 plan 相關 todos
-                if TODO.HasUnfinishedItems() {
-                        unfinishedSummary := TODO.GetUnfinishedSummary()
-                        content := fmt.Sprintf("無法進入 Plan Mode：你仍有未完成的待辦事項。\n\n%s\n\n請先完成或清理現有 todos，再考慮是否需要 Plan Mode。Plan Mode 主要用於需要先探索後設計的複雜任務——如果當前任務已明確，直接執行即可，無需規劃。", unfinishedSummary)
-                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
-                        return EnrichedMessage{
-                                Content: content,
-                                Meta:    MessageMeta{Status: TaskStatusFailed},
-                        }
-                }
-
-                taskDesc, _ := argsMap["task"].(string)
-                errMsg := EnterPlanMode(taskDesc)
-                if errMsg != "" {
-                        // 規劃模式未啟用
-                        emitToolCallTags(ch, toolName, argsMap, errMsg, TaskStatusFailed)
-                        return EnrichedMessage{
-                                Content: errMsg,
-                                Meta:    MessageMeta{Status: TaskStatusFailed},
-                        }
-                }
-                content := "已進入 Plan Mode Phase 1（探索）。3 階段工作流：探索→設計→執行。\n\n當前階段僅可使用只讀工具（ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep, MemoryRecall, MemoryList）以及 Spawn、Todos。\n\n善用 Spawn 並行探索不同模塊。完成探索後調用 NextPhase 進入設計階段。"
+                // 引導使用新 Tasks 工具
+                content := "EnterPlanMode 已棄用。請改用 Tasks 工具：\n- Tasks(PlanPhase=\"explore\") 進入探索階段\n- Tasks(PlanPhase=\"design\", plan_content=\"...\", tasks=[...]) 進入設計階段\n- Tasks(PlanPhase=\"execute\") 退出開始執行"
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,
                         Meta:    MessageMeta{Status: TaskStatusSuccess},
                 }
         case "ExitPlanMode":
-                // ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行（plan_mode.go），
-                // 因此 Plan Mode 激活時仍可到達此 handler。
-                if !globalPlanMode.IsActive() {
-                        content := "Plan Mode 當前未激活。"
-                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
-                        return EnrichedMessage{
-                                Content: content,
-                                Meta:    MessageMeta{Status: TaskStatusFailed},
-                        }
-                }
-                planContent := ExitPlanMode()
-                if planContent != "" {
-                        content := fmt.Sprintf("已強制退出 Plan Mode。計劃如下：\n\n%s\n\n現在你可以使用所有工具來執行計劃。", planContent)
+                // 支援舊 PlanMode + 新 TasksMode
+                if globalTasksMode.IsActive() {
+                        content, _ := handleTasks(map[string]interface{}{"plan_phase": "execute"})
                         emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                         return EnrichedMessage{
                                 Content: content,
                                 Meta:    MessageMeta{Status: TaskStatusSuccess},
                         }
                 }
-                content := "已強制退出 Plan Mode。現在你可以使用所有工具。"
-                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                if globalPlanMode.IsActive() {
+                        planContent := ExitPlanMode()
+                        if planContent != "" {
+                                content := fmt.Sprintf("已強制退出 Plan Mode。計劃如下：\n\n%s\n\n現在你可以使用所有工具來執行計劃。", planContent)
+                                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                                return EnrichedMessage{
+                                        Content: content,
+                                        Meta:    MessageMeta{Status: TaskStatusSuccess},
+                                }
+                        }
+                        content := "已強制退出 Plan Mode。現在你可以使用所有工具。"
+                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                        return EnrichedMessage{
+                                Content: content,
+                                Meta:    MessageMeta{Status: TaskStatusSuccess},
+                        }
+                }
+                content := "Plan/Tasks Mode 當前未激活。"
+                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
                 return EnrichedMessage{
                         Content: content,
-                        Meta:    MessageMeta{Status: TaskStatusSuccess},
+                        Meta:    MessageMeta{Status: TaskStatusFailed},
                 }
         }
 

@@ -30,8 +30,8 @@ func TestDetectXML_InvokeWithKnownTool(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "invoke with EnterPlanMode",
-			content: `<invoke name="EnterPlanMode"/>`,
+			name:    "invoke with Tasks",
+			content: `<invoke name="Tasks"/>`,
 			want:    true,
 		},
 		{

@@ -269,8 +269,10 @@ func BuildAdaptiveSystemPrompt(
         // 对于大上下文模型，使用原有的完整构建方式
         if density == PromptDensityFull {
                 prompt := BuildSystemPromptForActor(actorName, am, pm, stage)
-                // Plan Mode 系统提示注入
-                if globalPlanMode != nil && globalPlanMode.IsActive() {
+                // Plan/Tasks Mode 系统提示注入
+                if globalTasksMode != nil && globalTasksMode.IsActive() {
+                        prompt += "\n\n" + GetTasksModeSystemPrompt()
+                } else if globalPlanMode != nil && globalPlanMode.IsActive() {
                         prompt += "\n\n" + GetPlanModeSystemPrompt()
                 }
                 return prompt

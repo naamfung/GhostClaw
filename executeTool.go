@@ -39,6 +39,15 @@ func execMenuTool(ec *ToolExecContext) (string, TaskStatus) {
 }
 
 func execNextPhase(ec *ToolExecContext) (string, TaskStatus) {
+        // 支援新 TasksMode + 舊 PlanMode
+        if globalTasksMode.IsActive() {
+                phaseName, msg, err := AdvancePhase()
+                if err != nil {
+                        return "錯誤：" + err.Error(), TaskStatusFailed
+                }
+                _ = phaseName
+                return msg, TaskStatusSuccess
+        }
         if globalPlanMode.IsActive() {
                 phaseName, msg, err := AdvancePhase()
                 if err != nil {
@@ -47,10 +56,18 @@ func execNextPhase(ec *ToolExecContext) (string, TaskStatus) {
                 _ = phaseName
                 return msg, TaskStatusSuccess
         }
-        return "錯誤：Plan Mode 未激活。", TaskStatusFailed
+        return "錯誤：Tasks/Plan Mode 未激活。使用 Tasks(plan_phase=\"explore\") 進入。", TaskStatusFailed
 }
 
 func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
+        // 支援新 TasksMode
+        if globalTasksMode.IsActive() {
+                msg, ok := handleTasksPrevPhase()
+                if !ok {
+                        return "錯誤：" + msg, TaskStatusFailed
+                }
+                return msg, TaskStatusSuccess
+        }
         if globalPlanMode.IsActive() {
                 phaseName, msg, err := PrevPhase()
                 if err != nil {
@@ -59,7 +76,15 @@ func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {
                 _ = phaseName
                 return msg, TaskStatusSuccess
         }
-        return "錯誤：Plan Mode 未激活。", TaskStatusFailed
+        return "錯誤：Tasks/Plan Mode 未激活。", TaskStatusFailed
+}
+
+func execTasks(ec *ToolExecContext) (string, TaskStatus) {
+        content, ok := handleTasks(ec.ArgsMap)
+        if !ok {
+                return content, TaskStatusFailed
+        }
+        return content, TaskStatusSuccess
 }
 
 func execSmartShellTool(ec *ToolExecContext) (string, TaskStatus) {
@@ -2858,8 +2883,11 @@ func init() {
         toolHandlerRegistry = map[string]ToolHandler{
                 // Menu & planning
                 "Menu":        execMenuTool,
-                "NextPhase":  execNextPhase,
-                "PrevPhase":  execPrevPhase,
+                "Tasks":       execTasks,
+                "NextPhase":   execNextPhase,
+                "PrevPhase":   execPrevPhase,
+                "PlanWrite":   execTasks, // 合入 Tasks
+                "PlanRead":    execTasks, // 合入 Tasks
 
                 // Shell tools
                 "SmartShell": execSmartShellTool,

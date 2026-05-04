@@ -2290,24 +2290,42 @@ validate + 可选冒烟测试。
                         "additionalProperties": false,
                 })
 
-        // ========== Plan Mode 工具 ==========
-        reg("EnterPlanMode",
-                "進入 Plan Mode（結構化任務分解模式）。系統將啟動 3 階段工作流：探索→設計→執行。每階段有獨立的工具集和 todos 列表。Phase 間需調用 NextPhase 推進，Phase 2 可使用 PrevPhase 回溯。",
+        // ========== Tasks 模式工具（v2：統一取代 EnterPlanMode/ExitPlanMode） ==========
+        reg("Tasks",
+                "結構化任務分解工具。plan_phase 控制階段：explore(探索)→design(設計+定義tasks)→execute(退出執行)。tasks 定義任務列表（無依賴），每個 task 用 Todos(list_id=\"task_<id>\") 管理子任務。",
                 "plan", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "task": map[string]interface{}{
+                                "PlanPhase": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "任務描述（可選），幫助系統理解要分解的任務",
+                                        "enum":        []string{"explore", "design", "execute"},
+                                        "description": "計劃階段",
+                                },
+                                "PlanContent": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "計劃內容（design 階段使用，含 Context/Approach/Verification）",
+                                },
+                                "Tasks": map[string]interface{}{
+                                        "type":        "array",
+                                        "description": "任務列表",
+                                        "items": map[string]interface{}{
+                                                "type":       "object",
+                                                "properties": map[string]interface{}{
+                                                        "id":     map[string]interface{}{"type": "string", "description": "任務唯一標識"},
+                                                        "title":  map[string]interface{}{"type": "string", "description": "任務標題"},
+                                                        "status": map[string]interface{}{"type": "string", "enum": []string{"Pending", "InProgress", "Completed", "Waiting"}, "description": "任務狀態"},
+                                                },
+                                                "required": []string{"id", "title", "status"},
+                                        },
                                 },
                         },
-                        "required":             []string{},
+                        "required":             []string{"PlanPhase"},
                         "additionalProperties": false,
                 })
 
         reg("ExitPlanMode",
-                "強制退出 Plan Mode（跳過剩餘階段）。正常流程應使用 NextPhase 逐步推進。強制退出會丟失未完成的階段。",
+                "強制退出 Plan/Tasks Mode。正常流程應使用 Tasks(plan_phase=\"execute\") 退出。",
                 "plan", "extended",
                 map[string]interface{}{
                         "type":                 "object",
