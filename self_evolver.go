@@ -53,7 +53,7 @@ var globalSelfEvolver = &SelfEvolver{
 // AnalyzePromptEffectiveness — 分析 system prompt 對行為嘅影響
 // ============================================================
 func (se *SelfEvolver) AnalyzePromptEffectiveness(ctx context.Context, sessionID string) {
-	if !se.canRun("prompt") {
+	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("prompt") {
 		return
 	}
 
@@ -81,13 +81,14 @@ func (se *SelfEvolver) AnalyzePromptEffectiveness(ctx context.Context, sessionID
 	}
 
 	se.processAnalysisResult(result, "prompt_insight")
+	se.markSessionAnalyzed(sessionID)
 }
 
 // ============================================================
 // AnalyzeToolPatterns — 分析工具調用鏈條
 // ============================================================
 func (se *SelfEvolver) AnalyzeToolPatterns(ctx context.Context, sessionID string) {
-	if !se.canRun("tool") {
+	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("tool") {
 		return
 	}
 
@@ -111,13 +112,14 @@ func (se *SelfEvolver) AnalyzeToolPatterns(ctx context.Context, sessionID string
 	}
 
 	se.processAnalysisResult(result, "tool_pattern")
+	se.markSessionAnalyzed(sessionID)
 }
 
 // ============================================================
 // AnalyzeErrorRecovery — 分析錯誤恢復模式
 // ============================================================
 func (se *SelfEvolver) AnalyzeErrorRecovery(ctx context.Context, sessionID string) {
-	if !se.canRun("error") {
+	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("error") {
 		return
 	}
 
@@ -141,13 +143,14 @@ func (se *SelfEvolver) AnalyzeErrorRecovery(ctx context.Context, sessionID strin
 	}
 
 	se.processAnalysisResult(result, "error_recovery")
+	se.markSessionAnalyzed(sessionID)
 }
 
 // ============================================================
 // SynthesizeCrossSession — 跨 session 匯總，歸納通用策略
 // ============================================================
 func (se *SelfEvolver) SynthesizeCrossSession(ctx context.Context) {
-	if !se.canRun("cross") {
+	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("cross") {
 		return
 	}
 
@@ -185,9 +188,6 @@ func (se *SelfEvolver) SynthesizeCrossSession(ctx context.Context) {
 
 // canRun 檢查冷卻，返回是否可以執行
 func (se *SelfEvolver) canRun(dimension string) bool {
-	if globalSessionPersist == nil || globalUnifiedMemory == nil {
-		return false
-	}
 	se.mu.Lock()
 	defer se.mu.Unlock()
 
@@ -223,16 +223,17 @@ func (se *SelfEvolver) loadFullMessageChain(sessionID string) []Message {
 	if err != nil || saved == nil {
 		return nil
 	}
+	return saved.History
+}
 
-	// 標記已分析
+// markSessionAnalyzed 標記 session 已分析（只在分析實際執行後調用）
+func (se *SelfEvolver) markSessionAnalyzed(sessionID string) {
 	se.mu.Lock()
+	defer se.mu.Unlock()
 	if !se.sessionsAnalyzed[sessionID] {
 		se.sessionsAnalyzed[sessionID] = true
 		se.analyzedSessionCount++
 	}
-	se.mu.Unlock()
-
-	return saved.History
 }
 
 // loadMultiSessionMessages 加載多個 session 嘅消息
@@ -280,20 +281,12 @@ func (se *SelfEvolver) categorizeMessages(messages []Message) (system, user, ass
 	return
 }
 
-// countToolCalls 計算 assistant 消息中嘅 tool_calls 數量
+// countToolCalls 計算工具調用總數（tool 角色消息數）
 func (se *SelfEvolver) countToolCalls(toolMsgs []Message) int {
-	count := 0
-	for _, msg := range toolMsgs {
-		if msg.ToolCallID == "" {
-			// 有 tool 角色但冇 tool_call_id → 可能係 tool result
-			count++
-		}
-	}
-	// 包括 assistant 消息中嘅 tool_calls
-	return count
+	return len(toolMsgs)
 }
 
-// extractErrorChains 提取錯誤鏈（tool error → retry → result）
+// extractErrorChains 提取錯誤鏈（tool error → retry → recovery）
 func (se *SelfEvolver) extractErrorChains(toolMsgs []Message) [][]Message {
 	var chains [][]Message
 	var currentChain []Message
@@ -306,15 +299,18 @@ func (se *SelfEvolver) extractErrorChains(toolMsgs []Message) [][]Message {
 			strings.Contains(strings.ToLower(content), "not found")
 
 		if isError {
-			currentChain = append(currentChain, msg)
+			// 新錯誤開始：保存上一條鏈，開始新鏈
+			if len(currentChain) > 0 {
+				chains = append(chains, currentChain)
+			}
+			currentChain = []Message{msg}
 		} else if len(currentChain) > 0 {
+			// 非錯誤消息：擴展現有鏈（可能係 retry 或 recovery）
 			currentChain = append(currentChain, msg)
-			chains = append(chains, currentChain)
-			currentChain = nil
 		}
 	}
 
-	// 如果最後一個鏈未完成也加入
+	// 最後一條鏈
 	if len(currentChain) > 0 {
 		chains = append(chains, currentChain)
 	}
