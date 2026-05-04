@@ -117,6 +117,15 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 		go globalSelfLearner.Reflect(context.Background(), taskDesc, sessionID)
 	}
 
+	// ====== 自進化引擎（跨會話分析） ======
+	if globalSelfEvolver != nil && ch.GetSessionID() != "" {
+		sessionID := ch.GetSessionID()
+		go globalSelfEvolver.AnalyzePromptEffectiveness(context.Background(), sessionID)
+		go globalSelfEvolver.AnalyzeToolPatterns(context.Background(), sessionID)
+		go globalSelfEvolver.AnalyzeErrorRecovery(context.Background(), sessionID)
+		go globalSelfEvolver.SynthesizeCrossSession(context.Background())
+	}
+
 	// ====== 記憶整合 ======
 	if globalMemoryConsolidator != nil {
 		go func() {
