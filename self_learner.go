@@ -55,7 +55,7 @@ func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, sessionID s
 	}
 
 	// 使用帶超時的 context 防止 goroutine 洩漏
-	reflectCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	reflectCtx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	go func() {
 		defer cancel()
 		result, err := sl.callLLM(reflectCtx, prompt)

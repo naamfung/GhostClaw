@@ -608,42 +608,48 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
                 }
         }
 
-        // 未知工具检查 - 直接查 toolRegistryMap（同 tool_registry.go 保持同步，唔需手動維護第二份名單）
-        _, isKnown := toolRegistryMap[toolName]
-        if !isKnown {
-                // 检查是否是 MCP 动态工具
-                isMCP := false
-                if globalMCPClientManager != nil {
-                        mcpTools := globalMCPClientManager.GetAllTools()
-                        for _, t := range mcpTools {
-                                if t["name"] == toolName {
-                                        isMCP = true
-                                        break
-                                }
-                        }
-                }
-                if !isMCP {
-                        log.Printf("[ToolSafety] 未知工具调用: %s", toolName)
-                        content := GetUnknownToolErrorMessage(toolName)
+		// 未知工具检查 - 先查 toolRegistryMap，再查 toolHandlerRegistry（含 Menu 等特殊工具），最后查 MCP
+		_, isKnown := toolRegistryMap[toolName]
+		if !isKnown {
+			// 检查是否在 toolHandlerRegistry 中（例如 Menu, Tasks 等特殊工具）
+			if _, handlerExists := toolHandlerRegistry[toolName]; handlerExists {
+				isKnown = true
+			}
+		}
+		if !isKnown {
+			// 检查是否是 MCP 动态工具
+			isMCP := false
+			if globalMCPClientManager != nil {
+				mcpTools := globalMCPClientManager.GetAllTools()
+				for _, t := range mcpTools {
+					if t["name"] == toolName {
+						isMCP = true
+						break
+					}
+				}
+			}
+			if !isMCP {
+				log.Printf("[ToolSafety] 未知工具调用: %s", toolName)
+				content := GetUnknownToolErrorMessage(toolName)
 
-                        // 追蹤重複未知工具調用，達到閾值後觸發 escalation
-                        shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
-                                EscalateRepeatedFailure, toolName, content,
-                        )
+				// 追蹤重複未知工具調用，達到閾值後觸發 escalation
+				shouldStop, userMsg := globalErrorEscalator.RecordEscalation(
+					EscalateRepeatedFailure, toolName, content,
+				)
 
-                        emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
+				emitToolCallTags(ch, toolName, argsMap, content, TaskStatusFailed)
 
-                        finalContent := content
-                        if shouldStop {
-                                finalContent = escalatePrefix + userMsg
-                        }
+				finalContent := content
+				if shouldStop {
+					finalContent = escalatePrefix + userMsg
+				}
 
-                        return EnrichedMessage{
-                                Content: finalContent,
-                                Meta:    MessageMeta{Status: TaskStatusFailed},
-                        }
-                }
-        }
+				return EnrichedMessage{
+					Content: finalContent,
+					Meta:    MessageMeta{Status: TaskStatusFailed},
+				}
+			}
+		}
 
         // 先读后写检查 - 对写入类工具
         if isWriteTool(toolName) {
