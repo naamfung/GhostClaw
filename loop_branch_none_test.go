@@ -89,6 +89,26 @@ func TestDetectXML_InvokeWithKnownTool(t *testing.T) {
 			content: `<parameter name="path">/tmp/file.txt</parameter>`,
 			want:    true,
 		},
+		{
+			name:    "DSML invoke with known tool",
+			content: `<DSML_invoke name="SmartShell"><DSML_parameter name="command">ls</DSML_parameter></DSML_invoke>`,
+			want:    true,
+		},
+		{
+			name:    "DSML tool_calls with known tool",
+			content: `<DSML_tool_calls><DSML_invoke name="ShellDelayedCheck"><DSML_parameter name="TaskId">task_123</DSML_parameter></DSML_invoke></DSML_tool_calls>`,
+			want:    true,
+		},
+		{
+			name:    "DSML invoke without known tool (still detected)",
+			content: `<DSML_invoke name="SomeUnknownTool"><DSML_parameter name="x">y</DSML_parameter></DSML_invoke>`,
+			want:    true,
+		},
+		{
+			name:    "DSML tool_calls without known tool (still detected)",
+			content: `<DSML_tool_calls><DSML_invoke name="Foo"/></DSML_tool_calls>`,
+			want:    true,
+		},
 	}
 
 	for _, tt := range tests {

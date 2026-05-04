@@ -212,6 +212,18 @@ func detectXMLToolInvocation(content string) bool {
 		}
 	}
 
+	// DSML-prefixed variants (<DSML_invoke name="ToolName"> / <DSML_tool_calls>)
+	if (strings.Contains(lower, "<dsml_invoke") || strings.Contains(lower, "<dsml_tool_call")) && strings.Contains(lower, "name=") {
+		for toolName := range toolRegistryMap {
+			lt := strings.ToLower(toolName)
+			if strings.Contains(lower, "name=\""+lt+"\"") || strings.Contains(lower, "name='"+lt+"'") {
+				return true
+			}
+		}
+		// Even without a specific known tool name, any DSML invoke/tool_call block should be caught
+		return true
+	}
+
 	if strings.Contains(lower, "<tool_call") && strings.Contains(lower, "name=") {
 		for toolName := range toolRegistryMap {
 			lt := strings.ToLower(toolName)
