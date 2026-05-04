@@ -22,7 +22,7 @@ func newGormLogger() logger.Interface {
                 logger.Config{
                         SlowThreshold:             200 * time.Millisecond,
                         LogLevel:                  logger.Warn,
-                        IgnoreRecordNotFoundError: false,
+                        IgnoreRecordNotFoundError: true,
                         Colorful:                  false,
                 },
         )
