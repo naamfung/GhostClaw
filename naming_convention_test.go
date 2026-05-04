@@ -39,6 +39,7 @@ var allowedSnakeCase = map[string]bool{
 	"content_type":   true,
 	"authorization":  true,
 	"input_schema":   true, // Anthropic API 協議 key
+	"opencli":        true, // OpenCLI 工具小寫對照（用於只讀工具模式匹配，非正式工具名）
 }
 
 // isSnakeCase checks if a string looks like snake_case
