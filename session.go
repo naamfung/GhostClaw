@@ -483,6 +483,16 @@ func ProcessUserInput(session *GlobalSession, input string) {
         }
 
         if len(newHistory) > historyLenBeforeInject {
+                // 持久化 AgentLoop 產生嘅新消息到 DB（所有角色：assistant、tool、system）
+                // 確保完整消息流可追溯分析，唔會遺失關鍵鏈條
+                newMsgs := newHistory[historyLenBeforeInject:]
+                if globalSessionPersist != nil && session.persistID != "" {
+                        for _, msg := range newMsgs {
+                                if err := globalSessionPersist.AppendMessage(session.persistID, msg); err != nil {
+                                        log.Printf("[GlobalSession] AppendMessage (post-loop) failed: %v", err)
+                                }
+                        }
+                }
                 session.SetHistory(newHistory)
         }
 
