@@ -171,17 +171,17 @@ func handleSpawnCheck(ctx context.Context, argsMap map[string]interface{}, ch Ch
     }
 
     result := fmt.Sprintf("子代理任务状态:\n- 任务ID: %s\n- 状态: %s\n- 迭代次数: %d/%d\n- 深度: %d\n- 运行时间: %.1f 秒",
-        info["TaskId"], info["status"], info["iterations"], info["MaxIterations"], info["depth"], info["runtime_seconds"])
+        info["TaskId"], info["Status"], info["Iterations"], info["MaxIterations"], info["Depth"], info["RuntimeSeconds"])
 
-    if info["model_override"] != nil {
-        result += fmt.Sprintf("\n- 模型覆盖: %s", info["model_override"])
+    if info["ModelOverride"] != nil {
+        result += fmt.Sprintf("\n- 模型覆盖: %s", info["ModelOverride"])
     }
-    if info["credential_override"] != nil {
-        result += fmt.Sprintf("\n- 凭据覆盖: %s", info["credential_override"])
+    if info["CredentialOverride"] != nil {
+        result += fmt.Sprintf("\n- 凭据覆盖: %s", info["CredentialOverride"])
     }
 
-    if info["result"] != nil && info["result"] != "" {
-        result += fmt.Sprintf("\n\n结果:\n%s", info["result"])
+    if info["Result"] != nil && info["Result"] != "" {
+        result += fmt.Sprintf("\n\n结果:\n%s", info["Result"])
     }
 
     return result, true

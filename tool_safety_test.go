@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1565,6 +1566,773 @@ func TestDynamicToolThreshold_AllToolsUseDynamic(t *testing.T) {
 		threshold := budget.resolveThreshold(name)
 		if threshold != expected {
 			t.Errorf("%s threshold = %d, want %d", name, threshold, expected)
+		}
+	}
+}
+
+// ============================================================================
+// createTempFileWithContent 創建帶內容的臨時文件，每行由 line 參數指定。
+// 返回文件路徑；調用方負責 defer os.Remove(path)。
+// ============================================================================
+func createTempFileWithContent(t *testing.T, lines []string) string {
+	t.Helper()
+	tmpFile, err := os.CreateTemp("", "safety_test_*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range lines {
+		tmpFile.WriteString(line + "\n")
+	}
+	tmpFile.Close()
+	return tmpFile.Name()
+}
+
+// ============================================================================
+// autoReadForWrite 測試
+// ============================================================================
+
+func TestAutoReadForWrite_NewFile(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	content, didRead := autoReadForWrite("/tmp/nonexistent_auto_test_xyz.txt", "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)})
+	if didRead {
+		t.Error("autoReadForWrite should not auto-read for new files")
+	}
+	if content != "" {
+		t.Errorf("expected empty content for new file, got %q", content)
+	}
+}
+
+func TestAutoReadForWrite_FullyRead(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileFullyRead(tmpFile)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(2)})
+	if didRead {
+		t.Error("autoReadForWrite should not auto-read when file is fully read")
+	}
+	if content != "" {
+		t.Errorf("expected empty content for fully-read file, got %q", content)
+	}
+}
+
+func TestAutoReadForWrite_NoRead_TriggersAutoRead(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3", "line4", "line5"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(3)})
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read when file never read")
+	}
+	if content == "" {
+		t.Error("expected non-empty content from auto-read")
+	}
+	if !strings.Contains(content, "AutoRead") {
+		t.Error("auto-read content should contain [Auto-Read] marker")
+	}
+	if !strings.Contains(content, "line3") {
+		t.Error("auto-read content should contain the file content around target line")
+	}
+
+	// 驗證文件已被標記為完整讀取
+	lvl := globalReadWriteTracker.GetFileReadLevel(tmpFile)
+	if lvl != readLevelFull {
+		t.Errorf("file should be marked as fully read after auto-read, got level=%d", lvl)
+	}
+}
+
+func TestAutoReadForWrite_WriteFileLine_CoveredByReadRange(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3", "line4", "line5"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 模型已精確讀取第 3 行
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 3)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(3)})
+	if didRead {
+		t.Error("autoReadForWrite should not auto-read when target line is in read range")
+	}
+	if content != "" {
+		t.Errorf("expected empty content, got %q", content)
+	}
+}
+
+func TestAutoReadForWrite_WriteFileLine_NotCoveredByReadRange(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3", "line4", "line5"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 模型只讀了第 1 行，但要寫第 5 行
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 1)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)})
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read when target line not in read range")
+	}
+	if content == "" {
+		t.Error("expected non-empty auto-read content")
+	}
+}
+
+func TestAutoReadForWrite_WriteFileLine_AppendMode(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 即使有部分讀取，append 仍需要完整讀取
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 1)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-1)})
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read for append mode even with partial read")
+	}
+	if content == "" {
+		t.Error("expected non-empty auto-read content for append")
+	}
+}
+
+func TestAutoReadForWrite_WriteFileRange_Covered(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"a", "b", "c", "d", "e", "f", "g"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 模型讀了第 2-5 行，要寫第 3-4 行（完全在讀取範圍內）
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 2, 5)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileRange",
+		map[string]interface{}{"StartLine": float64(3), "EndLine": float64(4)})
+	if didRead {
+		t.Error("autoReadForWrite should not auto-read when write range is within read range")
+	}
+	if content != "" {
+		t.Errorf("expected empty content, got %q", content)
+	}
+}
+
+func TestAutoReadForWrite_WriteFileRange_NotCovered(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"a", "b", "c", "d", "e", "f", "g"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 模型只讀了第 1-2 行，但要寫第 5-6 行
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 1, 2)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileRange",
+		map[string]interface{}{"StartLine": float64(5), "EndLine": float64(6)})
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read when write range not covered")
+	}
+	if content == "" {
+		t.Error("expected non-empty auto-read content")
+	}
+}
+
+func TestAutoReadForWrite_GlobalWriteTool_PartialRead(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 部分讀取對於全局寫入工具（WriteFileLines 等）不夠
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 1)
+
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLines", nil)
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read for global write tools even with partial read")
+	}
+	if content == "" {
+		t.Error("expected non-empty auto-read content for WriteFileLines")
+	}
+}
+
+func TestAutoReadForWrite_AppendToFile_TriggersAutoRead(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	content, didRead := autoReadForWrite(tmpFile, "AppendToFile", nil)
+	if !didRead {
+		t.Error("autoReadForWrite should auto-read for AppendToFile when file never read")
+	}
+	if content == "" {
+		t.Error("expected non-empty auto-read content for AppendToFile")
+	}
+}
+
+func TestAutoReadForWrite_EscalationReset(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 先觸發一次 escalation 累積
+	globalErrorEscalator.RecordEscalation(EscalateWriteWithoutRead, tmpFile, "test error")
+
+	// 自動讀取應 reset escalation counter
+	_, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(1)})
+	if !didRead {
+		t.Fatal("expected auto-read to trigger")
+	}
+
+	// 驗證 escalation 已被重置：再次觸發應從 1 開始計數
+	shouldStop, _ := globalErrorEscalator.RecordEscalation(EscalateWriteWithoutRead, tmpFile, "another error")
+	if shouldStop {
+		t.Error("escalation should have been reset by auto-read, should not stop on first violation")
+	}
+}
+
+// ============================================================================
+// writeTargetCovered 測試
+// ============================================================================
+
+func TestWriteTargetCovered_NoRanges(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	// 未有讀取記錄應返回 false
+	if writeTargetCovered(normalizeFilePath(tmpFile), "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(1)}) {
+		t.Error("writeTargetCovered should return false with no read ranges")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileLine_ExactLine(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileLineRead(absPath, 5)
+
+	if !writeTargetCovered(absPath, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)}) {
+		t.Error("writeTargetCovered should return true for exact line match")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileLine_DifferentLine(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileLineRead(absPath, 3)
+
+	if writeTargetCovered(absPath, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(7)}) {
+		t.Error("writeTargetCovered should return false for different line")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileLine_InsertAtReadLine(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileLineRead(absPath, 5)
+
+	if !writeTargetCovered(absPath, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-5)}) {
+		t.Error("writeTargetCovered should return true for insert at read line")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileLine_Append(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileLineRead(absPath, 10)
+
+	// Append 模式：即使有部分讀取仍需完整讀取
+	if writeTargetCovered(absPath, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-1)}) {
+		t.Error("writeTargetCovered should return false for append mode even with partial read")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileRange_Overlapping(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileRangeRead(absPath, 3, 8)
+
+	// 寫入範圍 [5, 7] 完全在讀取範圍 [3, 8] 內
+	if !writeTargetCovered(absPath, "WriteFileRange",
+		map[string]interface{}{"StartLine": float64(5), "EndLine": float64(7)}) {
+		t.Error("writeTargetCovered should return true when write range overlaps read range")
+	}
+}
+
+func TestWriteTargetCovered_WriteFileRange_NoOverlap(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileRangeRead(absPath, 1, 3)
+
+	// 寫入範圍 [10, 12] 與讀取範圍 [1, 3] 無交集
+	if writeTargetCovered(absPath, "WriteFileRange",
+		map[string]interface{}{"StartLine": float64(10), "EndLine": float64(12)}) {
+		t.Error("writeTargetCovered should return false when write range does not overlap read range")
+	}
+}
+
+func TestWriteTargetCovered_GlobalWriteTools(t *testing.T) {
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tmpFile := createTempFileWithContent(t, []string{"a", "b", "c", "d", "e"})
+	defer os.Remove(tmpFile)
+	absPath := normalizeFilePath(tmpFile)
+
+	globalReadWriteTracker.MarkFileRangeRead(absPath, 1, 5)
+
+	tools := []string{"WriteFileLines", "AppendToFile", "TextReplace", "TextTransform"}
+	for _, tool := range tools {
+		if writeTargetCovered(absPath, tool, nil) {
+			t.Errorf("writeTargetCovered should return false for global tool %s even with partial read", tool)
+		}
+	}
+}
+
+// ============================================================================
+// computeAutoReadWindow 測試
+// ============================================================================
+
+func TestComputeAutoReadWindow_WriteFileLine_Overwrite(t *testing.T) {
+	// 寫入第 50 行，100 行文件 → 窗口應為 35-65
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(50)}, 100)
+	if start != 35 || end != 65 {
+		t.Errorf("expected window [35, 65], got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileLine_NearStart(t *testing.T) {
+	// 寫入第 3 行 → start 不應小於 1
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(3)}, 100)
+	if start != 1 {
+		t.Errorf("expected start=1 near file start, got %d", start)
+	}
+	if end != 18 {
+		t.Errorf("expected end=18 near file start, got %d", end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileLine_NearEnd(t *testing.T) {
+	// 寫入第 98 行，100 行文件 → end 不應超過 100
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(98)}, 100)
+	if end != 100 {
+		t.Errorf("expected end=100 near file end, got %d", end)
+	}
+	if start != 83 {
+		t.Errorf("expected start=83, got %d", start)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileLine_Append(t *testing.T) {
+	// Append 模式 → 顯示尾部 20 行
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-1)}, 100)
+	if start != 81 || end != 100 {
+		t.Errorf("expected [81, 100] for append on 100-line file, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileLine_Append_SmallFile(t *testing.T) {
+	// Append 模式小文件 → 顯示全部
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-1)}, 10)
+	if start != 1 || end != 10 {
+		t.Errorf("expected [1, 10] for append on 10-line file, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileLine_Insert(t *testing.T) {
+	// Insert before line 30 → 窗口 15-45
+	start, end := computeAutoReadWindow("WriteFileLine",
+		map[string]interface{}{"LineNum": float64(-30)}, 100)
+	if start != 15 || end != 45 {
+		t.Errorf("expected [15, 45] for insert before line 30, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileRange_Overwrite(t *testing.T) {
+	// 寫入 [40, 50] → 窗口 35-55 (padding 5)
+	start, end := computeAutoReadWindow("WriteFileRange",
+		map[string]interface{}{"StartLine": float64(40), "EndLine": float64(50)}, 100)
+	if start != 35 || end != 55 {
+		t.Errorf("expected [35, 55] for range [40,50], got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileRange_NoEndLine(t *testing.T) {
+	// 只有 StartLine=40，無 EndLine → 視為單行
+	start, end := computeAutoReadWindow("WriteFileRange",
+		map[string]interface{}{"StartLine": float64(40)}, 100)
+	if start != 35 || end != 45 {
+		t.Errorf("expected [35, 45] for single-line range, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileRange_Insert(t *testing.T) {
+	// Insert before line 20 → 窗口 10-30
+	start, end := computeAutoReadWindow("WriteFileRange",
+		map[string]interface{}{"StartLine": float64(-20)}, 100)
+	if start != 10 || end != 30 {
+		t.Errorf("expected [10, 30] for insert before line 20, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_WriteFileRange_NearStart(t *testing.T) {
+	start, end := computeAutoReadWindow("WriteFileRange",
+		map[string]interface{}{"StartLine": float64(2), "EndLine": float64(4)}, 50)
+	if start != 1 {
+		t.Errorf("expected start clamped to 1, got %d", start)
+	}
+	if end != 9 {
+		t.Errorf("expected end=9, got %d", end)
+	}
+}
+
+func TestComputeAutoReadWindow_AppendToFile(t *testing.T) {
+	start, end := computeAutoReadWindow("AppendToFile", nil, 100)
+	if start != 81 || end != 100 {
+		t.Errorf("expected [81, 100] for AppendToFile on 100-line file, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_AppendToFile_SmallFile(t *testing.T) {
+	start, end := computeAutoReadWindow("AppendToFile", nil, 5)
+	if start != 1 || end != 5 {
+		t.Errorf("expected [1, 5] for small file, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_GlobalTools_FullFile(t *testing.T) {
+	// 小文件全文顯示
+	start, end := computeAutoReadWindow("WriteFileLines", nil, 50)
+	if start != 1 || end != 50 {
+		t.Errorf("expected [1, 50] for full file, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_GlobalTools_LargeFile(t *testing.T) {
+	// 大文件應截斷至 2000 行
+	start, end := computeAutoReadWindow("TextReplace", nil, 5000)
+	if start != 1 || end != 2000 {
+		t.Errorf("expected [1, 2000] for large file limit, got [%d, %d]", start, end)
+	}
+}
+
+func TestComputeAutoReadWindow_MissingArgs(t *testing.T) {
+	// 缺少參數時應 fallback 到全文顯示（上限 2000）
+	start, end := computeAutoReadWindow("WriteFileLine", map[string]interface{}{}, 30)
+	if start != 1 || end != 30 {
+		t.Errorf("expected full file [1, 30] when args missing, got [%d, %d]", start, end)
+	}
+}
+
+// ============================================================================
+// formatAutoReadResult 測試
+// ============================================================================
+
+func TestFormatAutoReadResult_EmptyFile(t *testing.T) {
+	result := formatAutoReadResult("/tmp/test.txt", []string{}, "WriteFileLine", nil)
+	// TOON 格式應包含 TotalLines: 0
+	if !strings.Contains(result, "TotalLines") {
+		t.Error("TOON output should contain TotalLines field")
+	}
+	if !strings.Contains(result, "AutoRead") {
+		t.Error("TOON output should contain AutoRead marker")
+	}
+	// Message 字段應提示重新調用
+	if !strings.Contains(result, "Message") {
+		t.Error("TOON output should contain Message field")
+	}
+}
+
+func TestFormatAutoReadResult_SmallFile_FullDisplay(t *testing.T) {
+	lines := []string{"package main", "", "func main() {", "\tprintln(\"hello\")", "}"}
+	result := formatAutoReadResult("/tmp/test.go", lines, "WriteFileLines", nil)
+
+	if !strings.Contains(result, "AutoRead") {
+		t.Error("TOON output should contain AutoRead marker")
+	}
+	if !strings.Contains(result, "TotalLines") {
+		t.Error("TOON output should contain TotalLines field")
+	}
+	if !strings.Contains(result, "package main") {
+		t.Error("TOON output should contain file content in Lines array")
+	}
+	if !strings.Contains(result, "Message") {
+		t.Error("TOON output should contain Message field with prompt")
+	}
+}
+
+func TestFormatAutoReadResult_WindowedDisplay(t *testing.T) {
+	// 模擬大文件：100 行，只顯示窗口
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line_%04d", i+1)
+	}
+
+	result := formatAutoReadResult("/tmp/large.txt", lines, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(50)})
+
+	if !strings.Contains(result, "TotalLines") {
+		t.Error("TOON output should contain TotalLines field")
+	}
+	// 應包含目標行附近內容
+	if !strings.Contains(result, "line_0050") {
+		t.Error("should contain content around target line")
+	}
+	// TOON 格式應有 ShownStart / ShownEnd 標記窗口
+	if !strings.Contains(result, "ShownStart") || !strings.Contains(result, "ShownEnd") {
+		t.Error("TOON output should contain ShownStart and ShownEnd fields for windowed view")
+	}
+}
+
+func TestFormatAutoReadResult_LargeFileTruncation(t *testing.T) {
+	// 模擬超大文件：5000 行，WriteFileLines 截斷至 2000
+	lines := make([]string, 5000)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line_%04d", i+1)
+	}
+
+	result := formatAutoReadResult("/tmp/huge.txt", lines, "WriteFileLines", nil)
+
+	if !strings.Contains(result, "TotalLines") {
+		t.Error("TOON output should contain TotalLines field")
+	}
+	if !strings.Contains(result, "Truncated") {
+		t.Error("TOON output should contain Truncated flag")
+	}
+	if strings.Contains(result, "line_2001") {
+		t.Error("should not contain lines beyond the 2000-line limit")
+	}
+}
+
+func TestFormatAutoReadResult_LineNumbers(t *testing.T) {
+	lines := []string{"aaa", "bbb", "ccc"}
+	result := formatAutoReadResult("/tmp/test.txt", lines, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(2)})
+
+	// TOON 格式：Lines 以 compact 形式呈現 Lines[N]{Content,Line}: ...
+	if !strings.Contains(result, "Lines[") {
+		t.Error("TOON output should contain Lines array header")
+	}
+	if !strings.Contains(result, "aaa") && !strings.Contains(result, "bbb") && !strings.Contains(result, "ccc") {
+		t.Error("TOON output should contain the actual file content values")
+	}
+}
+
+func TestFormatAutoReadResult_PromptToProceed(t *testing.T) {
+	lines := []string{"content"}
+	result := formatAutoReadResult("/tmp/test.txt", lines, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(1)})
+
+	// TOON 格式：Message 字段包含提示
+	if !strings.Contains(result, "Message") {
+		t.Error("TOON output should contain Message field")
+	}
+	if !strings.Contains(result, "是否繼續寫入") {
+		t.Error("message should ask the model whether to proceed with write")
+	}
+}
+
+// ============================================================================
+// autoReadForWrite 流程整合測試
+// ============================================================================
+
+func TestAutoReadForWrite_FullFlow_ReadThenWrite(t *testing.T) {
+	// 模擬完整流程：模型未讀直接寫 → 自動讀取 → 標記已讀 → 重新調用成功
+	tmpFile := createTempFileWithContent(t, []string{
+		"package main",
+		"",
+		"import \"fmt\"",
+		"",
+		"func main() {",
+		"\tfmt.Println(\"hello\")",
+		"}",
+	})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// Step 1: 模型調用 WriteFileLine 但未讀文件
+	content, didRead := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)})
+	if !didRead {
+		t.Fatal("step 1: should trigger auto-read")
+	}
+	if !strings.Contains(content, "func main()") {
+		t.Error("step 1: auto-read should show file content")
+	}
+
+	// Step 2: 模型確認後重新調用 WriteFileLine
+	// 因為文件已標記完整讀取，autoReadForWrite 應返回 false
+	content2, didRead2 := autoReadForWrite(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)})
+	if didRead2 {
+		t.Error("step 2: should not auto-read again (already fully read)")
+	}
+	if content2 != "" {
+		t.Errorf("step 2: expected empty content, got %q", content2)
+	}
+
+	// Step 3: CheckWritePermission 應通過
+	err := CheckWritePermission(tmpFile, "WriteFileLine",
+		map[string]interface{}{"LineNum": float64(5)})
+	if err != nil {
+		t.Errorf("step 3: CheckWritePermission should pass after auto-read, got: %v", err)
+	}
+}
+
+func TestAutoReadForWrite_FullFlow_MultipleTools(t *testing.T) {
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3", "line4", "line5"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	tools := []struct {
+		name string
+		args map[string]interface{}
+	}{
+		{"WriteFileLine", map[string]interface{}{"LineNum": float64(3)}},
+		{"WriteFileRange", map[string]interface{}{"StartLine": float64(2), "EndLine": float64(4)}},
+		{"WriteFileLines", nil},
+		{"AppendToFile", nil},
+		{"TextReplace", nil},
+		{"TextTransform", nil},
+	}
+
+	for _, tool := range tools {
+		tracker := newReadWriteTracker()
+		globalReadWriteTracker = tracker
+
+		_, didRead := autoReadForWrite(tmpFile, tool.name, tool.args)
+		if !didRead {
+			t.Errorf("%s: should trigger auto-read when file not read", tool.name)
+		}
+
+		// 驗證已標記完整讀取
+		lvl := globalReadWriteTracker.GetFileReadLevel(tmpFile)
+		if lvl != readLevelFull {
+			t.Errorf("%s: file should be marked as full read after auto-read", tool.name)
+		}
+	}
+}
+
+func TestAutoReadForWrite_ReadLevels_CheckWritePermission(t *testing.T) {
+	// 驗證 auto-read 不改變現有 CheckWritePermission 行為
+	tmpFile := createTempFileWithContent(t, []string{"line1", "line2", "line3", "line4", "line5"})
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 先觸發 auto-read
+	_, didRead := autoReadForWrite(tmpFile, "WriteFileRange",
+		map[string]interface{}{"StartLine": float64(3), "EndLine": float64(4)})
+	if !didRead {
+		t.Fatal("should trigger auto-read")
+	}
+
+	// auto-read 後，所有類型的寫入權限檢查都應通過
+	testCases := []struct {
+		name string
+		args map[string]interface{}
+	}{
+		{"WriteFileLine", map[string]interface{}{"LineNum": float64(3)}},
+		{"WriteFileRange", map[string]interface{}{"StartLine": float64(1), "EndLine": float64(5)}},
+		{"WriteFileLines", nil},
+		{"AppendToFile", nil},
+		{"TextReplace", nil},
+	}
+
+	for _, tc := range testCases {
+		err := CheckWritePermission(tmpFile, tc.name, tc.args)
+		if err != nil {
+			t.Errorf("%s after auto-read: CheckWritePermission should pass, got: %v", tc.name, err)
 		}
 	}
 }

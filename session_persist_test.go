@@ -1348,7 +1348,7 @@ func TestContentJSONRoundTrip(t *testing.T) {
 	mapContent := map[string]interface{}{
 		"tool_name":   "read_file",
 		"result":      "file contents here\nmultiple lines\n第三行",
-		"exit_code":   0,
+		"ExitCode":    0,
 		"duration_ms": float64(123.45),
 	}
 
@@ -1380,8 +1380,8 @@ func TestContentJSONRoundTrip(t *testing.T) {
 		if loadedMap["tool_name"] != "read_file" {
 			t.Errorf("map content tool_name mismatch: '%v'", loadedMap["tool_name"])
 		}
-		if loadedMap["exit_code"] != float64(0) {
-			t.Errorf("map content exit_code mismatch: %v (type=%T)", loadedMap["exit_code"], loadedMap["exit_code"])
+		if loadedMap["ExitCode"] != float64(0) {
+			t.Errorf("map content exit_code mismatch: %v (type=%T)", loadedMap["ExitCode"], loadedMap["ExitCode"])
 		}
 	}
 }

@@ -155,10 +155,10 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
 
         if result.ConfirmRequired {
                 response := map[string]interface{}{
-                        "mode":            "confirm_required",
-                        "confirm_message": result.ConfirmMessage,
-                        "suggestions":     result.Suggestions,
-                        "message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 SmartShell(command, mode=\"async\") 异步执行。",
+                        "Mode":            "confirm_required",
+                        "ConfirmMessage": result.ConfirmMessage,
+                        "Suggestions":     result.Suggestions,
+                        "Message":         "⚠️ 此命令可能需要交互确认。请确认后重新执行，或使用 SmartShell(command, mode=\"async\") 异步执行。",
                 }
                 resultTOON, _ := toon.Marshal(response)
                 return string(resultTOON), false
@@ -177,11 +177,11 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
                         message = fmt.Sprintf("⏱️ 命令执行超时（%d秒）。建议使用异步模式：SmartShell(command, mode=\"async\")", timeout)
                 }
                 response := map[string]interface{}{
-                        "mode":            "timeout",
-                        "command":         command,
-                        "timeout_seconds": timeout,
-                        "is_unknown_cmd":  isUnknown,
-                        "message":         message,
+                        "Mode":           "timeout",
+                        "Command":        command,
+                        "TimeoutSeconds": timeout,
+                        "IsUnknownCmd":   isUnknown,
+                        "Message":        message,
                 }
                 resultTOON, _ := toon.Marshal(response)
                 return string(resultTOON), false
@@ -226,20 +226,20 @@ func handleSmartShellSync(ctx context.Context, command string, ch Channel, isUnk
         }
 
         response := map[string]interface{}{
-                "mode":       "sync",
-                "command":    command,
-                "stdout":     stdout,
-                "stderr":     stderr,
+                "Mode":      "sync",
+                "Command":   command,
+                "Stdout":    stdout,
+                "Stderr":    stderr,
                 "ExitCode":  result.ExitCode,
         }
         if stdoutFile != "" {
-                response["stdout_file"] = stdoutFile
+                response["StdoutFile"] = stdoutFile
         }
         if stderrFile != "" {
-                response["stderr_file"] = stderrFile
+                response["StderrFile"] = stderrFile
         }
         if result.Err != nil {
-                response["error"] = result.Err.Error()
+                response["Error"] = result.Err.Error()
         }
 
         resultTOON, _ := toon.Marshal(response)
@@ -311,15 +311,15 @@ func handleSmartShellInteractive(command string, suggestion CommandSuggestion, w
         msg += "💡 建议：下次使用非交互式等价命令以避免此问题。"
 
         result := map[string]interface{}{
-                "mode":               "interactive",
-                "TaskId":            task.ID,
-                "pid":                task.PID,
-                "status":             "running",
-                "command":            command,
-                "wake_after_minutes": wakeAfterMinutes,
-                "suggestion":         suggestion.Suggestion,
-                "non_interactive_eq": suggestion.NonInteractiveEq,
-                "message":            msg,
+                "Mode":             "interactive",
+                "TaskId":           task.ID,
+                "PID":              task.PID,
+                "Status":           "running",
+                "Command":          command,
+                "WakeAfterMinutes": wakeAfterMinutes,
+                "Suggestion":       suggestion.Suggestion,
+                "NonInteractiveEq": suggestion.NonInteractiveEq,
+                "Message":          msg,
         }
 
         resultTOON, _ := toon.Marshal(result)
@@ -356,12 +356,12 @@ func handleDelayedExec(ctx context.Context, argsMap map[string]interface{}, ch C
         }
 
         result := map[string]interface{}{
-                "TaskId":            task.ID,
-                "pid":                task.PID,
-                "status":             "running",
-                "command":            command,
-                "wake_after_minutes": wakeAfterMinutes,
-                "message": fmt.Sprintf("✅ 任务已启动（PID: %d），将在 %d 分钟后唤醒你。\n\n"+
+                "TaskId":           task.ID,
+                "PID":              task.PID,
+                "Status":           "running",
+                "Command":          command,
+                "WakeAfterMinutes": wakeAfterMinutes,
+                "Message": fmt.Sprintf("✅ 任务已启动（PID: %d），将在 %d 分钟后唤醒你。\n\n"+
                         "⏳ **重要提示**：你现在不需要调用 check 工具轮询任务状态。\n"+
                         "系统会在 %d 分钟后主动通知你任务的执行结果。\n\n"+
                         "你可以继续处理其他工作。如需提前检查或终止，可使用：\n"+
@@ -389,11 +389,11 @@ func handleTaskCheck(ctx context.Context, argsMap map[string]interface{}, ch Cha
                 return fmt.Sprintf("Error: %v", err), false
         }
 
-        status := info["status"].(string)
+        status := info["Status"].(string)
         var message string
         switch status {
         case "running":
-                runtimeMinutes := info["runtime_minutes"].(float64)
+                runtimeMinutes := info["RuntimeMinutes"].(float64)
                 message = fmt.Sprintf("\n\n⏳ 任务仍在运行中（已运行 %.1f 分钟）。\n\n"+
                         "📋 可选操作：\n"+
                         "• 如需继续等待：调用 ShellDelayed_wait 工具设置等待时间，**然后停止检查，等待系统通知**\n"+
@@ -515,11 +515,11 @@ func handleTaskWait(ctx context.Context, argsMap map[string]interface{}, ch Chan
         nextWakeTime := time.Now().Add(time.Duration(waitMinutes) * time.Minute)
 
         result := map[string]interface{}{
-                "TaskId":         taskID,
-                "status":          "Waiting",
-                "WaitMinutes":    waitMinutes,
-                "next_wake_after": nextWakeTime.Format(time.RFC3339),
-                "message": fmt.Sprintf("✅ 已设置 %d 分钟后唤醒（预计时间: %s）。\n\n"+
+                "TaskId":        taskID,
+                "Status":        "Waiting",
+                "WaitMinutes":   waitMinutes,
+                "NextWakeAfter": nextWakeTime.Format(time.RFC3339),
+                "Message": fmt.Sprintf("✅ 已设置 %d 分钟后唤醒（预计时间: %s）。\n\n"+
                         "⏳ **重要提示**：你现在不需要再调用任何任务相关工具（check/wait）。\n"+
                         "系统会在任务完成或到达唤醒时间时主动通知你。\n\n"+
                         "你可以继续处理其他工作，或向用户报告当前状态。", waitMinutes, nextWakeTime.Format("15:04:05")),

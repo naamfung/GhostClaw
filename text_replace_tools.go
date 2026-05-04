@@ -48,13 +48,13 @@ type TextReplaceOptions struct {
 
 // TextReplaceResult 文本替换结果
 type TextReplaceResult struct {
-        Success      bool     `json:"success"`
-        Output       string   `json:"output"`        // 输出文本
-        LinesChanged int      `json:"lines_changed"` // 修改的行数
-        TotalLines   int      `json:"total_lines"`   // 总行数
-        MatchesFound int      `json:"matches_found"` // 匹配次数
-        ChangedLines []string `json:"changed_lines"` // 修改的行（当 ShowChangesOnly 时）
-        Error        string   `json:"error,omitempty"`
+        Success      bool     `json:"Success"`
+        Output       string   `json:"Output"`        // 输出文本
+        LinesChanged int      `json:"LinesChanged"`  // 修改的行数
+        TotalLines   int      `json:"TotalLines"`    // 总行数
+        MatchesFound int      `json:"MatchesFound"`  // 匹配次数
+        ChangedLines []string `json:"ChangedLines"`  // 修改的行（当 ShowChangesOnly 时）
+        Error        string   `json:"Error,omitempty"`
 }
 
 // handleTextReplace 处理文本替换工具调用

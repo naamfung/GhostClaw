@@ -705,24 +705,24 @@ func (sm *SubagentManager) GetTaskInfo(taskID string) (map[string]interface{}, e
 
     info := map[string]interface{}{
         "TaskId":         task.ID,
-        "task":            task.Task,
+        "Task":           task.Task,
         "SessionId":      task.SessionID,
-        "status":          string(task.Status),
-        "iterations":      task.Iterations,
+        "Status":         string(task.Status),
+        "Iterations":     task.Iterations,
         "MaxIterations":  task.MaxIterations,
-        "depth":           task.Depth,
+        "Depth":          task.Depth,
         "StartTime":      task.StartTime.Format(time.RFC3339),
-        "runtime_seconds": time.Since(task.StartTime).Seconds(),
+        "RuntimeSeconds": time.Since(task.StartTime).Seconds(),
     }
     if task.CredentialOverride != "" {
-        info["credential_override"] = task.CredentialOverride
+        info["CredentialOverride"] = task.CredentialOverride
     }
     if task.ModelOverride != "" {
-        info["model_override"] = task.ModelOverride
+        info["ModelOverride"] = task.ModelOverride
     }
 
     if task.Result != "" {
-        info["result"] = task.Result
+        info["Result"] = task.Result
     }
 
     return info, nil

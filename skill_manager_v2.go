@@ -24,9 +24,9 @@ type SkillMeta struct {
 	Tags         string    `json:"tags"`        // JSON array as string
 	TriggerWords string    `json:"TriggerWords"` // JSON array as string
 	FilePath     string    `json:"-"`
-	FileSize     int64     `json:"file_size"`
-	ModTime      int64     `json:"mod_time"`      // Unix timestamp
-	UseCount     int       `json:"use_count"`
+	FileSize     int64     `json:"FileSize"`
+	ModTime      int64     `json:"ModTime"`       // Unix timestamp
+	UseCount     int       `json:"UseCount"`
 	LastUsed     int64     `json:"last_used"`     // Unix timestamp
 	QualityScore float64   `json:"quality_score"`
 	Protected    bool      `json:"protected"`     // 受保護技能，自動清理會跳過

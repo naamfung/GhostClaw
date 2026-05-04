@@ -10,6 +10,8 @@ import (
         "strings"
         "sync"
         "time"
+
+        "github.com/toon-format/toon-go"
 )
 
 // ============================================================================
@@ -939,6 +941,16 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
         if isWriteTool(toolName) {
                 filePath := extractFilePathFromArgs(argsMap)
                 if filePath != "" {
+                        // 自動讀取：如果模型尚未讀取文件，自動按其寫入範圍讀取並返回內容
+                        if content, didAutoRead := autoReadForWrite(filePath, toolName, argsMap); didAutoRead {
+                                log.Printf("[ToolSafety] 先讀後寫自動讀取: tool=%s file=%s", toolName, filePath)
+                                emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
+                                return EnrichedMessage{
+                                        Content: content,
+                                        Meta:    MessageMeta{Status: TaskStatusSuccess},
+                                }
+                        }
+
                         if err := CheckWritePermission(filePath, toolName, argsMap); err != nil {
                                 log.Printf("[ToolSafety] 先读后写检查失败: tool=%s file=%s", toolName, filePath)
 
@@ -967,6 +979,178 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
 
         // 调用原始工具执行（executeTool 内部会自行发送 agentic tags）
         return executeTool(ctx, toolID, toolName, argsMap, ch, role)
+}
+
+// ============================================================================
+// 先讀後寫自動讀取 — 當模型未先讀取文件就調用寫入工具時，
+// 系統自動按其寫入範圍讀取文件並返回內容，詢問模型是否繼續寫入。
+// ============================================================================
+
+// autoReadForWrite 在模型未先讀取文件時，自動按其寫入範圍讀取文件並返回內容。
+// 返回 (formattedContent, didAutoRead)。didAutoRead=false 表示已滿足讀取要求。
+func autoReadForWrite(filePath string, toolName string, argsMap map[string]interface{}) (string, bool) {
+        absPath := normalizeFilePath(filePath)
+
+        // 新建文件：無需自動讀取（CheckWritePermission 對新文件直接放行）
+        if _, err := os.Stat(absPath); os.IsNotExist(err) {
+                return "", false
+        }
+
+        readLvl := globalReadWriteTracker.GetFileReadLevel(absPath)
+
+        // 完整讀取：已滿足所有寫入工具的要求
+        if readLvl == readLevelFull {
+                return "", false
+        }
+
+        // 部分讀取：檢查是否已覆蓋寫入目標
+        if readLvl == readLevelPartial && writeTargetCovered(absPath, toolName, argsMap) {
+                return "", false
+        }
+
+        // 需要自動讀取
+        lines, err := ReadFileLines(absPath)
+        if err != nil {
+                log.Printf("[ToolSafety] autoReadForWrite ReadFileLines error for %s: %v", absPath, err)
+                return "", false
+        }
+
+        content := formatAutoReadResult(absPath, lines, toolName, argsMap)
+
+        // 標記為完整讀取，確保下次調用寫入工具時通過權限檢查
+        globalReadWriteTracker.MarkFileFullyRead(absPath)
+        globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
+
+        log.Printf("[ToolSafety] 先讀後寫自動讀取完成: tool=%s file=%s lines=%d", toolName, absPath, len(lines))
+
+        return content, true
+}
+
+// writeTargetCovered 檢查部分讀取範圍是否已覆蓋當前寫入工具的目標位置。
+// 對於全局寫入工具（WriteFileLines, TextReplace 等），即使有部分讀取也需要完整讀取。
+func writeTargetCovered(absPath string, toolName string, argsMap map[string]interface{}) bool {
+        readRanges := globalReadWriteTracker.GetFileReadRanges(absPath)
+        if readRanges == nil {
+                return false
+        }
+
+        switch toolName {
+        case "WriteFileLine":
+                if lineNumFloat, ok := argsMap["LineNum"].(float64); ok {
+                        lineNum := int(lineNumFloat)
+                        switch {
+                        case lineNum >= 1:
+                                return isLineInRanges(readRanges, lineNum)
+                        case lineNum < -1:
+                                return isLineInRanges(readRanges, -lineNum)
+                        case lineNum == -1:
+                                return false // append 需要讀取文件尾部
+                        }
+                }
+                return false
+
+        case "WriteFileRange":
+                if startFloat, ok := argsMap["StartLine"].(float64); ok {
+                        start := int(startFloat)
+                        if start >= 1 {
+                                end := start
+                                if endFloat, ok := argsMap["EndLine"].(float64); ok && endFloat >= float64(start) {
+                                        end = int(endFloat)
+                                }
+                                return isRangeOverlapping(readRanges, LineRange{StartLine: start, EndLine: end})
+                        } else if start < 0 {
+                                return isLineInRanges(readRanges, -start)
+                        }
+                }
+                return false
+
+        default:
+                // 全局寫入工具（WriteFileLines, AppendToFile, TextReplace, TextTransform）
+                // 即使有部分讀取也需要完整讀取
+                return false
+        }
+}
+
+// formatAutoReadResult 將自動讀取的文件內容格式化為 TOON 格式返回給模型。
+// 使用與 ReadFileLines verbose 模式一致的結構，確保模型以相同方式解析文件內容。
+func formatAutoReadResult(filePath string, lines []string, toolName string, argsMap map[string]interface{}) string {
+        totalLines := len(lines)
+        dispStart, dispEnd := computeAutoReadWindow(toolName, argsMap, totalLines)
+
+        // 構建與 ReadFileLines verbose 模式一致的行內容結構
+        shownLines := make([]map[string]interface{}, 0, dispEnd-dispStart+1)
+        for i := dispStart - 1; i < dispEnd && i < totalLines; i++ {
+                shownLines = append(shownLines, map[string]interface{}{
+                        "Line":    i + 1,
+                        "Content": lines[i],
+                })
+        }
+
+        result := map[string]interface{}{
+                "AutoRead":    true,
+                "Message":     "你尚未讀取此文件就調用了寫入工具。已自動為你讀取寫入範圍附近的內容。請確認是否繼續寫入？如果內容與你預期一致，請重新調用寫入工具以繼續操作。",
+                "Tool":        toolName,
+                "Filename":    filePath,
+                "TotalLines":  totalLines,
+                "ShownStart":  dispStart,
+                "ShownEnd":    dispEnd,
+                "Truncated":   totalLines > dispEnd,
+                "Lines":       shownLines,
+        }
+
+        resultTOON, err := toon.Marshal(result)
+        if err != nil {
+                return fmt.Sprintf("Error: %v", err)
+        }
+        return string(resultTOON)
+}
+
+// computeAutoReadWindow 根據寫入工具類型和參數決定自動讀取的顯示窗口。
+func computeAutoReadWindow(toolName string, argsMap map[string]interface{}, totalLines int) (int, int) {
+        const defaultWindow = 15 // 單行寫入的上下文行數
+        const rangePadding = 5   // 範圍寫入的附加上下文行數
+        const fullLimit = 2000   // 全文顯示的行數上限
+        const tailLines = 20     // 追加模式的尾部行數
+
+        switch toolName {
+        case "WriteFileLine":
+                if lineNumFloat, ok := argsMap["LineNum"].(float64); ok {
+                        lineNum := int(lineNumFloat)
+                        switch {
+                        case lineNum >= 1:
+                                return max(1, lineNum-defaultWindow), min(totalLines, lineNum+defaultWindow)
+                        case lineNum == -1:
+                                return max(1, totalLines-tailLines+1), totalLines
+                        case lineNum < -1:
+                                insPoint := -lineNum
+                                return max(1, insPoint-defaultWindow), min(totalLines, insPoint+defaultWindow)
+                        }
+                }
+                return 1, min(totalLines, fullLimit)
+
+        case "WriteFileRange":
+                if startFloat, ok := argsMap["StartLine"].(float64); ok {
+                        start := int(startFloat)
+                        if start >= 1 {
+                                end := start
+                                if endFloat, ok := argsMap["EndLine"].(float64); ok && endFloat >= float64(start) {
+                                        end = int(endFloat)
+                                }
+                                return max(1, start-rangePadding), min(totalLines, end+rangePadding)
+                        } else {
+                                insPoint := -start
+                                return max(1, insPoint-10), min(totalLines, insPoint+10)
+                        }
+                }
+                return 1, min(totalLines, fullLimit)
+
+        case "AppendToFile":
+                return max(1, totalLines-tailLines+1), totalLines
+
+        default:
+                // WriteFileLines, TextReplace, TextTransform: 顯示全文（有上限）
+                return 1, min(totalLines, fullLimit)
+        }
 }
 
 // isWriteTool 检查工具是否为写入类工具

@@ -60,12 +60,12 @@ func handleSSHExec(ctx context.Context, argsMap map[string]interface{}, ch Chann
         }
 
         result := map[string]interface{}{
-            "mode":               "async",
-            "TaskId":            task.ID,
-            "status":             "running",
-            "command":            command,
-            "wake_after_minutes": wakeAfterMinutes,
-            "message": fmt.Sprintf("✅ SSH command is running asynchronously on session '%s'. Task ID: %s. You will be notified in %d minutes.",
+            "Mode":             "async",
+            "TaskId":           task.ID,
+            "Status":           "running",
+            "Command":          command,
+            "WakeAfterMinutes": wakeAfterMinutes,
+            "Message": fmt.Sprintf("✅ SSH command is running asynchronously on session '%s'. Task ID: %s. You will be notified in %d minutes.",
                 sessionID, task.ID, wakeAfterMinutes),
         }
         resultTOON, _ := toon.Marshal(result)

@@ -368,15 +368,15 @@ func (tm *TaskManager) GetTaskInfo(taskID string) (map[string]interface{}, error
 
         info := map[string]interface{}{
                 "TaskId":         task.ID,
-                "command":         task.Command,
-                "description":     task.Description,
-                "pid":             task.PID,
-                "status":          string(task.Status),
+                "Command":        task.Command,
+                "Description":    task.Description,
+                "PID":            task.PID,
+                "Status":         string(task.Status),
                 "ExitCode":       task.ExitCode,
                 "StartTime":      task.StartTime.Format(time.RFC3339),
                 "RuntimeMinutes": time.Since(task.StartTime).Minutes(),
-                "stdout":          truncateTaskOutput(task.Stdout.String()),
-                "stderr":          truncateTaskOutput(task.Stderr.String()),
+                "Stdout":         truncateTaskOutput(task.Stdout.String()),
+                "Stderr":         truncateTaskOutput(task.Stderr.String()),
         }
 
         return info, nil

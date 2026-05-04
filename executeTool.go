@@ -206,14 +206,14 @@ func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
                         info = nil
                 }
                 result := map[string]interface{}{
-                        "content":   c,
-                        "line":      lineNum,
-                        "filename":  filename,
-                        "encoding":  "utf-8", // 假设 UTF-8 编码
+                        "Content":   c,
+                        "Line":      lineNum,
+                        "Filename":  filename,
+                        "Encoding":  "utf-8", // 假设 UTF-8 编码
                 }
                 if info != nil {
-                        result["file_size"] = info.Size()
-                        result["modified"] = info.ModTime().Format(time.RFC3339)
+                        result["FileSize"] = info.Size()
+                        result["Modified"] = info.ModTime().Format(time.RFC3339)
                 }
                 resultTOON, _ := toon.Marshal(result)
                 content = string(resultTOON)
@@ -379,20 +379,20 @@ func execReadFileLines(ec *ToolExecContext) (string, TaskStatus) {
                 linedContent := make([]map[string]interface{}, len(lines))
                 for i, line := range lines {
                         linedContent[i] = map[string]interface{}{
-                                "line":    i + 1,
-                                "content": line,
+                                "Line":    i + 1,
+                                "Content": line,
                         }
                 }
 
                 result := map[string]interface{}{
-                        "lines":       linedContent,
-                        "total_lines": len(lines),
-                        "filename":    filename,
-                        "encoding":    "utf-8", // 假设 UTF-8 编码
+                        "Lines":      linedContent,
+                        "TotalLines": len(lines),
+                        "Filename":   filename,
+                        "Encoding":   "utf-8", // 假设 UTF-8 编码
                 }
                 if info != nil {
-                        result["file_size"] = info.Size()
-                        result["modified"] = info.ModTime().Format(time.RFC3339)
+                        result["FileSize"] = info.Size()
+                        result["Modified"] = info.ModTime().Format(time.RFC3339)
                 }
 
                 resultTOON, err := toon.Marshal(result)
@@ -464,22 +464,22 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 linedContent := make([]map[string]interface{}, len(lines))
                 for i, line := range lines {
                         linedContent[i] = map[string]interface{}{
-                                "line":    startLine + i,
-                                "content": line,
+                                "Line":    startLine + i,
+                                "Content": line,
                         }
                 }
 
                 result := map[string]interface{}{
-                        "lines":       linedContent,
-                        "total_lines": len(lines),
+                        "Lines":      linedContent,
+                        "TotalLines": len(lines),
                         "StartLine":  startLine,
                         "EndLine":    endLine,
-                        "filename":    filename,
-                        "encoding":    "utf-8",
+                        "Filename":   filename,
+                        "Encoding":   "utf-8",
                 }
                 if info != nil {
-                        result["file_size"] = info.Size()
-                        result["modified"] = info.ModTime().Format(time.RFC3339)
+                        result["FileSize"] = info.Size()
+                        result["Modified"] = info.ModTime().Format(time.RFC3339)
                 }
 
                 resultTOON, err := toon.Marshal(result)
