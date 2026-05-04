@@ -87,35 +87,39 @@ func TestCheckAndPersistResult_WellAboveThreshold_PersistsToFile(t *testing.T) {
 func TestCheckAndPersistResult_SSHExecThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	// SSHExec 應該匹配 "ssh" prefix，threshold = 15000
+	// 所有工具使用動態閾值，在測試環境中為 10000（下限）
+	dynamicThreshold := DynamicToolThreshold()
+
+	// SSHExec 匹配 "ssh" prefix，使用動態閾值
 	threshold := budget.resolveThreshold("SSHExec")
-	if threshold != ShellToolThreshold {
-		t.Errorf("SSHExec threshold = %d, want %d", threshold, ShellToolThreshold)
+	if threshold != dynamicThreshold {
+		t.Errorf("SSHExec threshold = %d, want dynamic %d", threshold, dynamicThreshold)
 	}
 
-	// SSHExec 輸出 14999 chars — 應該不截斷
-	content := strings.Repeat("e", 14999)
+	// 輸出 9999 chars — 應該不截斷（低於 10000）
+	content := strings.Repeat("e", 9999)
 	result := budget.CheckAndPersistResult("SSHExec", content)
 	if result != content {
-		t.Error("SSHExec 14999 chars: should return unchanged (below 15000 threshold)")
+		t.Error("SSHExec 9999 chars: should return unchanged (below dynamic threshold)")
 	}
 
-	// SSHExec 輸出 15001 chars — 應該截斷並存檔
-	content2 := strings.Repeat("f", 15001)
+	// 輸出 10001 chars — 應該截斷並存檔
+	content2 := strings.Repeat("f", 10001)
 	result2 := budget.CheckAndPersistResult("SSHExec", content2)
 	if !strings.Contains(result2, "[TOOL_RESULT_TRUNCATED]") {
-		t.Error("SSHExec 15001 chars: should be truncated (above 15000 threshold)")
+		t.Error("SSHExec 10001 chars: should be truncated (above dynamic threshold)")
 	}
 }
 
 func TestCheckAndPersistResult_ShellToolThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	// Shell, SmartShell 都應該匹配 "Shell" prefix，threshold = 15000
+	// Shell, SmartShell 匹配 "Shell" prefix，使用動態閾值
+	dynamicThreshold := DynamicToolThreshold()
 	for _, tool := range []string{"Shell", "SmartShell"} {
 		threshold := budget.resolveThreshold(tool)
-		if threshold != ShellToolThreshold {
-			t.Errorf("%s threshold = %d, want %d", tool, threshold, ShellToolThreshold)
+		if threshold != dynamicThreshold {
+			t.Errorf("%s threshold = %d, want dynamic %d", tool, threshold, dynamicThreshold)
 		}
 	}
 }
@@ -123,11 +127,11 @@ func TestCheckAndPersistResult_ShellToolThreshold(t *testing.T) {
 func TestCheckAndPersistResult_SSHAliasThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	// 所有 ssh 前綴工具都應該匹配 15000
+	dynamicThreshold := DynamicToolThreshold()
 	for _, tool := range []string{"ssh", "SSHConnect", "SSHExec"} {
 		threshold := budget.resolveThreshold(tool)
-		if threshold != ShellToolThreshold {
-			t.Errorf("%s threshold = %d, want %d", tool, threshold, ShellToolThreshold)
+		if threshold != dynamicThreshold {
+			t.Errorf("%s threshold = %d, want dynamic %d", tool, threshold, dynamicThreshold)
 		}
 	}
 }
@@ -135,23 +139,16 @@ func TestCheckAndPersistResult_SSHAliasThreshold(t *testing.T) {
 func TestCheckAndPersistResult_FileToolThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	tests := []struct {
-		tool      string
-		threshold int
-	}{
-		{"ReadFileLines", FileToolThreshold},
-		{"ReadFileLine", FileToolThreshold},
-		{"ReadFileRange", FileToolThreshold},
-		{"WriteFileLines", FileToolThreshold},
-		{"WriteFileLine", FileToolThreshold},
-		{"WriteFileRange", FileToolThreshold},
-		{"AppendToFile", FileToolThreshold},
+	dynamicThreshold := DynamicToolThreshold()
+	tools := []string{
+		"ReadFileLines", "ReadFileLine", "ReadFileRange",
+		"WriteFileLines", "WriteFileLine", "WriteFileRange",
+		"AppendToFile",
 	}
-
-	for _, tt := range tests {
-		got := budget.resolveThreshold(tt.tool)
-		if got != tt.threshold {
-			t.Errorf("%s threshold = %d, want %d", tt.tool, got, tt.threshold)
+	for _, tool := range tools {
+		got := budget.resolveThreshold(tool)
+		if got != dynamicThreshold {
+			t.Errorf("%s threshold = %d, want dynamic %d", tool, got, dynamicThreshold)
 		}
 	}
 }
@@ -159,10 +156,11 @@ func TestCheckAndPersistResult_FileToolThreshold(t *testing.T) {
 func TestCheckAndPersistResult_BrowserToolThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
+	dynamicThreshold := DynamicToolThreshold()
 	for _, tool := range []string{"browser", "BrowserVisit", "BrowserScreenshot"} {
 		threshold := budget.resolveThreshold(tool)
-		if threshold != BrowserToolThreshold {
-			t.Errorf("%s threshold = %d, want %d", tool, threshold, BrowserToolThreshold)
+		if threshold != dynamicThreshold {
+			t.Errorf("%s threshold = %d, want dynamic %d", tool, threshold, dynamicThreshold)
 		}
 	}
 }
@@ -170,10 +168,11 @@ func TestCheckAndPersistResult_BrowserToolThreshold(t *testing.T) {
 func TestCheckAndPersistResult_DefaultThreshold(t *testing.T) {
 	budget := NewToolResultBudget(t.TempDir())
 
-	// 未知工具應該使用默認閾值
+	// 未知工具也使用動態閾值
+	dynamicThreshold := DynamicToolThreshold()
 	threshold := budget.resolveThreshold("SomeUnknownTool")
-	if threshold != DefaultToolResultThreshold {
-		t.Errorf("unknown tool threshold = %d, want %d", threshold, DefaultToolResultThreshold)
+	if threshold != dynamicThreshold {
+		t.Errorf("unknown tool threshold = %d, want dynamic %d", threshold, dynamicThreshold)
 	}
 }
 
@@ -236,11 +235,12 @@ func TestCheckAndPersistResult_SetToolThresholdOverride(t *testing.T) {
 		t.Errorf("overridden SSHExec threshold = %d, want 5000", threshold)
 	}
 
-	// 移除覆蓋後應恢復為 prefix match
+	// 移除覆蓋後應恢復為動態閾值
 	budget.SetToolThreshold("SSHExec", 0)
 	threshold = budget.resolveThreshold("SSHExec")
-	if threshold != ShellToolThreshold {
-		t.Errorf("after removing override, SshExec threshold = %d, want %d", threshold, ShellToolThreshold)
+	dynamicThreshold := DynamicToolThreshold()
+	if threshold != dynamicThreshold {
+		t.Errorf("after removing override, SshExec threshold = %d, want dynamic %d", threshold, dynamicThreshold)
 	}
 }
 

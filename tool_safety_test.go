@@ -441,8 +441,20 @@ func newReadWriteTracker() *readWriteTracker {
 	return &readWriteTracker{
 		fullReadFiles:    make(map[string]time.Time),
 		partialReadFiles: make(map[string]time.Time),
+		readRanges:       make(map[string][]LineRange),
 		maxEntries:       200,
 	}
+}
+
+// createTempFile 創建臨時文件用於檢查已存在文件的寫入權限測試。
+func createTempFile(t *testing.T) string {
+	t.Helper()
+	tmpFile, err := os.CreateTemp("", "safety_test_*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	return tmpFile.Name()
 }
 
 func TestReadWriteTracker_MarkFileFullyRead(t *testing.T) {
@@ -517,6 +529,326 @@ func TestReadWriteTracker_MultipleFiles(t *testing.T) {
 }
 
 // ============================================================================
+// MarkFileLineRead / MarkFileRangeRead — 精確行範圍追蹤
+// ============================================================================
+
+func TestReadWriteTracker_MarkFileLineRead(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileLineRead("/tmp/test.txt", 5)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelPartial {
+		t.Errorf("GetFileReadLevel after MarkFileLineRead = %v, want readLevelPartial", lvl)
+	}
+
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) != 1 {
+		t.Fatalf("expected 1 range, got %d", len(ranges))
+	}
+	if ranges[0].StartLine != 5 || ranges[0].EndLine != 5 {
+		t.Errorf("range = [%d,%d], want [5,5]", ranges[0].StartLine, ranges[0].EndLine)
+	}
+}
+
+func TestReadWriteTracker_MarkFileRangeRead(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileRangeRead("/tmp/test.txt", 10, 20)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelPartial {
+		t.Errorf("GetFileReadLevel after MarkFileRangeRead = %v, want readLevelPartial", lvl)
+	}
+
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) != 1 {
+		t.Fatalf("expected 1 range, got %d", len(ranges))
+	}
+	if ranges[0].StartLine != 10 || ranges[0].EndLine != 20 {
+		t.Errorf("range = [%d,%d], want [10,20]", ranges[0].StartLine, ranges[0].EndLine)
+	}
+}
+
+func TestReadWriteTracker_MultipleLinesMerged(t *testing.T) {
+	trk := newReadWriteTracker()
+	// 連續讀取應合併為一個範圍（adjacent: [5,5] + [6,6] = [5,6]）
+	trk.MarkFileLineRead("/tmp/test.txt", 5)
+	trk.MarkFileLineRead("/tmp/test.txt", 6)
+	trk.MarkFileLineRead("/tmp/test.txt", 10)
+
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) != 2 {
+		t.Fatalf("expected 2 merged ranges, got %d: %+v", len(ranges), ranges)
+	}
+	if ranges[0].StartLine != 5 || ranges[0].EndLine != 6 {
+		t.Errorf("range[0] = [%d,%d], want [5,6]", ranges[0].StartLine, ranges[0].EndLine)
+	}
+	if ranges[1].StartLine != 10 || ranges[1].EndLine != 10 {
+		t.Errorf("range[1] = [%d,%d], want [10,10]", ranges[1].StartLine, ranges[1].EndLine)
+	}
+}
+
+func TestReadWriteTracker_RangeOverlappingMerge(t *testing.T) {
+	trk := newReadWriteTracker()
+	// 重疊範圍合併
+	trk.MarkFileRangeRead("/tmp/test.txt", 10, 20)
+	trk.MarkFileRangeRead("/tmp/test.txt", 15, 25)
+	// [10,20] + [15,25] = [10,25]
+
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) != 1 {
+		t.Fatalf("expected 1 merged range, got %d: %+v", len(ranges), ranges)
+	}
+	if ranges[0].StartLine != 10 || ranges[0].EndLine != 25 {
+		t.Errorf("range = [%d,%d], want [10,25]", ranges[0].StartLine, ranges[0].EndLine)
+	}
+}
+
+func TestReadWriteTracker_RangeAdjacentMerge(t *testing.T) {
+	trk := newReadWriteTracker()
+	// 相鄰範圍合併（[1,5] + [6,10] → [1,10]）
+	trk.MarkFileRangeRead("/tmp/test.txt", 1, 5)
+	trk.MarkFileRangeRead("/tmp/test.txt", 6, 10)
+
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) != 1 {
+		t.Fatalf("expected 1 merged range, got %d: %+v", len(ranges), ranges)
+	}
+	if ranges[0].StartLine != 1 || ranges[0].EndLine != 10 {
+		t.Errorf("range = [%d,%d], want [1,10]", ranges[0].StartLine, ranges[0].EndLine)
+	}
+}
+
+func TestReadWriteTracker_LineReadDoesNotDowngradeFull(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	trk.MarkFileLineRead("/tmp/test.txt", 5)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelFull {
+		t.Errorf("MarkFileLineRead should not downgrade from full, got %v", lvl)
+	}
+	// fullRead 應清除 readRanges
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if ranges != nil {
+		t.Errorf("GetFileReadRanges should return nil for fully read file, got %+v", ranges)
+	}
+}
+
+func TestReadWriteTracker_RangeReadDoesNotDowngradeFull(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	trk.MarkFileRangeRead("/tmp/test.txt", 1, 100)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelFull {
+		t.Errorf("MarkFileRangeRead should not downgrade from full, got %v", lvl)
+	}
+}
+
+func TestReadWriteTracker_MarkFileLineRead_InvalidLineNum(t *testing.T) {
+	trk := newReadWriteTracker()
+	// 無效行號（負數、0）應被忽略
+	trk.MarkFileLineRead("/tmp/test.txt", 0)
+	trk.MarkFileLineRead("/tmp/test.txt", -1)
+	trk.MarkFileLineRead("/tmp/test.txt", -100)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelNone {
+		t.Errorf("invalid line numbers should be ignored, got %v", lvl)
+	}
+}
+
+func TestReadWriteTracker_MarkFileRangeRead_InvalidStartLine(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileRangeRead("/tmp/test.txt", 0, 10)
+	trk.MarkFileRangeRead("/tmp/test.txt", -5, 10)
+
+	lvl := trk.GetFileReadLevel("/tmp/test.txt")
+	if lvl != readLevelNone {
+		t.Errorf("invalid start line should be ignored, got %v", lvl)
+	}
+}
+
+func TestReadWriteTracker_GetFileReadRanges_ReturnsCopy(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileRangeRead("/tmp/test.txt", 1, 10)
+
+	ranges1 := trk.GetFileReadRanges("/tmp/test.txt")
+	ranges2 := trk.GetFileReadRanges("/tmp/test.txt")
+
+	// 修改 ranges1 不應影響內部狀態
+	ranges1[0].StartLine = 999
+
+	ranges3 := trk.GetFileReadRanges("/tmp/test.txt")
+	if ranges3[0].StartLine != 1 {
+		t.Error("GetFileReadRanges should return a copy, not reference to internal state")
+	}
+	_ = ranges2
+}
+
+func TestReadWriteTracker_FullyReadClearsRanges(t *testing.T) {
+	trk := newReadWriteTracker()
+	trk.MarkFileRangeRead("/tmp/test.txt", 1, 100)
+	ranges := trk.GetFileReadRanges("/tmp/test.txt")
+	if len(ranges) == 0 {
+		t.Fatal("should have ranges before full read")
+	}
+
+	trk.MarkFileFullyRead("/tmp/test.txt")
+	ranges = trk.GetFileReadRanges("/tmp/test.txt")
+	if ranges != nil {
+		t.Error("GetFileReadRanges should return nil after full read")
+	}
+}
+
+// ============================================================================
+// mergeRanges / isLineInRanges / isRangeOverlapping / describeRanges
+// ============================================================================
+
+func TestMergeRanges_Empty(t *testing.T) {
+	result := mergeRanges(nil, LineRange{StartLine: 1, EndLine: 5})
+	if len(result) != 1 || result[0].StartLine != 1 || result[0].EndLine != 5 {
+		t.Errorf("mergeRanges empty = %+v, want [1,5]", result)
+	}
+}
+
+func TestMergeRanges_Overlapping(t *testing.T) {
+	existing := []LineRange{{1, 5}, {10, 20}}
+	result := mergeRanges(existing, LineRange{8, 12})
+	// [1,5], [8,20]
+	if len(result) != 2 {
+		t.Fatalf("expected 2 ranges, got %d: %+v", len(result), result)
+	}
+	if result[1].StartLine != 8 || result[1].EndLine != 20 {
+		t.Errorf("range[1] = [%d,%d], want [8,20]", result[1].StartLine, result[1].EndLine)
+	}
+}
+
+func TestMergeRanges_Adjacent(t *testing.T) {
+	result := mergeRanges([]LineRange{{1, 5}}, LineRange{6, 10})
+	if len(result) != 1 || result[0].StartLine != 1 || result[0].EndLine != 10 {
+		t.Errorf("mergeRanges adjacent = %+v, want [1,10]", result)
+	}
+}
+
+func TestMergeRanges_NonOverlapping(t *testing.T) {
+	existing := []LineRange{{1, 5}, {20, 30}}
+	result := mergeRanges(existing, LineRange{10, 12})
+	// [1,5], [10,12], [20,30]
+	if len(result) != 3 {
+		t.Fatalf("expected 3 ranges, got %d: %+v", len(result), result)
+	}
+	if result[1].StartLine != 10 || result[1].EndLine != 12 {
+		t.Errorf("range[1] = [%d,%d], want [10,12]", result[1].StartLine, result[1].EndLine)
+	}
+}
+
+func TestMergeRanges_Swallowed(t *testing.T) {
+	// 新範圍完全被現有範圍包含
+	result := mergeRanges([]LineRange{{10, 50}}, LineRange{20, 30})
+	if len(result) != 1 || result[0].StartLine != 10 || result[0].EndLine != 50 {
+		t.Errorf("mergeRanges swallowed = %+v, want [10,50]", result)
+	}
+}
+
+func TestMergeRanges_Swallows(t *testing.T) {
+	// 新範圍完全包含現有範圍
+	result := mergeRanges([]LineRange{{20, 30}}, LineRange{10, 50})
+	if len(result) != 1 || result[0].StartLine != 10 || result[0].EndLine != 50 {
+		t.Errorf("mergeRanges swallows = %+v, want [10,50]", result)
+	}
+}
+
+func TestMergeRanges_BridgesTwo(t *testing.T) {
+	// 新範圍將兩個分開的範圍連接起來
+	result := mergeRanges([]LineRange{{1, 5}, {15, 20}}, LineRange{6, 14})
+	// [1,20] — 三個範圍被合併為一個
+	if len(result) != 1 || result[0].StartLine != 1 || result[0].EndLine != 20 {
+		t.Errorf("mergeRanges bridges = %+v, want [1,20]", result)
+	}
+}
+
+func TestMergeRanges_MultipleExisting(t *testing.T) {
+	existing := []LineRange{{1, 3}, {5, 7}, {9, 11}}
+	result := mergeRanges(existing, LineRange{3, 9})
+	// [1,11] — 全部合併
+	if len(result) != 1 || result[0].StartLine != 1 || result[0].EndLine != 11 {
+		t.Errorf("mergeRanges multiple = %+v, want [1,11]", result)
+	}
+}
+
+func TestIsLineInRanges(t *testing.T) {
+	ranges := []LineRange{{1, 5}, {10, 20}}
+
+	if !isLineInRanges(ranges, 3) {
+		t.Error("line 3 should be in ranges [1,5]")
+	}
+	if !isLineInRanges(ranges, 15) {
+		t.Error("line 15 should be in ranges [10,20]")
+	}
+	if isLineInRanges(ranges, 7) {
+		t.Error("line 7 should NOT be in ranges")
+	}
+	if isLineInRanges(ranges, 0) {
+		t.Error("line 0 should NOT be in ranges")
+	}
+	if isLineInRanges(ranges, 25) {
+		t.Error("line 25 should NOT be in ranges")
+	}
+	if isLineInRanges(nil, 5) {
+		t.Error("nil ranges should return false")
+	}
+	if isLineInRanges([]LineRange{}, 5) {
+		t.Error("empty ranges should return false")
+	}
+}
+
+func TestIsRangeOverlapping(t *testing.T) {
+	ranges := []LineRange{{1, 5}, {10, 20}}
+
+	// 完全包含
+	if !isRangeOverlapping(ranges, LineRange{3, 4}) {
+		t.Error("[3,4] should overlap with [1,5]")
+	}
+	// 部分重疊
+	if !isRangeOverlapping(ranges, LineRange{4, 12}) {
+		t.Error("[4,12] should overlap with both [1,5] and [10,20]")
+	}
+	// 邊界接觸
+	if !isRangeOverlapping(ranges, LineRange{5, 10}) {
+		t.Error("[5,10] should overlap with [1,5] and [10,20]")
+	}
+	// 無交集
+	if isRangeOverlapping(ranges, LineRange{6, 9}) {
+		t.Error("[6,9] should NOT overlap")
+	}
+	if isRangeOverlapping(ranges, LineRange{21, 30}) {
+		t.Error("[21,30] should NOT overlap")
+	}
+	if isRangeOverlapping(nil, LineRange{1, 5}) {
+		t.Error("nil ranges should return false")
+	}
+}
+
+func TestDescribeRanges(t *testing.T) {
+	if desc := describeRanges(nil); desc != "（無）" {
+		t.Errorf("nil ranges = %q, want （無）", desc)
+	}
+	if desc := describeRanges([]LineRange{}); desc != "（無）" {
+		t.Errorf("empty ranges = %q, want （無）", desc)
+	}
+
+	ranges := []LineRange{{5, 5}, {10, 20}}
+	desc := describeRanges(ranges)
+	if !strings.Contains(desc, "第 5 行") {
+		t.Errorf("should contain 第 5 行: %q", desc)
+	}
+	if !strings.Contains(desc, "第 10-20 行") {
+		t.Errorf("should contain 第 10-20 行: %q", desc)
+	}
+}
+
+// ============================================================================
 // normalizeFilePath
 // ============================================================================
 
@@ -549,7 +881,7 @@ func TestNormalizeFilePath_WithDotDot(t *testing.T) {
 // ============================================================================
 
 func TestCheckWritePermission_NewFile(t *testing.T) {
-	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "WriteFileLines")
+	err := CheckWritePermission("/tmp/nonexistent_file_xyz_test.txt", "WriteFileLines", nil)
 	if err != nil {
 		t.Errorf("CheckWritePermission for new file should allow, got error: %v", err)
 	}
@@ -567,7 +899,7 @@ func TestCheckWritePermission_ExistingFileNotRead(t *testing.T) {
 	globalReadWriteTracker = newReadWriteTracker()
 	defer func() { globalReadWriteTracker = oldTracker }()
 
-	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines", nil)
 	if err == nil {
 		t.Error("CheckWritePermission should block write on unread existing file")
 	}
@@ -586,7 +918,7 @@ func TestCheckWritePermission_ExistingFileFullyRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFileFullyRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines", nil)
 	if err != nil {
 		t.Errorf("CheckWritePermission should allow write on fully read file, got error: %v", err)
 	}
@@ -605,9 +937,375 @@ func TestCheckWritePermission_ExistingFilePartialRead(t *testing.T) {
 	defer func() { globalReadWriteTracker = oldTracker }()
 
 	globalReadWriteTracker.MarkFilePartialRead(tmpFile.Name())
-	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines")
+	err = CheckWritePermission(tmpFile.Name(), "WriteFileLines", nil)
 	if err == nil {
 		t.Error("CheckWritePermission should block write on partial-read file (need full read)")
+	}
+}
+
+// ============================================================================
+// CheckWritePermission — WriteFileLine 單行精確權限（新設計）
+// ============================================================================
+
+func TestCheckWritePermission_WriteFileLine_SameLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 5 行 → WriteFileLine 寫第 5 行 → 允許
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(5)})
+	if err != nil {
+		t.Errorf("WriteFileLine to same line should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_DifferentLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 5 行 → WriteFileLine 寫第 8 行 → 拒絕
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(8)})
+	if err == nil {
+		t.Error("WriteFileLine to different line should be blocked")
+	}
+	if !strings.Contains(err.Error(), "第 8 行") {
+		t.Errorf("error should mention target line 8: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_Append(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 5 行 → WriteFileLine LineNum=-1（追加）→ 拒絕
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(-1)})
+	if err == nil {
+		t.Error("WriteFileLine append (LineNum=-1) should be blocked with partial read")
+	}
+	if !strings.Contains(err.Error(), "追加") {
+		t.Errorf("error should mention 追加 mode: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_InsertAtReadLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 5 行 → WriteFileLine LineNum=-5（插入到第 5 行前）→ 允許
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(-5)})
+	if err != nil {
+		t.Errorf("WriteFileLine insert at read line should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_InsertAtUnreadLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 5 行 → WriteFileLine LineNum=-8（插入到第 8 行前）→ 拒絕
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(-8)})
+	if err == nil {
+		t.Error("WriteFileLine insert at unread line should be blocked")
+	}
+	if !strings.Contains(err.Error(), "第 8 行") {
+		t.Errorf("error should mention target line 8: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_FromReadFileRange(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileLine 寫第 15 行 → 允許
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(15)})
+	if err != nil {
+		t.Errorf("WriteFileLine within read range should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileLine_OutsideReadFileRange(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileLine 寫第 25 行 → 拒絕
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileLine", map[string]interface{}{"LineNum": float64(25)})
+	if err == nil {
+		t.Error("WriteFileLine outside read range should be blocked")
+	}
+}
+
+// ============================================================================
+// CheckWritePermission — WriteFileRange 範圍交集權限（新設計）
+// ============================================================================
+
+func TestCheckWritePermission_WriteFileRange_Overlap(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileRange 寫 [15,18] → 允許
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(15),
+		"EndLine":   float64(18),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange with overlap should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_NoOverlap(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileRange 寫 [25,30] → 拒絕
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(25),
+		"EndLine":   float64(30),
+	})
+	if err == nil {
+		t.Error("WriteFileRange with no overlap should be blocked")
+	}
+	if !strings.Contains(err.Error(), "第 25-30 行") {
+		t.Errorf("error should mention target range 25-30: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_PartialOverlap(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileRange 寫 [15,25] → 允許（有交集 [15,20]）
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(15),
+		"EndLine":   float64(25),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange with partial overlap should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_EndpointTouch(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [10,20] → WriteFileRange 寫 [20,30] → 允許（第 20 行有交集）
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 10, 20)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(20),
+		"EndLine":   float64(30),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange touching at endpoint should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_InsertAtReadLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 10 行 → WriteFileRange StartLine=-10（插入到第 10 行前）→ 允許
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 10)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(-10),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange insert at read line should be allowed, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_InsertAtUnreadLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀第 10 行 → WriteFileRange StartLine=-15（插入到第 15 行前）→ 拒絕
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 10)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(-15),
+	})
+	if err == nil {
+		t.Error("WriteFileRange insert at unread line should be blocked")
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_NoEndLine(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileRange 讀 [5,10] → WriteFileRange StartLine=7 (no EndLine) → 允許
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 5, 10)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(7),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange without EndLine should be allowed if StartLine in range, got: %v", err)
+	}
+}
+
+func TestCheckWritePermission_WriteFileRange_FromMultipleReads(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// ReadFileLine 讀 [3,3], ReadFileLine 讀 [8,8], ReadFileRange 讀 [12,15]
+	// → WriteFileRange 寫 [7,13] → 允許（與 [8,8] 及 [12,15] 有交集）
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 3)
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 8)
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 12, 15)
+	err := CheckWritePermission(tmpFile, "WriteFileRange", map[string]interface{}{
+		"StartLine": float64(7),
+		"EndLine":   float64(13),
+	})
+	if err != nil {
+		t.Errorf("WriteFileRange overlapping multiple read ranges should be allowed, got: %v", err)
+	}
+}
+
+// ============================================================================
+// CheckWritePermission — 全局寫入工具在部分讀取下應拒絕
+// ============================================================================
+
+func TestCheckWritePermission_WriteFileLines_PartialRead(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	// 即使有精確範圍，WriteFileLines 仍需 fullRead
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 1, 10)
+	err := CheckWritePermission(tmpFile, "WriteFileLines", nil)
+	if err == nil {
+		t.Error("WriteFileLines should require full read even with range reads")
+	}
+}
+
+func TestCheckWritePermission_AppendToFile_PartialRead(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 1, 10)
+	err := CheckWritePermission(tmpFile, "AppendToFile", nil)
+	if err == nil {
+		t.Error("AppendToFile should require full read even with range reads")
+	}
+}
+
+func TestCheckWritePermission_TextReplace_PartialRead(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 5, 15)
+	err := CheckWritePermission(tmpFile, "TextReplace", nil)
+	if err == nil {
+		t.Error("TextReplace should require full read even with range reads")
+	}
+}
+
+func TestCheckWritePermission_TextTransform_PartialRead(t *testing.T) {
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileRangeRead(tmpFile, 1, 100)
+	err := CheckWritePermission(tmpFile, "TextTransform", nil)
+	if err == nil {
+		t.Error("TextTransform should require full read even with range reads")
+	}
+}
+
+func TestCheckWritePermission_HasReadRanges_ButNoPartialFlag(t *testing.T) {
+	// 邊界情況：文件有 readRanges 但 readLevel 是 partial
+	// 這應該還是會被 CheckWritePermission 攔截（全局工具需要 fullRead）
+	tmpFile := createTempFile(t)
+	defer os.Remove(tmpFile)
+
+	oldTracker := globalReadWriteTracker
+	globalReadWriteTracker = newReadWriteTracker()
+	defer func() { globalReadWriteTracker = oldTracker }()
+
+	globalReadWriteTracker.MarkFileLineRead(tmpFile, 5)
+	err := CheckWritePermission(tmpFile, "WriteFileLines", nil)
+	if err == nil {
+		t.Error("WriteFileLines should require full read")
 	}
 }
 
@@ -812,5 +1510,70 @@ func TestLoopWarningInjector_ResetState(t *testing.T) {
 	inj := &LoopWarningInjector{}
 	if !inj.ShouldInjectWarning(90) {
 		t.Error("fresh LoopWarningInjector should allow first warning above threshold")
+	}
+}
+
+// ============================================================================
+// DynamicFileToolThreshold
+// ============================================================================
+
+func TestDynamicToolThreshold_MinBound(t *testing.T) {
+	threshold := DynamicToolThreshold()
+	if threshold < 10000 {
+		t.Errorf("DynamicToolThreshold = %d, should be at least 10000", threshold)
+	}
+}
+
+func TestDynamicToolThreshold_NoHardUpperBound(t *testing.T) {
+	// 動態公式無硬上限——閾值應隨 contextLen 線性增長
+	threshold := DynamicToolThreshold()
+	minExpected := int(float64(getEffectiveContextLength()) * maxReadFileLinesFraction * 4)
+	if minExpected < 10000 {
+		minExpected = 10000
+	}
+	if threshold != minExpected {
+		t.Errorf("DynamicToolThreshold = %d, want %d (contextLen=%d * %.1f * 4, min 10000)",
+			threshold, minExpected, getEffectiveContextLength(), maxReadFileLinesFraction)
+	}
+}
+
+func TestDynamicToolThreshold_FormulaConsistency(t *testing.T) {
+	// 公式應為 contextLen * maxReadFileLinesFraction * 4（與 ReadFileLines 一致）
+	// 在預設環境中 contextLen 為 4096，所以 raw = 4096 * 0.5 * 4 = 8192
+	// 但下限是 10000，所以最終應返回 10000
+	threshold := DynamicToolThreshold()
+	if threshold != 10000 {
+		t.Logf("DynamicToolThreshold = %d (contextLen may vary in test environment)", threshold)
+	}
+	if threshold <= 0 {
+		t.Errorf("DynamicToolThreshold = %d, should be positive", threshold)
+	}
+}
+
+func TestDynamicToolThreshold_AllToolsUseDynamic(t *testing.T) {
+	budget := NewToolResultBudget("")
+	// 所有工具類別統一使用動態閾值，結果應 >= 下限
+	expected := DynamicToolThreshold()
+	toolNames := []string{
+		"ReadFileLines", "ReadFileLine", "ReadFileRange",
+		"WriteFileLine", "WriteFileLines", "WriteFileRange", "AppendToFile",
+		"Shell", "SmartShell",
+		"ssh_connect", "browser_navigate",
+		"mcp_some_server",
+	}
+	for _, name := range toolNames {
+		threshold := budget.resolveThreshold(name)
+		if threshold != expected {
+			t.Errorf("%s threshold = %d, want %d", name, threshold, expected)
+		}
+	}
+}
+
+func TestDynamicToolThreshold_UnknownToolUsesDynamicDefault(t *testing.T) {
+	budget := NewToolResultBudget("")
+	threshold := budget.resolveThreshold("SomeCompletelyUnknownTool")
+	expected := DynamicToolThreshold()
+	if threshold != expected {
+		t.Errorf("Unknown tool threshold = %d, want %d", threshold, expected)
 	}
 }

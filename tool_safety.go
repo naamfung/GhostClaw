@@ -35,9 +35,79 @@ type readLevel int
 
 const (
         readLevelNone    readLevel = iota // 未讀取
-        readLevelPartial                  // 部分讀取（ReadFileLine, TextGrep）
+        readLevelPartial                  // 部分讀取（ReadFileLine, ReadFileRange, TextGrep）
         readLevelFull                     // 完整讀取（ReadFileLines）
 )
+
+// LineRange 表示文件中已讀取的行範圍（1-based，兩端包含）
+type LineRange struct {
+        StartLine int
+        EndLine   int
+}
+
+// overlaps 檢查兩個 LineRange 是否有交集
+func (r LineRange) overlaps(other LineRange) bool {
+        return r.StartLine <= other.EndLine && other.StartLine <= r.EndLine
+}
+
+// containsLine 檢查 LineRange 是否包含指定行號
+func (r LineRange) containsLine(lineNum int) bool {
+        return lineNum >= r.StartLine && lineNum <= r.EndLine
+}
+
+// mergeRanges 將新的 LineRange 合併到現有 ranges 列表中。
+// 會自動合併所有 overlapping 或 adjacent 的範圍。
+func mergeRanges(ranges []LineRange, newRange LineRange) []LineRange {
+        // 將 newRange 加入，然後按 StartLine 排序
+        all := append(ranges, newRange)
+        if len(all) <= 1 {
+                return all
+        }
+
+        // 按 StartLine 排序
+        for i := 0; i < len(all)-1; i++ {
+                for j := i + 1; j < len(all); j++ {
+                        if all[i].StartLine > all[j].StartLine {
+                                all[i], all[j] = all[j], all[i]
+                        }
+                }
+        }
+
+        // 合併 overlapping 或 adjacent 的範圍
+        merged := []LineRange{all[0]}
+        for i := 1; i < len(all); i++ {
+                last := &merged[len(merged)-1]
+                // 檢查是否 overlapping 或 adjacent（例如 [1,5] 同 [6,10] 合併為 [1,10]）
+                if all[i].StartLine <= last.EndLine+1 {
+                        if all[i].EndLine > last.EndLine {
+                                last.EndLine = all[i].EndLine
+                        }
+                } else {
+                        merged = append(merged, all[i])
+                }
+        }
+        return merged
+}
+
+// isLineInRanges 檢查指定行號是否存在於 ranges 列表中
+func isLineInRanges(ranges []LineRange, lineNum int) bool {
+        for _, r := range ranges {
+                if r.containsLine(lineNum) {
+                        return true
+                }
+        }
+        return false
+}
+
+// isRangeOverlapping 檢查目標範圍是否與 ranges 列表有交集
+func isRangeOverlapping(ranges []LineRange, target LineRange) bool {
+        for _, r := range ranges {
+                if r.overlaps(target) {
+                        return true
+                }
+        }
+        return false
+}
 
 // readExpiryTime ReadFileLines 完整讀取記錄的有效期。
 // SSH 持久會話等耗時操作可能令模型在讀取後超過 10 分鐘先寫入，
@@ -52,18 +122,22 @@ const readExpiryTime = 60 * time.Minute
 const escalatePrefix = "__ESCALATE__:"
 
 // readWriteTracker 追踪已讀取的文件及其讀取級別，強制先讀後寫
-// 核心設計：只有完整讀取（ReadFileLines）才能滿足全量寫入工具的先讀要求，
-// 防止模型只讀一行就用幻覺重寫整個文件
+// 核心設計：
+//   - 完整讀取（ReadFileLines）滿足所有寫入工具的先讀要求
+//   - 部分讀取配合精確行範圍（readRanges）可允許對應範圍的單行/範圍寫入
+//   - 防止模型只讀一行就用幻覺重寫整個文件
 type readWriteTracker struct {
         mu               sync.RWMutex
-        fullReadFiles    map[string]time.Time // 完整讀取：文件路徑 -> 讀取時間
-        partialReadFiles map[string]time.Time // 部分讀取：文件路徑 -> 讀取時間
-        maxEntries       int                  // 最大緩存條目數
+        fullReadFiles    map[string]time.Time   // 完整讀取：文件路徑 -> 讀取時間
+        partialReadFiles map[string]time.Time   // 部分讀取（無具體範圍）：文件路徑 -> 讀取時間（僅 TextGrep）
+        readRanges       map[string][]LineRange // 精確行範圍追蹤：文件路徑 -> 已讀取的 LineRange 列表
+        maxEntries       int                    // 最大緩存條目數
 }
 
 var globalReadWriteTracker = &readWriteTracker{
         fullReadFiles:    make(map[string]time.Time),
         partialReadFiles: make(map[string]time.Time),
+        readRanges:       make(map[string][]LineRange),
         maxEntries:       200,
 }
 
@@ -75,17 +149,18 @@ func (t *readWriteTracker) MarkFileFullyRead(filePath string) {
 
         filePath = normalizeFilePath(filePath)
         t.fullReadFiles[filePath] = time.Now()
-        // 升級後同時從部分讀取中移除（避免冗餘）
+        // 升級後同時從部分讀取和範圍記錄中移除（避免冗餘）
         delete(t.partialReadFiles, filePath)
+        delete(t.readRanges, filePath)
         t.evictIfNeeded()
 
         // 模型正確讀取文件後，重置寫入違規計數
         globalErrorEscalator.ResetCategory(EscalateWriteWithoutRead)
 }
 
-// MarkFilePartialRead 標記文件已被部分讀取（由 ReadFileLine, TextGrep 調用）
-// 部分讀取不滿足任何寫入操作的先讀要求，僅作內部追蹤用途；
-// 所有寫入操作統一要求完整讀取（ReadFileLines）
+// MarkFilePartialRead 標記文件已被部分讀取但無具體行範圍（僅由 TextGrep 調用）
+// 此級別不滿足任何寫入操作的先讀要求，僅作內部追蹤用途。
+// 如需允許寫入，請使用 MarkFileLineRead 或 MarkFileRangeRead 記錄具體行範圍。
 func (t *readWriteTracker) MarkFilePartialRead(filePath string) {
         t.mu.Lock()
         defer t.mu.Unlock()
@@ -95,6 +170,50 @@ func (t *readWriteTracker) MarkFilePartialRead(filePath string) {
         if _, ok := t.fullReadFiles[filePath]; ok {
                 return
         }
+        t.partialReadFiles[filePath] = time.Now()
+        t.evictIfNeeded()
+}
+
+// MarkFileLineRead 標記文件中的特定行已被讀取（由 ReadFileLine 調用）
+// 記錄精確行號以便後續 WriteFileLine 檢查同一行的寫入權限
+func (t *readWriteTracker) MarkFileLineRead(filePath string, lineNum int) {
+        if lineNum < 1 {
+                return // 無效行號，忽略
+        }
+        t.mu.Lock()
+        defer t.mu.Unlock()
+
+        filePath = normalizeFilePath(filePath)
+        // 如果已經是完整讀取，不降級
+        if _, ok := t.fullReadFiles[filePath]; ok {
+                return
+        }
+        // 合併到現有範圍
+        newRange := LineRange{StartLine: lineNum, EndLine: lineNum}
+        t.readRanges[filePath] = mergeRanges(t.readRanges[filePath], newRange)
+        t.partialReadFiles[filePath] = time.Now()
+        t.evictIfNeeded()
+}
+
+// MarkFileRangeRead 標記文件中的行範圍已被讀取（由 ReadFileRange 調用）
+// 記錄精確範圍以便後續 WriteFileRange 檢查交集寫入權限
+func (t *readWriteTracker) MarkFileRangeRead(filePath string, startLine, endLine int) {
+        if startLine < 1 {
+                return // 無效起始行，忽略
+        }
+        if endLine < startLine {
+                endLine = startLine
+        }
+        t.mu.Lock()
+        defer t.mu.Unlock()
+
+        filePath = normalizeFilePath(filePath)
+        // 如果已經是完整讀取，不降級
+        if _, ok := t.fullReadFiles[filePath]; ok {
+                return
+        }
+        newRange := LineRange{StartLine: startLine, EndLine: endLine}
+        t.readRanges[filePath] = mergeRanges(t.readRanges[filePath], newRange)
         t.partialReadFiles[filePath] = time.Now()
         t.evictIfNeeded()
 }
@@ -112,6 +231,7 @@ func (t *readWriteTracker) evictIfNeeded() {
                 }
                 if time.Since(ts) > readExpiryTime {
                         delete(t.partialReadFiles, key)
+                        delete(t.readRanges, key) // 同步清理範圍記錄
                         count++
                 }
         }
@@ -146,6 +266,27 @@ func (t *readWriteTracker) HasFileBeenRead(filePath string) bool {
         return t.GetFileReadLevel(filePath) != readLevelNone
 }
 
+// GetFileReadRanges 獲取文件已讀取的行範圍列表。
+// 返回 nil 表示文件未被部分讀取或已是完整讀取狀態。
+func (t *readWriteTracker) GetFileReadRanges(filePath string) []LineRange {
+        t.mu.RLock()
+        defer t.mu.RUnlock()
+
+        filePath = normalizeFilePath(filePath)
+        // 完整讀取無需返回範圍
+        if _, ok := t.fullReadFiles[filePath]; ok {
+                return nil
+        }
+        ranges, ok := t.readRanges[filePath]
+        if !ok || len(ranges) == 0 {
+                return nil
+        }
+        // 返回副本防止外部修改
+        result := make([]LineRange, len(ranges))
+        copy(result, ranges)
+        return result
+}
+
 // normalizeFilePath 規範化文件路徑
 func normalizeFilePath(path string) string {
         // 使用 filepath.Abs + filepath.Clean 進行規範化，防止路徑遍歷繞過安全檢查
@@ -156,16 +297,16 @@ func normalizeFilePath(path string) string {
         return filepath.Clean(abs)
 }
 
-// CheckWritePermission 檢查是否允許寫入文件
-// 返回 nil 表示允許，返回 error 表示需要先讀取
-// 新建文件（目標路徑不存在）無需先讀，直接允許寫入
+// CheckWritePermission 檢查是否允許寫入文件。
+// 返回 nil 表示允許，返回 error 表示需要先讀取。
+// 新建文件（目標路徑不存在）無需先讀，直接允許寫入。
 //
-// 安全策略：
-//   - 所有寫入工具（WriteFileLine, WriteFileLines, AppendToFile,
-//     WriteFileRange, TextReplace, TextTransform）統一要求完整讀取（ReadFileLines）
-//   - ReadFileLine 或 TextGrep 僅讀取部分內容，不被視為已讀過文件
-//   - 防止模型只讀一行就用幻覺寫入/修改文件
-func CheckWritePermission(filePath string, toolName string) error {
+// 安全策略（按工具類型細分）：
+//   - WriteFileLine: 單行覆寫需該行已被 ReadFileLine/ReadFileRange 讀取；append(-1)/insert(< -1) 需 fullRead
+//   - WriteFileRange: 範圍覆寫需與已讀範圍有交集；insert(StartLine<0) 需插入點在已讀範圍內
+//   - WriteFileLines/AppendToFile/TextReplace/TextTransform: 全局操作，統一要求完整讀取
+//   - 新建文件（LineNum=0）無需先讀檢查，由調用方處理
+func CheckWritePermission(filePath string, toolName string, argsMap map[string]interface{}) error {
         // 歸一化路徑，確保 os.Stat 和 GetFileReadLevel 使用相同的路徑表示
         filePath = normalizeFilePath(filePath)
         // 如果文件不存在，視為新建文件，無需先讀
@@ -175,11 +316,154 @@ func CheckWritePermission(filePath string, toolName string) error {
 
         readLvl := globalReadWriteTracker.GetFileReadLevel(filePath)
 
-        // 所有寫入工具統一要求完整讀取
-        if readLvl != readLevelFull {
-                return fmt.Errorf("安全檢查失敗：你必須先使用 ReadFileLines 完整讀取 %s 才能進行寫入/編輯操作（ReadFileLine / ReadFileRange 或 TextGrep 僅讀取部分內容，不被視為已讀過文件）。這是為了確保你理解現有文件內容後再修改。", filePath)
+        // 完整讀取：允許所有操作
+        if readLvl == readLevelFull {
+                return nil
+        }
+
+        // 未讀取：直接拒絕
+        if readLvl == readLevelNone {
+                return fmt.Errorf("安全檢查失敗：你必須先使用 ReadFileLines 完整讀取 %s 才能進行寫入/編輯操作。這是為了確保你理解現有文件內容後再修改。", filePath)
+        }
+
+        // 部分讀取（readLevelPartial）：按工具類型細分檢查
+        readRanges := globalReadWriteTracker.GetFileReadRanges(filePath)
+
+        switch toolName {
+        case "WriteFileLine":
+                return checkWriteFileLinePermission(filePath, argsMap, readRanges)
+        case "WriteFileRange":
+                return checkWriteFileRangePermission(filePath, argsMap, readRanges)
+        case "WriteFileLines", "AppendToFile", "TextReplace", "TextTransform":
+                // 全局寫入操作：即使有部分範圍讀取，仍需完整讀取
+                return fmt.Errorf(
+                        "安全檢查失敗：%s 是全局寫入操作，必須先使用 ReadFileLines 完整讀取 %s 才能使用。\n"+
+                                "ReadFileLine / ReadFileRange 僅讀取部分內容，不足以支撐全局寫入。",
+                        toolName, filePath)
+        default:
+                // 未知寫入工具：保守處理，要求完整讀取
+                return fmt.Errorf(
+                        "安全檢查失敗：你必須先使用 ReadFileLines 完整讀取 %s 才能進行寫入操作。",
+                        filePath)
+        }
+}
+
+// checkWriteFileLinePermission 檢查 WriteFileLine 的寫入權限。
+// 處理邏輯：
+//   - LineNum >= 1 (覆寫): 檢查該行是否在已讀範圍內
+//   - LineNum = 0 (新建文件): 由 CheckWritePermission 上層處理（文件不存在時直接放行）
+//   - LineNum = -1 (追加): 需完整讀取（無法確知文件末尾行號）
+//   - LineNum < -1 (插入): 檢查插入點 |LineNum| 是否在已讀範圍內
+func checkWriteFileLinePermission(filePath string, argsMap map[string]interface{}, readRanges []LineRange) error {
+        lineNumFloat, ok := argsMap["LineNum"].(float64)
+        if !ok {
+                return fmt.Errorf("安全檢查失敗：WriteFileLine 缺少 LineNum 參數，無法進行精確權限檢查。請先使用 ReadFileLines 完整讀取 %s。", filePath)
+        }
+
+        lineNum := int(lineNumFloat)
+
+        // LineNum = 0: 新建文件（理論上不應到此處，因為文件存在時不會是 LineNum=0）
+        // 但為安全起見，這裡放行
+        if lineNum == 0 {
+                return nil
+        }
+
+        // LineNum = -1: 追加到末尾 → 需完整讀取
+        if lineNum == -1 {
+                return fmt.Errorf(
+                        "安全檢查失敗：WriteFileLine 追加模式 (LineNum=-1) 需先使用 ReadFileLines 完整讀取 %s。\n"+
+                                "追加操作影響文件結尾，ReadFileLine/ReadFileRange 的部分範圍不足以確認文件結構。",
+                        filePath)
+        }
+
+        // LineNum < -1: 插入到 |LineNum| 之前 → 檢查插入點是否在已讀範圍內
+        if lineNum < -1 {
+                targetLine := -lineNum
+                if readRanges == nil || !isLineInRanges(readRanges, targetLine) {
+                        rangesDesc := describeRanges(readRanges)
+                        return fmt.Errorf(
+                                "安全檢查失敗：你嘗試在第 %d 行之前插入內容，但你尚未讀取該區域。\n"+
+                                        "已讀取範圍：%s\n"+
+                                        "請先用 ReadFileLine 或 ReadFileRange 讀取第 %d 行附近的內容。",
+                                targetLine, rangesDesc, targetLine)
+                }
+                return nil
+        }
+
+        // LineNum >= 1: 覆寫指定行 → 檢查該行是否在已讀範圍內
+        if readRanges == nil || !isLineInRanges(readRanges, lineNum) {
+                rangesDesc := describeRanges(readRanges)
+                return fmt.Errorf(
+                        "安全檢查失敗：你嘗試寫入第 %d 行，但你尚未讀取該行。\n"+
+                                "已讀取範圍：%s\n"+
+                                "請先用 ReadFileLine(LineNum=%d) 讀取該行，或使用 ReadFileRange 讀取包含該行的範圍。",
+                        lineNum, rangesDesc, lineNum)
         }
         return nil
+}
+
+// checkWriteFileRangePermission 檢查 WriteFileRange 的寫入權限。
+// 處理邏輯：
+//   - StartLine >= 1 (覆寫): 檢查 [StartLine, EndLine] 是否與已讀範圍有交集
+//   - StartLine < 0 (插入): 檢查插入點 |StartLine| 是否在已讀範圍內
+func checkWriteFileRangePermission(filePath string, argsMap map[string]interface{}, readRanges []LineRange) error {
+        startLineFloat, ok := argsMap["StartLine"].(float64)
+        if !ok {
+                return fmt.Errorf("安全檢查失敗：WriteFileRange 缺少 StartLine 參數，無法進行精確權限檢查。請先使用 ReadFileLines 完整讀取 %s。", filePath)
+        }
+
+        startLine := int(startLineFloat)
+
+        // StartLine = 0 不合法（handler 會拒絕），但此處防禦性處理
+        if startLine == 0 {
+                return nil
+        }
+
+        // StartLine < 0: 插入模式 → 檢查插入點 |StartLine| 是否在已讀範圍內
+        if startLine < 0 {
+                targetLine := -startLine
+                if readRanges == nil || !isLineInRanges(readRanges, targetLine) {
+                        rangesDesc := describeRanges(readRanges)
+                        return fmt.Errorf(
+                                "安全檢查失敗：你嘗試在第 %d 行之前插入內容，但你尚未讀取該區域。\n"+
+                                        "已讀取範圍：%s\n"+
+                                        "請先用 ReadFileLine 或 ReadFileRange 讀取第 %d 行附近的內容。",
+                                targetLine, rangesDesc, targetLine)
+                }
+                return nil
+        }
+
+        // StartLine >= 1: 覆寫模式 → 檢查是否與已讀範圍有交集
+        endLine := startLine
+        if endLineFloat, ok := argsMap["EndLine"].(float64); ok && endLineFloat >= float64(startLine) {
+                endLine = int(endLineFloat)
+        }
+
+        if readRanges == nil || !isRangeOverlapping(readRanges, LineRange{StartLine: startLine, EndLine: endLine}) {
+                rangesDesc := describeRanges(readRanges)
+                return fmt.Errorf(
+                        "安全檢查失敗：你嘗試寫入第 %d-%d 行，但該範圍與你已讀取的範圍無交集。\n"+
+                                "已讀取範圍：%s\n"+
+                                "請先用 ReadFileRange 讀取包含目標範圍的內容。",
+                        startLine, endLine, rangesDesc)
+        }
+        return nil
+}
+
+// describeRanges 將已讀範圍列表格式化為人類可讀的字串
+func describeRanges(ranges []LineRange) string {
+        if len(ranges) == 0 {
+                return "（無）"
+        }
+        parts := make([]string, len(ranges))
+        for i, r := range ranges {
+                if r.StartLine == r.EndLine {
+                        parts[i] = fmt.Sprintf("第 %d 行", r.StartLine)
+                } else {
+                        parts[i] = fmt.Sprintf("第 %d-%d 行", r.StartLine, r.EndLine)
+                }
+        }
+        return strings.Join(parts, "、")
 }
 
 // ============================================================================
@@ -655,7 +939,7 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
         if isWriteTool(toolName) {
                 filePath := extractFilePathFromArgs(argsMap)
                 if filePath != "" {
-                        if err := CheckWritePermission(filePath, toolName); err != nil {
+                        if err := CheckWritePermission(filePath, toolName, argsMap); err != nil {
                                 log.Printf("[ToolSafety] 先读后写检查失败: tool=%s file=%s", toolName, filePath)
 
                                 errStr := err.Error()
@@ -714,10 +998,11 @@ func extractFilePathFromArgs(args map[string]interface{}) string {
 }
 
 // init 初始化：工具安全网启动日志
-// MarkFileFullyRead / MarkFilePartialRead 已集成到以下工具中：
+// 讀寫追蹤已集成到以下工具中：
 //   - executeTool.go: execReadFileLines -> MarkFileFullyRead
-//   - executeTool.go: execReadFileLine -> MarkFilePartialRead
-//   - TextReplace_tools.go: handleTextSearch (TextGrep) -> MarkFilePartialRead
+//   - executeTool.go: execReadFileLine -> MarkFileLineRead（精確行號追蹤）
+//   - executeTool.go: execReadFileRange -> MarkFileRangeRead（精確範圍追蹤）
+//   - TextReplace_tools.go: handleTextSearch (TextGrep) -> MarkFilePartialRead（無具體範圍）
 func init() {
         log.Printf("[ToolSafety] 工具安全网已初始化: MaxIterations=%d, ReadOnlyTools=%d",
                 MaxAgentLoopIterations, len(ReadOnlyTools))

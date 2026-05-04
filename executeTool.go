@@ -189,8 +189,8 @@ func execReadFileLine(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
 
-        // 标记文件已部分读取（先读后写安全检查 - 部分读取不满足写入前置要求，仅作追踪）
-        globalReadWriteTracker.MarkFilePartialRead(filename)
+        // 标记文件已读取特定行（先读后写安全检查 - 記錄精確行號以便 WriteFileLine 檢查寫入權限）
+        globalReadWriteTracker.MarkFileLineRead(filename, lineNum)
 
         // 检查是否需要详细信息
         verbose := false
@@ -442,8 +442,8 @@ func execReadFileRange(ec *ToolExecContext) (string, TaskStatus) {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
 
-        // 标记文件已部分读取（先读后写安全检查 - 部分读取不满足写入前置要求，仅作追踪）
-        globalReadWriteTracker.MarkFilePartialRead(filename)
+        // 标记文件已讀取精確範圍（先讀後寫安全檢查 - 記錄範圍以便 WriteFileRange 檢查交集寫入權限）
+        globalReadWriteTracker.MarkFileRangeRead(filename, startLine, endLine)
 
         // 检查是否需要详细信息
         verbose := false

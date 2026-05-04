@@ -12,12 +12,13 @@ import (
 
 // Default threshold constants (in characters)
 const (
-	DefaultToolResultThreshold = 10000
-	ShellToolThreshold         = 15000
-	BrowserToolThreshold       = 20000
-	FileToolThreshold          = 10000
-	PreviewHeadChars           = 2000 // number of characters for head preview
-	PreviewTailChars           = 500  // number of characters for tail preview
+	PreviewHeadChars = 2000 // number of characters for head preview
+	PreviewTailChars = 500  // number of characters for tail preview
+
+	// dynamicThresholdSentinel 標記該工具應使用動態閾值（基於模型上下文窗口大小計算）。
+	// resolveThreshold 遇到此值時會調用 DynamicToolThreshold()。
+	// 所有工具類別統一使用此標記，不再使用硬編碼字符限制。
+	dynamicThresholdSentinel = -1
 )
 
 // ToolResultBudget manages per-tool result size thresholds and caches
@@ -32,22 +33,23 @@ type ToolResultBudget struct {
 // toolCategoryPrefixes maps keyword prefixes to their tool category thresholds.
 // A tool name is matched against these prefixes in order; the first match wins.
 // Matching is case-insensitive (resolveThreshold uses strings.ToLower on toolName).
+// 所有工具類別統一使用 dynamicThresholdSentinel，閾值由當前模型上下文窗口動態決定。
 var toolCategoryPrefixes = []struct {
-	prefix   string
+	prefix    string
 	threshold int
 }{
-	{"Shell", ShellToolThreshold},
-	{"SmartShell", ShellToolThreshold},
-	{"ssh", ShellToolThreshold},
-	{"browser", BrowserToolThreshold},
-	{"readfileline", FileToolThreshold},
-	{"readfilelines", FileToolThreshold},
-	{"readfilerange", FileToolThreshold},
-	{"writefileline", FileToolThreshold},
-	{"writefilelines", FileToolThreshold},
-	{"writefilerange", FileToolThreshold},
-	{"appendtofile", FileToolThreshold},
-	{"mcp", 10000},
+	{"Shell", dynamicThresholdSentinel},
+	{"SmartShell", dynamicThresholdSentinel},
+	{"ssh", dynamicThresholdSentinel},
+	{"browser", dynamicThresholdSentinel},
+	{"readfileline", dynamicThresholdSentinel},
+	{"readfilelines", dynamicThresholdSentinel},
+	{"readfilerange", dynamicThresholdSentinel},
+	{"writefileline", dynamicThresholdSentinel},
+	{"writefilelines", dynamicThresholdSentinel},
+	{"writefilerange", dynamicThresholdSentinel},
+	{"appendtofile", dynamicThresholdSentinel},
+	{"mcp", dynamicThresholdSentinel},
 }
 
 // NewToolResultBudget creates a new ToolResultBudget with sensible defaults.
@@ -60,7 +62,7 @@ func NewToolResultBudget(cacheDir string) *ToolResultBudget {
 	}
 	b := &ToolResultBudget{
 		thresholds:   make(map[string]int),
-		defaultLimit: DefaultToolResultThreshold,
+		defaultLimit: dynamicThresholdSentinel,
 		cacheDir:     cacheDir,
 	}
 	b.applyDefaultCategoryThresholds()
@@ -102,6 +104,9 @@ func (b *ToolResultBudget) resolveThreshold(toolName string) int {
 
 	// 1. Exact tool-name override
 	if t, ok := b.thresholds[toolName]; ok {
+		if t == dynamicThresholdSentinel {
+			return DynamicToolThreshold()
+		}
 		return t
 	}
 
@@ -116,10 +121,17 @@ func (b *ToolResultBudget) resolveThreshold(toolName string) int {
 		}
 	}
 	if bestLen > 0 {
+		// 動態閾值標記：基於模型上下文窗口計算實際閾值
+		if bestThreshold == dynamicThresholdSentinel {
+			return DynamicToolThreshold()
+		}
 		return bestThreshold
 	}
 
-	// 3. Global default
+	// 3. Global default（同樣使用動態閾值）
+	if b.defaultLimit == dynamicThresholdSentinel {
+		return DynamicToolThreshold()
+	}
 	return b.defaultLimit
 }
 
@@ -127,6 +139,9 @@ func (b *ToolResultBudget) resolveThreshold(toolName string) int {
 // configured threshold for the tool, the full result is persisted to disk under
 // b.cacheDir and a preview snippet with metadata is returned.  Otherwise the
 // original result is returned unchanged.
+//
+// 所有工具類別統一使用 DynamicToolThreshold() 動態計算閾值，
+// 基於當前模型上下文窗口大小（與 ReadFileLines 檔案大小檢查一致）。
 func (b *ToolResultBudget) CheckAndPersistResult(toolName, result string) string {
 	threshold := b.resolveThreshold(toolName)
 	runes := []rune(result)
@@ -294,6 +309,25 @@ func CleanOldCacheDir(cacheDir string, maxAge time.Duration) (int, error) {
 	}
 
 	return removed, firstErr
+}
+
+// DynamicToolThreshold 根據當前模型上下文窗口動態計算所有工具嘅輸出截斷閾值。
+// 使用與 ReadFileLines 檔案大小檢查一致的算法：
+//
+//	threshold = contextLen * maxReadFileLinesFraction * 4
+//
+// 僅設下限 10,000 chars（避免細模型結果過少），無上限——動態公式已保證
+// 輸出唔會超過 50% context window，無需額外限制。
+func DynamicToolThreshold() int {
+	contextLen := getEffectiveContextLength()
+	dynamic := int(float64(contextLen) * maxReadFileLinesFraction * 4)
+
+	const dynamicMin = 10000
+
+	if dynamic < dynamicMin {
+		return dynamicMin
+	}
+	return dynamic
 }
 
 // --- global singleton ---
