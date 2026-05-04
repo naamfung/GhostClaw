@@ -94,10 +94,11 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                 "DefaultRole":     getDefaultRole(),
                 "NeedsSetup":      needsSetup,
                 "Timeout": map[string]interface{}{
-                        "Shell":   globalTimeoutConfig.Shell,
-                        "HTTP":    globalTimeoutConfig.HTTP,
-                        "Plugin":  globalTimeoutConfig.Plugin,
-                        "Browser": globalTimeoutConfig.Browser,
+                        "MinTimeout": globalTimeoutConfig.MinTimeout,
+                        "Shell":      globalTimeoutConfig.Shell,
+                        "HTTP":       globalTimeoutConfig.HTTP,
+                        "Plugin":     globalTimeoutConfig.Plugin,
+                        "Browser":    globalTimeoutConfig.Browser,
                 },
                 "Compression": map[string]interface{}{
                         "Mode":      globalCompressionMode,
@@ -188,6 +189,9 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 if timeoutMap, ok := timeoutRaw.(map[string]interface{}); ok {
                         mergedTimeout := currentConfig.Timeout // 从当前配置开始合并
 
+                        if _, exists := timeoutMap["MinTimeout"]; exists {
+                                mergedTimeout.MinTimeout = newConfig.Timeout.MinTimeout
+                        }
                         if _, exists := timeoutMap["Shell"]; exists && newConfig.Timeout.Shell > 0 {
                                 mergedTimeout.Shell = newConfig.Timeout.Shell
                         }

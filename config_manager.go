@@ -131,6 +131,7 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.DataDir = ""
         config.Security.EnableSSRFProtection = true
         config.CronConfig.MaxConcurrent = 1
+        config.Timeout.MinTimeout = DefaultMinTimeout
         config.Timeout.Shell = DefaultShellTimeout
         config.Timeout.HTTP = DefaultHTTPTimeout
         config.Timeout.Plugin = DefaultPluginTimeout
@@ -220,6 +221,9 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
         if config.Timeout.Browser == 0 {
                 config.Timeout.Browser = DefaultBrowserTimeout
         }
+
+        // Enforce MinTimeout floor: all timeouts must be >= MinTimeout when set
+        cm.enforceMinTimeout(config)
 
         // Heartbeat 默认值
         if config.Heartbeat.IntervalSeconds == 0 {
@@ -599,6 +603,7 @@ func (cm *ConfigManager) UpdateTimeout(timeout TimeoutConfig) error {
         defer cm.mu.Unlock()
 
         cm.config.Timeout = timeout
+        cm.enforceMinTimeoutLocked()
         return cm.saveLocked()
 }
 
@@ -873,6 +878,37 @@ func (cm *ConfigManager) findMainModelNameLocked() string {
                 return name
         }
         return ""
+}
+
+// enforceMinTimeout 确保所有超时值不低于 MinTimeout（不持锁版本，供 applyDefaults 使用）
+func (cm *ConfigManager) enforceMinTimeout(config *Config) {
+        if config.Timeout.MinTimeout <= 0 {
+                return
+        }
+        floor := config.Timeout.MinTimeout
+        if config.Timeout.Shell < floor {
+                config.Timeout.Shell = floor
+        }
+        if config.Timeout.HTTP < floor {
+                config.Timeout.HTTP = floor
+        }
+        if config.Timeout.Plugin < floor {
+                config.Timeout.Plugin = floor
+        }
+        if config.Timeout.Browser < floor {
+                config.Timeout.Browser = floor
+        }
+        if config.Tools.SmartShell.SyncTimeout < floor {
+                config.Tools.SmartShell.SyncTimeout = floor
+        }
+        if config.Tools.SmartShell.UnknownTimeout < floor {
+                config.Tools.SmartShell.UnknownTimeout = floor
+        }
+}
+
+// enforceMinTimeoutLocked 确保所有超时值不低于 MinTimeout（持锁版本，供 UpdateTimeout 等使用）
+func (cm *ConfigManager) enforceMinTimeoutLocked() {
+        cm.enforceMinTimeout(&cm.config)
 }
 
 // GetConfigPath 返回配置文件路径

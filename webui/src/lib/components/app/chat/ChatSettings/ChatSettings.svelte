@@ -271,6 +271,11 @@
                         icon: Timer,
                         fields: [
                                 {
+                                        key: SETTINGS_KEYS.TIMEOUT_MIN,
+                                        label: '全局最低超时（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
                                         key: SETTINGS_KEYS.TIMEOUT_SHELL,
                                         label: 'Shell 命令超时（秒）',
                                         type: SettingsFieldType.INPUT
@@ -363,6 +368,7 @@
 
                         // Timeout configuration
                         backendConfig.timeout = {
+                                minTimeout: Number(processedConfig.timeoutMin) || 0,
                                 shell: Number(processedConfig.timeoutShell) || 60,
                                 http: Number(processedConfig.timeoutHttp) || 120,
                                 plugin: Number(processedConfig.timeoutPlugin) || 120,

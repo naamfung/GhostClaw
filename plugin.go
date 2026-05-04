@@ -853,7 +853,7 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
                 // 使用安全 HTTP 客户端（自动 SSRF 检查），超时使用配置值
                 timeout := globalTimeoutConfig.Plugin
                 if timeout <= 0 {
-                        timeout = 30
+                        timeout = DefaultPluginTimeout
                 }
                 ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
                 defer cancel()
@@ -885,7 +885,7 @@ func (pm *PluginManager) registerAPIs(L *lua.LState, pluginName string) {
                 contentType := L.OptString(3, "application/json")
                 timeout := globalTimeoutConfig.Plugin
                 if timeout <= 0 {
-                        timeout = 30
+                        timeout = DefaultPluginTimeout
                 }
                 ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
                 defer cancel()

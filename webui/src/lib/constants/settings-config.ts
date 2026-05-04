@@ -19,6 +19,7 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         temperature: undefined,
         max_tokens: undefined,
         // timeout settings (in seconds)
+        timeoutMin: 0,  // 0 = no minimum
         timeoutShell: 60,
         timeoutHttp: 120,
         timeoutPlugin: 120,
@@ -88,6 +89,7 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         browserDisableTools:
                 '当 opencli 可用时，禁用内置浏览器工具，强制使用 opencli 进行网页操作。',
         // Timeout settings
+        timeoutMin: '全局最低超时（秒）。设定后所有超时选项自动提升至此值。设为 0 则不启用。',
         timeoutShell: 'Shell 命令执行的超时时间（秒）。超时后命令将被强制终止。',
         timeoutHttp: 'HTTP 请求的超时时间（秒）。包括 API 调用和网络请求。',
         timeoutPlugin: '插件内 HTTP 请求的超时时间（秒）。插件调用网络接口时的等待上限。',

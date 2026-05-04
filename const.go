@@ -13,6 +13,7 @@ var (
 
 // 默认超时配置常量（单位：秒）
 const (
+        DefaultMinTimeout         = 0   // 全局最低超时（秒），0=不限制
         DefaultShellTimeout       = 60  // shell 命令默认超时
         DefaultBlockingCmdTimeout = 5   // 可能阻塞的命令超时（交互式命令确认后执行）
         DefaultHTTPTimeout        = 120 // HTTP 请求默认超时

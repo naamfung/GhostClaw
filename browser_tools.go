@@ -30,7 +30,7 @@ func getBrowserTimeout(timeoutSec int) int {
         }
         timeout := globalTimeoutConfig.Browser
         if timeout <= 0 {
-                timeout = 30
+                timeout = DefaultBrowserTimeout
         }
         return timeout
 }

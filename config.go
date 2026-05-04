@@ -99,10 +99,11 @@ type APIConfig struct {
 
 // 超时配置（单位：秒）
 type TimeoutConfig struct {
-        Shell   int `toon:"Shell" json:"Shell"`
-        HTTP    int `toon:"HTTP" json:"HTTP"`
-        Plugin  int `toon:"Plugin" json:"Plugin"`
-        Browser int `toon:"Browser" json:"Browser"`
+        MinTimeout int `toon:"MinTimeout" json:"MinTimeout"` // 全局最低超时（秒），0=不限制
+        Shell      int `toon:"Shell" json:"Shell"`
+        HTTP       int `toon:"HTTP" json:"HTTP"`
+        Plugin     int `toon:"Plugin" json:"Plugin"`
+        Browser    int `toon:"Browser" json:"Browser"`
 }
 
 // 安全配置

@@ -5,6 +5,7 @@
 export const NUMERIC_FIELDS = [
         'temperature',
         'max_tokens',
+        'timeoutMin',
         'timeoutShell',
         'timeoutHttp',
         'timeoutPlugin',

@@ -22,6 +22,7 @@ export const SETTINGS_KEYS = {
         TEMPERATURE: 'temperature',
         MAX_TOKENS: 'max_tokens',
         // Timeout
+        TIMEOUT_MIN: 'timeoutMin',
         TIMEOUT_SHELL: 'timeoutShell',
         TIMEOUT_HTTP: 'timeoutHttp',
         TIMEOUT_PLUGIN: 'timeoutPlugin',
