@@ -50,13 +50,13 @@ type anthropicToolBlock struct {
 
 // openaiRequest 構建 OpenAI API 請求體。
 type openaiRequest struct {
-	Model       string        `json:"model"`
-	Messages    []interface{} `json:"messages"`
-	Tools       []interface{} `json:"tools,omitempty"`
-	Temperature float64       `json:"temperature"`
-	Stream      bool          `json:"stream"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Thinking    interface{}   `json:"thinking,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []openaiMessage `json:"messages"`
+	Tools       []interface{}   `json:"tools,omitempty"`
+	Temperature float64         `json:"temperature"`
+	Stream      bool            `json:"stream"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Thinking    interface{}     `json:"thinking,omitempty"`
 }
 
 // ollamaRequest 構建 Ollama API 請求體。
@@ -67,6 +67,14 @@ type ollamaRequest struct {
 	Stream      bool          `json:"stream"`
 	System      string        `json:"system"`
 	Temperature float64       `json:"temperature"`
+}
+
+// openaiMessage OpenAI/DeepSeek 格式嘅單條 message。
+// 用 struct 而唔係 map[string]interface{} 確保 JSON key order 確定（role → content），
+// 令 DeepSeek KV Cache 嘅 byte-level prefix 一致。
+type openaiMessage struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
 }
 
 // rateLimiter 基于令牌桶算法的速率限制器
@@ -1264,8 +1272,7 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 
         // ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
         // 唔物理刪除工具，改用 message 標記控制模型行為，保持 prompt cache prefix 一致
-        if apiType == "anthropic" && globalPromptCacheConfig.Enabled &&
-                globalPromptCacheConfig.StableTools &&
+        if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools &&
                 globalTasksMode != nil && globalTasksMode.IsActive() {
                 tasksPrompt := GetTasksModeSystemPrompt()
                 if tasksPrompt != "" {
@@ -1333,11 +1340,18 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
                 if baseURL == "" {
                         baseURL = OPENAI_BASE_URL
                 }
-                var openaiMessages []interface{}
-                openaiMessages = append(openaiMessages, map[string]interface{}{
-                        "role": "system", "content": finalSystemPrompt,
+                // 使用 openaiMessage struct 確保 JSON key order 確定（role → content）
+                var openaiMessages []openaiMessage
+                openaiMessages = append(openaiMessages, openaiMessage{
+                        Role: "system", Content: finalSystemPrompt,
                 })
-                openaiMessages = append(openaiMessages, mapSliceToInterfaceSlice(convertToOpenAIFormat(filteredMessages))...)
+                for _, m := range convertToOpenAIFormat(filteredMessages) {
+                        role, _ := m["role"].(string)
+                        openaiMessages = append(openaiMessages, openaiMessage{
+                                Role:    role,
+                                Content: m["content"],
+                        })
+                }
 
                 req := openaiRequest{
                         Model: modelID, Messages: openaiMessages,

@@ -133,9 +133,9 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
 
         var tools interface{}
 
-        // ── StableTools: Anthropic 啟用時跳過 tier/sampling/density 過濾 ──
-        // 確保每次請求的工具集完全一致，讓 prompt caching byte-for-byte prefix match 命中
-        stableTools := globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools && apiType == "anthropic"
+        // ── StableTools: 跳過 tier/sampling/density 過濾，保持工具集穩定 ──
+        // DeepSeek KV Cache / Anthropic Prompt Cache 都需要工具集一致先可以命中
+        stableTools := globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools
 
         // ── P3: 工具分發 — 若已配置分發規則，從中抽樣工具子集 ──────
         var sampledToolNames []string
@@ -256,7 +256,7 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
                 // StableTools 啟用時：保留完整工具集（唔物理刪除工具），
                 // 改用 message 標記控制行為（見 prepareRequestData 嘅 [SYSTEM_PLAN_MODE] 注入）
                 // runtime guard IsToolAllowedInTasksMode 仍然生效
-                if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools && apiType == "anthropic" {
+                if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools {
                         // 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
                         planToolNames := make(map[string]bool, len(planTools))
                         for _, pt := range planTools {
