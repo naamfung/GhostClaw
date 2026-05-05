@@ -118,6 +118,19 @@ func getFilteredTools(apiType string, role *Role) interface{} {
 // contextWindow == 0 时行为与 getFilteredTools 完全一致（向后兼容，返回全部工具）
 // Anthropic 使用原生格式数据源，不做 OpenAI→Anthropic 格式转换
 func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) interface{} {
+        // ── Fast path：冇任何過濾需要，直接返回已緩存嘅全量工具 ──
+        // getTools() 內部由 sync.Once 緩存，近乎零成本。
+        // 條件：無 tier filtering、無 distribution sampling、無 config 過濾、
+        //       無 Plan Mode、無 role 過濾、無 MCP 動態工具
+        if contextWindow == 0 &&
+                (globalToolDistributionMgr == nil) &&
+                !hasConfigDisabledTools() &&
+                (globalTasksMode == nil || !globalTasksMode.IsActive()) &&
+                (role == nil || role.ToolPermission.Mode == ToolPermissionAll) &&
+                (globalMCPClientManager == nil || len(globalMCPClientManager.GetAllTools()) == 0) {
+                return getTools(apiType)
+        }
+
         var tools interface{}
 
         // ── StableTools: Anthropic 啟用時跳過 tier/sampling/density 過濾 ──
@@ -175,6 +188,18 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
         }
         // 添加 MCP 客户端工具与记忆整合工具
         return appendDynamicTools(apiType, filtered)
+}
+
+// hasConfigDisabledTools 快速檢查是否有工具被配置禁用（無需構建工具列表）。
+// 用於 getFilteredToolsWithContext fast path，避免不必要嘅 filterToolsByConfig 調用。
+func hasConfigDisabledTools() bool {
+        if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
+                return true
+        }
+        if isOpenCLIAvailable() && DisableBrowserTools {
+                return true
+        }
+        return false
 }
 
 // filterToolsByConfig 根据工具配置过滤工具列表
