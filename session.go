@@ -173,6 +173,65 @@ func (s *GlobalSession) LoadFromPersist() error {
         return nil
 }
 
+// SwapToSession 切換到指定 session。
+// 如果 sessionID 為空、與當前相同、或 persist 未初始化則直接返回。
+// 會自動保存當前 session 狀態，然後加載目標 session。
+func (s *GlobalSession) SwapToSession(sessionID string) error {
+	if sessionID == "" || globalSessionPersist == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	currentID := s.ID
+	s.mu.RUnlock()
+
+	if sessionID == currentID {
+		return nil
+	}
+
+	// 自動保存當前 session
+	s.autoSaveHistory()
+
+	// 加載目標 session
+	saved, err := globalSessionPersist.LoadSession(sessionID)
+	if err != nil {
+		log.Printf("[GlobalSession] SwapToSession: failed to load session %s: %v", sessionID, err)
+		return err
+	}
+	if saved == nil {
+		log.Printf("[GlobalSession] SwapToSession: session %s not found in DB", sessionID)
+		return fmt.Errorf("session %s not found", sessionID)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ID = saved.ID
+	s.History = saved.History
+	s.CreatedAt = saved.CreatedAt
+	s.persistID = saved.ID
+	s.IsNewSession = false
+
+	// 恢復 token 追蹤統計
+	if s.tracker != nil && saved.TotalTokens > 0 {
+		s.tracker.mu.Lock()
+		s.tracker.stats.InputTokens = saved.InputTokens
+		s.tracker.stats.OutputTokens = saved.OutputTokens
+		s.tracker.stats.TotalTokens = saved.TotalTokens
+		s.tracker.stats.TurnCount = saved.TurnCount
+		s.tracker.started = true
+		s.tracker.mu.Unlock()
+	}
+
+	// 清除 pending messages（避免舊 session 嘅 pending 干擾）
+	s.inputMu.Lock()
+	s.InputMessages = make([]string, 0)
+	s.inputMu.Unlock()
+
+	log.Printf("[GlobalSession] Swapped from %s to session %s, %d messages loaded", currentID, sessionID, len(saved.History))
+	return nil
+}
+
 // SavePendingMessages 保存未处理消息队列到文件
 func (s *GlobalSession) SavePendingMessages() error {
         // 创建消息队列目录

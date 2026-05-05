@@ -219,14 +219,6 @@ class WebSocketManager {
 
 const wsManager = new WebSocketManager();
 
-// Restore session ID from localStorage
-if (typeof window !== 'undefined') {
-        const savedSessionId = localStorage.getItem('ghostclaw_session_id');
-        if (savedSessionId) {
-                wsManager.setSessionId(savedSessionId);
-        }
-}
-
 export class ChatService {
         private static stripReasoningContent(
                 content: ApiChatMessageData['content'] | null | undefined
@@ -481,6 +473,10 @@ export class ChatService {
 
         static getSessionId(): string {
                 return wsManager.getSessionId();
+        }
+
+        static setSessionId(id: string): void {
+                wsManager.setSessionId(id);
         }
 
         static disconnect(): void {

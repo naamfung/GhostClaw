@@ -11,6 +11,8 @@ export interface DatabaseConversation {
 	id: string;
 	lastModified: number;
 	name: string;
+	/** Backend session ID (e.g., "20260505_093630") */
+	sessionId?: string;
 	mcpServerOverrides?: McpServerOverride[];
 }
 

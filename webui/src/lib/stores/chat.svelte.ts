@@ -871,6 +871,13 @@ class ChatStore {
                         assistantMessage.convId,
                         abortController.signal
                 );
+
+                const activeConv = conversationsStore.activeConversation;
+                const sessionId = ChatService.getSessionId();
+                if (sessionId && activeConv && activeConv.sessionId !== sessionId) {
+                        await DatabaseService.updateConversation(activeConv.id, { sessionId });
+                        activeConv.sessionId = sessionId;
+                }
         }
 
         async stopGeneration(): Promise<void> {

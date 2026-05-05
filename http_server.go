@@ -102,6 +102,12 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                 return
         }
         session := GetGlobalSession()
+        if requestedID := r.URL.Query().Get("session"); requestedID != "" && requestedID != session.ID {
+                log.Printf("[WS] Requested session %s, current is %s - swapping", requestedID, session.ID)
+                if err := session.SwapToSession(requestedID); err != nil {
+                        log.Printf("[WS] Failed to swap to session %s: %v", requestedID, err)
+                }
+        }
         connID := uuid.New().String()[:8]
         wsChannel := NewWSChannel(conn)
 

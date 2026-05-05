@@ -3,6 +3,7 @@
         import { page } from '$app/state';
         import { afterNavigate } from '$app/navigation';
         import { ChatScreen, DialogModelNotAvailable } from '$lib/components/app';
+        import { ChatService } from '$lib/services';
         import { chatStore, isLoading } from '$lib/stores/chat.svelte';
         import {
                 conversationsStore,
@@ -124,6 +125,10 @@
 
                         // Skip loading if this conversation is already active (e.g., just created)
                         if (activeConversation()?.id === chatId) {
+                                const conv = conversationsStore.activeConversation;
+                                if (conv?.sessionId) {
+                                        ChatService.setSessionId(conv.sessionId);
+                                }
                                 // Still handle URL params even if conversation is active
                                 if ((qParam !== null || modelParam !== null) && !urlParamsProcessed) {
                                         handleUrlParams();
@@ -135,6 +140,11 @@
                                 const success = await conversationsStore.loadConversation(chatId);
                                 if (success) {
                                         chatStore.syncLoadingStateForChat(chatId);
+
+                                        const conv = conversationsStore.activeConversation;
+                                        if (conv?.sessionId) {
+                                                ChatService.setSessionId(conv.sessionId);
+                                        }
 
                                         // Handle URL params after conversation is loaded
                                         if ((qParam !== null || modelParam !== null) && !urlParamsProcessed) {
