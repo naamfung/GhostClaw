@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// getMaxWorkModeResumeRounds returns the max resume rounds for work mode exit guard.
+// Default is 3 if not configured.
+func getMaxWorkModeResumeRounds() int {
+	if globalConfig.MaxWorkModeResumeRounds > 0 {
+		return globalConfig.MaxWorkModeResumeRounds
+	}
+	return 3
+}
+
 // ============================================================================
 // loop_branch_none.go — Branch A: 無工具調用時的分支邏輯
 // ============================================================================
