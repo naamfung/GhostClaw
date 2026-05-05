@@ -120,9 +120,13 @@ func getFilteredTools(apiType string, role *Role) interface{} {
 func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) interface{} {
         var tools interface{}
 
+        // ── StableTools: Anthropic 啟用時跳過 tier/sampling/density 過濾 ──
+        // 確保每次請求的工具集完全一致，讓 prompt caching byte-for-byte prefix match 命中
+        stableTools := globalPromptCacheConfig.StableTools && apiType == "anthropic"
+
         // ── P3: 工具分發 — 若已配置分發規則，從中抽樣工具子集 ──────
         var sampledToolNames []string
-        if globalToolDistributionMgr != nil {
+        if !stableTools && globalToolDistributionMgr != nil {
                 if sampled := globalToolDistributionMgr.SampleToolset(); sampled != nil && len(sampled.ToolNames) > 0 {
                         sampledToolNames = sampled.ToolNames
                 }
@@ -130,7 +134,8 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
 
         // 如果提供了上下文窗口信息，使用分层工具管理
         // 根據 API 類型選擇對應格式的原生數據源，避免格式轉換
-        if contextWindow > 0 {
+        // StableTools 啟用時跳過 tier filtering，直接使用完整工具集
+        if contextWindow > 0 && !stableTools {
                 if apiType == "anthropic" {
                         tools = getFilteredAnthropicTools(contextWindow, role)
                 } else {
@@ -138,13 +143,14 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
                 }
         } else {
                 // 向後兼容：無上下文窗口信息時返回全部工具
+                // StableTools 啟用時亦使用完整工具集
                 tools = getTools(apiType)
         }
 
         // 首先根据工具配置过滤
         tools = filterToolsByConfig(apiType, tools)
 
-        // ── P3: 應用工具分發抽樣結果 ──────────────────────────────────
+        // ── P3: 應用工具分發抽樣結果（StableTools 啟用時跳過）──────
         if len(sampledToolNames) > 0 {
                 tools = applyToolDistributionFilter(apiType, tools, sampledToolNames)
         }
@@ -222,7 +228,37 @@ func appendDynamicTools(apiType string, tools interface{}) interface{} {
         if globalTasksMode != nil && globalTasksMode.IsActive() {
                 planTools := GetTasksModeToolDefs()
 
-                // 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
+                // StableTools 啟用時：保留完整工具集（唔物理刪除工具），
+                // 改用 message 標記控制行為（見 prepareRequestData 嘅 [SYSTEM_PLAN_MODE] 注入）
+                // runtime guard IsToolAllowedInTasksMode 仍然生效
+                if globalPromptCacheConfig.StableTools && apiType == "anthropic" {
+                        // 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
+                        planToolNames := make(map[string]bool, len(planTools))
+                        for _, pt := range planTools {
+                                if name := getToolName(pt); name != "" {
+                                        planToolNames[name] = true
+                                }
+                        }
+                        filtered := make([]map[string]interface{}, 0, len(toolList))
+                        for _, t := range toolList {
+                                name := getToolName(t)
+                                if planToolNames[name] {
+                                        continue // 動態工具已覆蓋，跳過同名靜態工具
+                                }
+                                filtered = append(filtered, t)
+                        }
+                        phase := globalTasksMode.Phase()
+                        log.Printf("[TasksMode] Phase %s (StableTools): 保留完整工具集 %d + plan tools %d",
+                                phase, len(filtered), len(planTools))
+
+                        if apiType == "anthropic" {
+                                planTools = convertToolsToAnthropic(planTools)
+                        }
+                        filtered = append(filtered, planTools...)
+                        return filtered
+                }
+
+                // 原有行為：根據 Phase allow-list 物理移除不允許的工具
                 planToolNames := make(map[string]bool, len(planTools))
                 for _, pt := range planTools {
                         if name := getToolName(pt); name != "" {

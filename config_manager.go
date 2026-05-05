@@ -168,6 +168,8 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.Resilience.InitialBackoffSeconds = DefaultResilienceInitialBackoffSeconds
         config.Resilience.MaxBackoffSeconds = DefaultResilienceMaxBackoffSeconds
         config.Resilience.BackoffMultiplier = DefaultResilienceBackoffMultiplier
+        config.PromptCache.Enabled = DefaultPromptCacheEnabled
+        config.PromptCache.StableTools = DefaultPromptCacheStableTools
         return config
 }
 
@@ -366,6 +368,13 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
                 if config.Resilience.BackoffMultiplier == 0 {
                         config.Resilience.BackoffMultiplier = DefaultResilienceBackoffMultiplier
                 }
+        }
+
+        // PromptCache 預設值（Enabled 同 StableTools 都係 bool，零值 false 有意義）
+        // 若成個 struct 係零值（從未設定），套用完整預設值
+        if !config.PromptCache.Enabled && !config.PromptCache.StableTools {
+                config.PromptCache.Enabled = DefaultPromptCacheEnabled
+                config.PromptCache.StableTools = DefaultPromptCacheStableTools
         }
 }
 
@@ -781,6 +790,15 @@ func (cm *ConfigManager) UpdateResilienceConfig(newCfg ResilienceConfig) error {
         return cm.saveLocked()
 }
 
+// UpdatePromptCacheConfig 更新 Prompt 快取配置
+func (cm *ConfigManager) UpdatePromptCacheConfig(newCfg PromptCacheConfig) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        cm.config.PromptCache = newCfg
+        return cm.saveLocked()
+}
+
 // ReplaceConfig 替换整个配置对象（用于配置向导等场景），保存
 func (cm *ConfigManager) ReplaceConfig(config Config) error {
         cm.mu.Lock()
@@ -883,6 +901,7 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         globalSkillCleanupThresholdDays = cm.config.Tools.SkillCleanupThresholdDays
         globalEscalationThreshold = cm.config.Tools.EscalationThreshold
         globalResilienceConfig = cm.config.Resilience
+        globalPromptCacheConfig = cm.config.PromptCache
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）

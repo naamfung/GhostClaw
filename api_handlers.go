@@ -116,6 +116,10 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                         "MaxBackoffSeconds":      globalResilienceConfig.MaxBackoffSeconds,
                         "BackoffMultiplier":      globalResilienceConfig.BackoffMultiplier,
                 },
+                "PromptCache": map[string]interface{}{
+                        "Enabled":     globalPromptCacheConfig.Enabled,
+                        "StableTools": globalPromptCacheConfig.StableTools,
+                },
         }
 
         json.NewEncoder(w).Encode(configData)
@@ -138,14 +142,15 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
 
         // 解析请求
         var newConfig struct {
-                APIConfig        APIConfig         `json:"APIConfig"`
-                DefaultRole      string            `json:"DefaultRole"`
-                DefaultLanguage  string            `json:"DefaultLanguage"`
-                Timeout          TimeoutConfig     `json:"Timeout"`
-                BrowserConfig    *BrowserConfig    `json:"BrowserConfig"`
-                Security         *SecurityConfig   `json:"Security"`
-                Tools            *ToolsConfig      `json:"Tools"`
-                Resilience       *ResilienceConfig `json:"Resilience"`
+                APIConfig        APIConfig          `json:"APIConfig"`
+                DefaultRole      string             `json:"DefaultRole"`
+                DefaultLanguage  string             `json:"DefaultLanguage"`
+                Timeout          TimeoutConfig      `json:"Timeout"`
+                BrowserConfig    *BrowserConfig     `json:"BrowserConfig"`
+                Security         *SecurityConfig    `json:"Security"`
+                Tools            *ToolsConfig       `json:"Tools"`
+                Resilience       *ResilienceConfig  `json:"Resilience"`
+                PromptCache      *PromptCacheConfig `json:"PromptCache"`
         }
         if err := json.Unmarshal(body, &newConfig); err != nil {
                 http.Error(w, `{"error": "解析 JSON 失败"}`, http.StatusBadRequest)
@@ -297,6 +302,13 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
         if _, exists := rawMap["Resilience"]; exists && newConfig.Resilience != nil {
                 if err := globalConfigManager.UpdateResilienceConfig(*newConfig.Resilience); err != nil {
                         log.Printf("Warning: failed to update resilience config: %v", err)
+                }
+        }
+
+        // 更新 Prompt 快取配置
+        if _, exists := rawMap["PromptCache"]; exists && newConfig.PromptCache != nil {
+                if err := globalConfigManager.UpdatePromptCacheConfig(*newConfig.PromptCache); err != nil {
+                        log.Printf("Warning: failed to update prompt cache config: %v", err)
                 }
         }
 

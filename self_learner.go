@@ -112,12 +112,12 @@ func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, 
 		}
 	}
 
-	data, endpoint, _, err := prepareRequestData(messages, apiType, reqBaseURL, modelID, 0, 200, false, false, nil)
+	reqBody, endpoint, _, err := prepareRequestData(messages, apiType, reqBaseURL, modelID, 0, 200, false, false, nil)
 	if err != nil {
 		return "", fmt.Errorf("prepare request: %w", err)
 	}
 
-	resp, err := sendRequest(ctx, data, reqBaseURL+endpoint, apiKey, apiType)
+	resp, err := sendRequest(ctx, reqBody, reqBaseURL+endpoint, apiKey, apiType)
 	if err != nil {
 		return "", fmt.Errorf("send: %w", err)
 	}

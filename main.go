@@ -15,6 +15,7 @@ import (
         "strings"
         "sync/atomic"
         "syscall"
+        "time"
 
         "github.com/chzyer/readline"
         "golang.org/x/term"
@@ -86,7 +87,8 @@ var (
         globalCompressionThreshold float64 // 0.1-0.9
         globalSkillCleanupThresholdDays int // 30-365, default 90
         globalEscalationThreshold       int // 1-5, default 3
-        globalResilienceConfig    ResilienceConfig // 網絡韌性配置
+        globalResilienceConfig    ResilienceConfig   // 網絡韌性配置
+        globalPromptCacheConfig   PromptCacheConfig  // Prompt 快取配置
 
         // cmdModeActive 控制日志是否输出到终端
         // true = CMD REPL 模式，日志静默（只显示模型对话流）
@@ -538,6 +540,9 @@ func main() {
         globalAuthConfig = config.Auth
         globalGroupChatConfig = config.GroupChatConfig
         globalConfig = config // 保存完整配置对象
+
+        // 初始化 Prompt Cache（用於 Prompt Loop 檢測同 API 快取）
+        globalPromptCache = NewPromptCache(100, 5*time.Minute)
 
         // 初始化安全配置
         SetSecurityConfig(config.Security)

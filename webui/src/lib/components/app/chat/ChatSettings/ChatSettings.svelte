@@ -13,7 +13,8 @@
                 Timer,
                 Shield,
                 Globe,
-                Wifi
+                Wifi,
+                Zap
         } from '@lucide/svelte';
         import { McpLogo, McpServersSettings } from '$lib/components/app/mcp';
         import {
@@ -344,6 +345,23 @@
                                         type: SettingsFieldType.INPUT
                                 }
                         ]
+                },
+                // ===== Prompt 快取 =====
+                {
+                        title: SETTINGS_SECTION_TITLES.PROMPT_CACHE,
+                        icon: Zap,
+                        fields: [
+                                {
+                                        key: SETTINGS_KEYS.PROMPT_CACHE_ENABLED,
+                                        label: '啟用 Prompt 快取',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.PROMPT_CACHE_STABLE_TOOLS,
+                                        label: '穩定工具集',
+                                        type: SettingsFieldType.CHECKBOX
+                                }
+                        ]
                 }
         ];
 
@@ -514,6 +532,16 @@
                                         InitialBackoffSeconds: Number(processedConfig.resilienceInitialBackoffSeconds) || 5,
                                         MaxBackoffSeconds: Number(processedConfig.resilienceMaxBackoffSeconds) || 300,
                                         BackoffMultiplier: Number(processedConfig.resilienceBackoffMultiplier) || 2.0
+                                };
+                        }
+
+                        // Prompt Cache configuration
+                        const promptCacheFields = ['promptCacheEnabled', 'promptCacheStableTools'];
+                        const hasPromptCacheConfig = promptCacheFields.some(f => processedConfig[f] !== undefined);
+                        if (hasPromptCacheConfig) {
+                                backendConfig.PromptCache = {
+                                        Enabled: !!processedConfig.promptCacheEnabled,
+                                        StableTools: !!processedConfig.promptCacheStableTools
                                 };
                         }
 

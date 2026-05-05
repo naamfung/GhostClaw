@@ -16,6 +16,59 @@ import (
         "time"
 )
 
+// ── API Request Structs (deterministic JSON order for prompt caching) ──
+
+// anthropicRequest 構建 Anthropic API 請求體。
+// 字段順序固定（struct field order → JSON key order），確保 byte-for-byte prefix match。
+type anthropicRequest struct {
+	Model       string                  `json:"model"`
+	MaxTokens   int                     `json:"max_tokens"`
+	System      []anthropicContentBlock `json:"system"`
+	Messages    []interface{}           `json:"messages"`
+	Tools       []anthropicToolBlock    `json:"tools,omitempty"`
+	Temperature float64                 `json:"temperature"`
+	Stream      bool                    `json:"stream"`
+	Thinking    interface{}             `json:"thinking,omitempty"`
+}
+
+type anthropicContentBlock struct {
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+}
+
+type anthropicCacheControl struct {
+	Type string `json:"type"`
+}
+
+type anthropicToolBlock struct {
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	InputSchema  interface{}            `json:"input_schema"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+}
+
+// openaiRequest 構建 OpenAI API 請求體。
+type openaiRequest struct {
+	Model       string        `json:"model"`
+	Messages    []interface{} `json:"messages"`
+	Tools       []interface{} `json:"tools,omitempty"`
+	Temperature float64       `json:"temperature"`
+	Stream      bool          `json:"stream"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	Thinking    interface{}   `json:"thinking,omitempty"`
+}
+
+// ollamaRequest 構建 Ollama API 請求體。
+type ollamaRequest struct {
+	Model       string        `json:"model"`
+	Messages    []interface{} `json:"messages"`
+	Tools       []interface{} `json:"tools,omitempty"`
+	Stream      bool          `json:"stream"`
+	System      string        `json:"system"`
+	Temperature float64       `json:"temperature"`
+}
+
 // rateLimiter 基于令牌桶算法的速率限制器
 // 以 endpoint（BaseURL）为粒度，限制每分钟请求数
 type rateLimiter struct {
@@ -1174,8 +1227,8 @@ func mergeConsecutiveSameRole(messages []Message) []Message {
 // 准备请求数据
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 // 系统提示词从 messages 中的 system 消息提取，根据 API 类型正确处理
-func prepareRequestData(messages []Message, apiType, baseURL, modelID string, temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (map[string]interface{}, string, string, error) {
-        var data map[string]interface{}
+func prepareRequestData(messages []Message, apiType, baseURL, modelID string, temperature float64, maxTokens int, stream bool, thinking bool, role *Role) ([]byte, string, string, error) {
+        var reqBody []byte
         var endpoint string
         t0 := time.Now()
 
@@ -1209,6 +1262,20 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         filteredMessages = markLatestUserRequest(filteredMessages)
         t5 := time.Now()
 
+        // ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
+        // 唔物理刪除工具，改用 message 標記控制模型行為，保持 prompt cache prefix 一致
+        if apiType == "anthropic" && globalPromptCacheConfig.StableTools &&
+                globalTasksMode != nil && globalTasksMode.IsActive() {
+                tasksPrompt := GetTasksModeSystemPrompt()
+                if tasksPrompt != "" {
+                        planMsg := Message{
+                                Role:    "user",
+                                Content: "[SYSTEM_PLAN_MODE]\n\n" + tasksPrompt,
+                        }
+                        filteredMessages = append([]Message{planMsg}, filteredMessages...)
+                }
+        }
+
         switch apiType {
         case "anthropic":
                 if baseURL == "" {
@@ -1216,105 +1283,145 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
                 }
                 anthropicMessages := convertToAnthropicFormat(filteredMessages)
                 t6 := time.Now()
-                tools := getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))
+                tools := getToolsAsAnthropicBlocks(apiType, role, getModelContextLength(modelID))
                 t7 := time.Now()
-                data = map[string]interface{}{
-                        "model":       modelID,
-                        "system":      finalSystemPrompt,
-                        "messages":    anthropicMessages,
-                        "tools":       tools,
-                        "temperature": temperature,
-                        "stream":      stream,
+
+                // Build system blocks with cache_control on first block
+                systemBlocks := []anthropicContentBlock{{
+                        Type: "text", Text: finalSystemPrompt,
+                        CacheControl: &anthropicCacheControl{Type: "ephemeral"},
+                }}
+
+                // Add cache_control to last tool block if tools exist
+                if len(tools) > 0 {
+                        tools[len(tools)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
                 }
-                // Anthropic API 要求 max_tokens 为必填字段，未设置时使用默认值 4096
-                // OpenAI 兼容 API（如 BigModel）会拒绝 max_tokens:0，因此在 openai 分支中按条件发送
+
+                req := anthropicRequest{
+                        Model: modelID, System: systemBlocks,
+                        Messages: mapSliceToInterfaceSlice(anthropicMessages), Tools: tools,
+                        Temperature: temperature, Stream: stream,
+                }
                 if maxTokens > 0 {
-                        data["max_tokens"] = maxTokens
+                        req.MaxTokens = maxTokens
                 } else {
-                        data["max_tokens"] = 4096
+                        req.MaxTokens = 4096
                 }
                 if thinking {
-                        data["thinking"] = map[string]interface{}{
-                                "type": "enabled",
-                        }
+                        req.Thinking = map[string]string{"type": "enabled"}
                 }
+                reqBody, _ = json.Marshal(req)
                 endpoint = "/messages"
                 log.Printf("[Perf] prepareRequestData breakdown: maxOutput=%v validate=%v extractSys=%v sysPrompt=%v inject=%v convert=%v tools=%v", t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3), t5.Sub(t4), t6.Sub(t5), t7.Sub(t6))
 
         case "ollama":
                 baseURL = OLLAMA_BASE_URL
-                // Ollama 使用单独的 system 参数，messages 中不应包含 system 消息
                 ollamaMessages := convertToOllamaFormat(filteredMessages)
-                data = map[string]interface{}{
-                        "model":       modelID,
-                        "messages":    ollamaMessages,
-                        "tools":       getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID)),
-                        "stream":      stream,
-                        "system":      finalSystemPrompt,
-                        "temperature": temperature,
+                req := ollamaRequest{
+                        Model: modelID, Messages: mapSliceToInterfaceSlice(ollamaMessages),
+                        Tools: toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+                        Stream: stream, System: finalSystemPrompt, Temperature: temperature,
                 }
+                reqBody, _ = json.Marshal(req)
                 endpoint = "/chat"
 
         case "openai":
                 if baseURL == "" {
                         baseURL = OPENAI_BASE_URL
                 }
-                // OpenAI API 期望 system 消息在 messages 数组中
-                // 需要将系统提示词作为第一条 system 消息
-                var openaiMessages []map[string]interface{}
-
-                // 构建包含 system 消息的 messages 列表
+                var openaiMessages []interface{}
                 openaiMessages = append(openaiMessages, map[string]interface{}{
-                        "role":    "system",
-                        "content": finalSystemPrompt,
+                        "role": "system", "content": finalSystemPrompt,
                 })
-                // 添加其他消息
-                openaiMessages = append(openaiMessages, convertToOpenAIFormat(filteredMessages)...)
+                openaiMessages = append(openaiMessages, mapSliceToInterfaceSlice(convertToOpenAIFormat(filteredMessages))...)
 
-                data = map[string]interface{}{
-                        "model":       modelID,
-                        "messages":    openaiMessages,
-                        "tools":       getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID)),
-                        "temperature": temperature,
-                        "stream":      stream,
+                req := openaiRequest{
+                        Model: modelID, Messages: openaiMessages,
+                        Tools: toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+                        Temperature: temperature, Stream: stream,
                 }
-                // 仅在 maxTokens > 0 时发送 max_tokens，避免部分提供商（如 BigModel）拒绝 max_tokens:0
                 if maxTokens > 0 {
-                        data["max_tokens"] = maxTokens
+                        req.MaxTokens = maxTokens
                 }
-                // 思考模式：根据提供商支持情况发送对应格式
-                // DeepSeek → "thinking": true
-                // GLM/智谱、Qwen/通义 → "thinking": {"type":"enabled"}
-                // Anthropic 由上方 anthropic 分支单独处理
                 if thinking {
                         if supported, format := isThinkingSupported(baseURL); supported {
                                 if format == "bool" {
-                                        data["thinking"] = true
+                                        req.Thinking = true
                                 } else {
-                                        data["thinking"] = map[string]interface{}{
-                                                "type": "enabled",
-                                        }
+                                        req.Thinking = map[string]string{"type": "enabled"}
                                 }
                         }
                 }
+                reqBody, _ = json.Marshal(req)
                 endpoint = "/chat/completions"
 
         default:
                 return nil, "", "", fmt.Errorf("unsupported API type: %s", apiType)
         }
 
-        // 清理空值字段，避免部分提供商拒绝空 tools 数组或 nil 值
-        if tools, ok := data["tools"]; ok {
-                if tools == nil {
-                        delete(data, "tools")
-                } else if arr, ok := tools.([]interface{}); ok && len(arr) == 0 {
-                        delete(data, "tools")
-                } else if arr, ok := tools.([]map[string]interface{}); ok && len(arr) == 0 {
-                        delete(data, "tools")
+        return reqBody, endpoint, baseURL, nil
+}
+
+// getToolsAsAnthropicBlocks 獲取 Anthropic 格式的工具列表，轉換為 anthropicToolBlock。
+// 當 StableTools 啟用時使用完整工具集；否則使用 tier-filtered 工具集。
+func getToolsAsAnthropicBlocks(apiType string, role *Role, contextWindow int) []anthropicToolBlock {
+        tools := getFilteredToolsWithContext(apiType, role, contextWindow)
+        toolList, ok := tools.([]map[string]interface{})
+        if !ok || len(toolList) == 0 {
+                return nil
+        }
+        blocks := make([]anthropicToolBlock, len(toolList))
+        for i, t := range toolList {
+                blocks[i] = anthropicToolBlock{
+                        Name:        getToolName(t),
+                        Description: getToolDescription(t),
+                        InputSchema: t["input_schema"],
                 }
         }
+        return blocks
+}
 
-        return data, endpoint, baseURL, nil
+// getToolDescription 從工具 map 中提取 description 字段
+func getToolDescription(tool map[string]interface{}) string {
+        if desc, ok := tool["description"].(string); ok {
+                return desc
+        }
+        return ""
+}
+
+// mapSliceToInterfaceSlice 將 []map[string]interface{} 轉換為 []interface{}
+// 用於將動態 messages 放入 struct 的 []interface{} 欄位
+func mapSliceToInterfaceSlice(maps []map[string]interface{}) []interface{} {
+        result := make([]interface{}, len(maps))
+        for i, m := range maps {
+                result[i] = m
+        }
+        return result
+}
+
+// toolsToInterfaceSlice 將 interface{} 類型的 tools 轉換為 []interface{}
+// getFilteredToolsWithContext 返回 interface{}，需提取底層 slice
+func toolsToInterfaceSlice(tools interface{}) []interface{} {
+        if tools == nil {
+                return nil
+        }
+        switch v := tools.(type) {
+        case []interface{}:
+                if len(v) == 0 {
+                        return nil
+                }
+                return v
+        case []map[string]interface{}:
+                if len(v) == 0 {
+                        return nil
+                }
+                result := make([]interface{}, len(v))
+                for i, m := range v {
+                        result[i] = m
+                }
+                return result
+        }
+        return nil
 }
 
 // isThinkingSupported 判断该 OpenAI 兼容提供商是否支持 thinking 模式及对应格式
@@ -1382,30 +1489,29 @@ func isContextLengthError(errorBody string) bool {
 }
 
 // 发送请求（支持 Context）
-func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, apiKey, apiType string) (*http.Response, error) {
+func sendRequest(ctx context.Context, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
         t0 := time.Now()
-        jsonData, err := json.Marshal(data)
-        if err != nil {
-                return nil, fmt.Errorf("failed to marshal request data: %w", err)
-        }
-        log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(jsonData), apiType)
+        log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(reqBody), apiType)
 
         // Debug 模式：寫出完整請求體以便檢查
         if IsDebug {
                 debugReqFile := fmt.Sprintf("debug_request_%d.json", time.Now().Unix())
-                if err := os.WriteFile(debugReqFile, jsonData, 0600); err != nil {
+                if err := os.WriteFile(debugReqFile, reqBody, 0600); err != nil {
                         log.Printf("[CallModel] Failed to write debug request: %v", err)
                 } else {
                         log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
                 }
         }
 
-        req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
+        req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqBody))
         if err != nil {
                 return nil, fmt.Errorf("failed to create request: %w", err)
         }
 
         req.Header.Set("Content-Type", "application/json")
+        if apiType == "anthropic" {
+                req.Header.Set("anthropic-version", "2023-06-01")
+        }
         if apiKey != "" {
                 if apiType == "openai" || apiType == "ollama" {
                         req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -1416,7 +1522,6 @@ func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, api
 
         if IsDebug {
                 fmt.Printf("Sending request to: %s\n", endpoint)
-                fmt.Printf("Request data: %v\n", data)
         }
 
         resp, err := httpClient.Do(req)
@@ -1436,10 +1541,6 @@ func sendRequest(ctx context.Context, data map[string]interface{}, endpoint, api
                 if IsDebug {
                         fmt.Printf("Error response status: %d\n", resp.StatusCode)
                         fmt.Printf("Error response body: %s\n", errorBodyStr)
-                        // 记录发送的消息，帮助诊断问题
-                        if messagesData, ok := data["messages"]; ok {
-                                fmt.Printf("Messages that caused error: %v\n", messagesData)
-                        }
                 }
                 // 检测上下文长度超过限制的错误
                 if isContextLengthError(errorBodyStr) {
@@ -1914,7 +2015,7 @@ func resolveEndpoint(baseURL, apiPath string) string {
 // sendRequestAndGetChunks 发送请求并返回流式数据块通道
 // baseURL: API 基地址（可能被 session 級別覆蓋）
 // apiPath: API 路徑（如 /messages、/chat/completions、/chat）
-func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, baseURL, apiPath, apiKey, apiType string, stream bool) (<-chan StreamChunk, error) {
+func sendRequestAndGetChunks(ctx context.Context, reqBody []byte, baseURL, apiPath, apiKey, apiType string, stream bool) (<-chan StreamChunk, error) {
         // 速率限制：基于 BaseURL 粒度，使用当前全局 API 配置的 RateLimit
         if globalAPIConfig.RateLimit > 0 {
                 if err := globalRateLimiter.waitIfNeeded(ctx, globalAPIConfig.BaseURL, globalAPIConfig.RateLimit); err != nil {
@@ -1956,7 +2057,7 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
         }
 
         // 使用網絡韌性層發送請求（自動處理超時放寬、Provider 故障轉移、指數退避重試）
-        resp, err := resilientDo(ctx, data, effectiveBaseURL, apiPath, effectiveKey, apiType,
+        resp, err := resilientDo(ctx, reqBody, effectiveBaseURL, apiPath, effectiveKey, apiType,
                 &globalResilienceConfig, activeProviderName)
 
         if err != nil {
@@ -2211,14 +2312,13 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 
         // 准备请求数据（初始尝试）
         prepStart := time.Now()
-        data, apiPath, resolvedBaseURL, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+        reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
         log.Printf("[CallModel] prepareRequestData took %v", time.Since(prepStart))
         if err != nil {
                 return nil, err
         }
 
         // 检查请求体大小
-        reqBody, _ := json.Marshal(data)
         maxSize := globalAPIConfig.MaxRequestSizeBytes
         // 若未手動設定，根據模型 context window 動態計算合理上限
         // JSON 中每 token 約佔 6-10 bytes，取 8 bytes/token，上限 10MB
@@ -2233,7 +2333,7 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
         }
         if maxSize == 0 || len(reqBody) <= maxSize || IsDebug {
                 // 大小合适或调试模式，直接发送
-                chunkChan, err := sendRequestAndGetChunks(ctx, data, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+                chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
                 if err != nil {
                         // 检查是否是上下文长度超过限制的错误
                         if strings.Contains(err.Error(), "context_length_exceeded") {
@@ -2257,13 +2357,12 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
                         // 压缩后仍接近或超过限制，尝试自动创建新会话
                         return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
                 }
-                data, apiPath, resolvedBaseURL, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+                reqBody, apiPath, resolvedBaseURL, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
                 if err != nil {
                         continue
                 }
-                reqBody, _ = json.Marshal(data)
                 if maxSize == 0 || len(reqBody) <= maxSize {
-                        chunkChan, err := sendRequestAndGetChunks(ctx, data, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+                        chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
                         if err != nil {
                                 // 检查是否是上下文长度超过限制的错误
                                 if strings.Contains(err.Error(), "context_length_exceeded") {
@@ -2302,13 +2401,13 @@ func handleContextLengthExceeded(ctx context.Context, messages []Message, apiTyp
         compressedMsgs := compressMessages(messages, 2)
 
         // 准备新会话的请求数据
-        data, apiPath, resolvedBaseURL, err := prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+        reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
         if err != nil {
                 return nil, err
         }
 
         // 发送请求到新会话
-        chunkChan, err := sendRequestAndGetChunks(ctx, data, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+        chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
         if err != nil {
                 return nil, err
         }

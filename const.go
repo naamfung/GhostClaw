@@ -33,6 +33,12 @@ const (
         DefaultResilienceBackoffMultiplier    = 2.0   // 退避倍率
 )
 
+// 默認 Prompt 快取配置常量
+const (
+        DefaultPromptCacheEnabled     = true // 默認啟用 Prompt 快取
+        DefaultPromptCacheStableTools = true // 默認使用穩定工具集
+)
+
 // 内部系统标记常量（仅由程序注入，不在用户输入中出现）
 const (
         LatestRequestMarker = "[USR:LATEST]"       // 标记最新用户请求，引导模型优先处理

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -32,7 +31,7 @@ import (
 //   - initialProviderName: 初始 provider 名稱（用於 failover 報告）
 func resilientDo(
 	ctx context.Context,
-	data map[string]interface{},
+	reqBody []byte,
 	baseURL, apiPath, apiKey, apiType string,
 	resilience *ResilienceConfig,
 	initialProviderName string,
@@ -63,7 +62,7 @@ func resilientDo(
 
 		// 發送請求
 		t0 := time.Now()
-		resp, err := sendResilientRequest(ctx, client, data, endpoint, currentAPIKey, apiType)
+		resp, err := sendResilientRequest(ctx, client, reqBody, endpoint, currentAPIKey, apiType)
 
 		if err == nil {
 			// 成功：報告到 Provider Failover
@@ -187,18 +186,16 @@ func buildResilientHTTPClient(responseHeaderTimeout time.Duration) *http.Client 
 }
 
 // sendResilientRequest 發送 HTTP 請求並返回 response（與 sendRequest 類似，但使用自定義 client）
-func sendResilientRequest(ctx context.Context, client *http.Client, data map[string]interface{}, endpoint, apiKey, apiType string) (*http.Response, error) {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request data: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
+func sendResilientRequest(ctx context.Context, client *http.Client, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if apiType == "anthropic" {
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
 	if apiKey != "" {
 		if apiType == "openai" || apiType == "ollama" {
 			req.Header.Set("Authorization", "Bearer "+apiKey)

@@ -60,4 +60,7 @@ export const SETTINGS_KEYS = {
         RESILIENCE_INITIAL_BACKOFF_SECONDS: 'resilienceInitialBackoffSeconds',
         RESILIENCE_MAX_BACKOFF_SECONDS: 'resilienceMaxBackoffSeconds',
         RESILIENCE_BACKOFF_MULTIPLIER: 'resilienceBackoffMultiplier',
+        // Prompt Cache
+        PROMPT_CACHE_ENABLED: 'promptCacheEnabled',
+        PROMPT_CACHE_STABLE_TOOLS: 'promptCacheStableTools',
 } as const;

@@ -16,6 +16,7 @@ export const SETTINGS_SECTION_TITLES = {
         TOOLS: '工具配置',
         TIMEOUT: '超时配置',
         RESILIENCE: '網絡韌性',
+        PROMPT_CACHE: 'Prompt 快取',
         IMPORT_EXPORT: '导入/导出',
         MCP: 'MCP 服务'
 } as const;

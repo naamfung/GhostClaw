@@ -207,6 +207,12 @@ type ResilienceConfig struct {
         BackoffMultiplier      float64 `toon:"BackoffMultiplier" json:"BackoffMultiplier"`           // 退避倍率，預設 2.0
 }
 
+// PromptCacheConfig Prompt 快取配置
+type PromptCacheConfig struct {
+        Enabled     bool `toon:"Enabled" json:"Enabled"`         // 啟用 Prompt 快取（cache_control breakpoints + anthropic-version header）
+        StableTools bool `toon:"StableTools" json:"StableTools"` // 穩定工具集：請求之間不改變工具列表以保持 cache prefix 一致
+}
+
 // ModelConfig 模型配置（持久化到 config.toon）
 // 嵌入 ModelBase，toon-go 按嵌套格式序列化/反序列化 ModelBase 字段
 type ModelConfig struct {
@@ -249,6 +255,7 @@ type Config struct {
         Session             *SessionConfig          `toon:"Session,omitempty" json:"Session,omitempty"`
         MaxWorkModeResumeRounds int              `toon:"MaxWorkModeResumeRounds" json:"MaxWorkModeResumeRounds"` // 工作模式退出守衛最大續行次數，默認3
         Resilience               ResilienceConfig `toon:"Resilience" json:"Resilience"`                                             // 網絡韌性配置
+        PromptCache               PromptCacheConfig `toon:"PromptCache" json:"PromptCache"`                                             // Prompt 快取配置
 }
 
 // normalizeConfigForSave 在保存配置前将 DataDir 转为相对路径
