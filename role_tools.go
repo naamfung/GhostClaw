@@ -95,6 +95,18 @@ func ProcessSlashCommand(input string, rm *RoleManager, am *ActorManager, stage 
         }
 }
 
+// isSystemInjectedUserMessage 判斷一條消息是否係系統以 user 角色注入嘅特殊消息
+// 呢類消息唔應該對外顯示（/context 摘要、前端 UI 等）
+func isSystemInjectedUserMessage(msg Message) bool {
+	content, ok := msg.Content.(string)
+	if !ok || content == "" {
+		return false
+	}
+	return strings.HasPrefix(content, "[SYSTEM_REMINDER]") ||
+		strings.HasPrefix(content, "[SYSTEM_RESUME]") ||
+		strings.HasPrefix(content, "[SYSTEM_PAUSE]")
+}
+
 // HandleContextCommand 处理 /context 命令，显示当前上下文使用情况
 func HandleContextCommand() string {
         var sb strings.Builder
@@ -250,7 +262,7 @@ func HandleContextCommand() string {
                 sb.WriteString(fmt.Sprintf("  可用技能: %d 个\n", globalSkillManager.Count()))
         }
 
-        // 8. 最近對話摘要（僅用戶與助手消息，排除工具與系統消息）
+        // 8. 最近對話摘要（排除工具、系統、以及系統以 user 角色注入的特殊消息）
         if len(history) > 0 {
                 sb.WriteString("\n最近對話摘要:\n")
                 // 從後往前取最近 3 條非 tool、非 system 消息
@@ -260,6 +272,9 @@ func HandleContextCommand() string {
                         if role == "tool" || role == "system" {
                                 continue
                         }
+			if isSystemInjectedUserMessage(history[i]) {
+				continue
+			}
                         recent = append(recent, history[i])
                 }
                 // 反轉為時間順序

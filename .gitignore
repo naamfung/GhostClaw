@@ -34,6 +34,9 @@ bin/
 build/
 dist/
 
+builder/builder
+builder/builder.app
+builder.app
 
 public/
 embed/

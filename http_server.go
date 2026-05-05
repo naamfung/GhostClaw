@@ -172,12 +172,14 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                 }
                 err := conn.ReadJSON(&msg)
                 if err != nil {
+                        log.Printf("[WS] connID=%s: ReadJSON error, read loop exiting: %v", connID, err)
                         break
                 }
                 trimmed := strings.TrimSpace(msg.Content)
                 if trimmed == "" {
                         continue
                 }
+                log.Printf("[WS] connID=%s: received message (len=%d, hasSlashPrefix=%v)", connID, len(trimmed), strings.HasPrefix(trimmed, "/"))
                 if HandleSlashCommandWithDefaults(trimmed,
                         func(resp string) {
                                 // 流式发送命令响应，逐行输出

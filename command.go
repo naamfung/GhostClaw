@@ -17,7 +17,7 @@ func ApplyCommandResult(result CommandResult, session *GlobalSession) {
 	if result.IsPause && session != nil {
 		msg := result.PauseMsg
 		if msg == "" {
-			msg = "已中斷。請繼續。"
+			msg = "[SYSTEM_PAUSE] 已中斷。請繼續。"
 		}
 		session.InterruptTask(msg)
 	}
@@ -72,7 +72,7 @@ func HandleSlashCommandWithDefaults(line string, responder func(string), stopFun
 	if result.IsPause {
 		msg := result.PauseMsg
 		if msg == "" {
-			msg = "已中斷。請繼續。" // 默認中斷訊息
+			msg = "[SYSTEM_PAUSE] 已中斷。請繼續。" // 默認中斷訊息
 		}
 		log.Printf("[Command] 任務已中斷（pause），唔向前端輸出提示")
 		if pauseFunc != nil {

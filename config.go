@@ -235,6 +235,7 @@ type Config struct {
         GroupChatConfig     *GroupChatConfig        `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
         SystemInfo          SystemInfoConfig        `toon:"SystemInfo" json:"SystemInfo"`
         Session             *SessionConfig          `toon:"Session,omitempty" json:"Session,omitempty"`
+        MaxWorkModeResumeRounds int `toon:"MaxWorkModeResumeRounds" json:"MaxWorkModeResumeRounds"` // 工作模式退出守衛最大續行次數，默認3
 }
 
 // normalizeConfigForSave 在保存配置前将 DataDir 转为相对路径

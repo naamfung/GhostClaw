@@ -187,6 +187,8 @@ class WebSocketManager {
         send(message: string): void {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                         this.ws.send(JSON.stringify({ content: message }));
+                } else {
+                        console.warn('[WS] send() dropped message: ws state is', this.ws?.readyState, '(message starts with:', message.substring(0, 30), '...)');
                 }
         }
 

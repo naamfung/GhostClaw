@@ -127,7 +127,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 	// ========== 工作模式退出守衛 ==========
 	if TODO.HasUnfinishedItems() {
 		if !TODO.AllUnfinishedAreWaiting() {
-			if *resumeCount < maxWorkModeResumeRounds {
+			if *resumeCount < getMaxWorkModeResumeRounds() {
 				*resumeCount++
 				unfinished := TODO.GetUnfinishedSummary()
 				resumePrompt := fmt.Sprintf(
@@ -142,7 +142,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 				log.Printf("[AgentLoop] Work mode exit guard: resume #%d, unfinished todos detected", *resumeCount)
 				return BranchNoneResult{ShouldContinue: true, Messages: messages}
 			}
-			log.Printf("[AgentLoop] Work mode: max resume rounds (%d) reached, allowing exit", maxWorkModeResumeRounds)
+			log.Printf("[AgentLoop] Work mode: max resume rounds (%d) reached, allowing exit", getMaxWorkModeResumeRounds())
 		} else {
 			log.Printf("[AgentLoop] Work mode: all remaining todos are waiting, allowing exit")
 		}
@@ -158,7 +158,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 			}
 			task.mu.RUnlock()
 		}
-		if len(runningSubagentIDs) > 0 && *subagentResumeCount < maxWorkModeResumeRounds {
+		if len(runningSubagentIDs) > 0 && *subagentResumeCount < getMaxWorkModeResumeRounds() {
 			*subagentResumeCount++
 			resumePrompt := fmt.Sprintf(
 				"[SYSTEM_RESUME] 你有 %d 個子代理仍在後台運行（%s）。\n"+
@@ -173,7 +173,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 			log.Printf("[AgentLoop] Subagent running guard: resume #%d, %d subagents still running: %v", *subagentResumeCount, len(runningSubagentIDs), runningSubagentIDs)
 			return BranchNoneResult{ShouldContinue: true, Messages: messages}
 		} else if len(runningSubagentIDs) > 0 {
-			log.Printf("[AgentLoop] Subagent running guard: max resume rounds (%d) reached, allowing exit despite %d running subagents", maxWorkModeResumeRounds, len(runningSubagentIDs))
+			log.Printf("[AgentLoop] Subagent running guard: max resume rounds (%d) reached, allowing exit despite %d running subagents", getMaxWorkModeResumeRounds(), len(runningSubagentIDs))
 		}
 	}
 

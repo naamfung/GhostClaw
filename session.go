@@ -356,6 +356,8 @@ func (s *GlobalSession) InterruptTask(msg string) {
                 if tracker := s.GetTracker(); tracker != nil {
                         tracker.PauseIdleCheck()
                 }
+        } else {
+                log.Printf("[GlobalSession] InterruptTask: no active CallModel to interrupt (interruptCancel=nil, msg=%q)", msg)
         }
 }
 
@@ -794,7 +796,8 @@ CONTINUE — 最後的任務可繼續執行，之前可能因異常中斷等原�
                 }
         }
 
-        ctx := context.Background()
+        ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+        defer cancel()
         resp, err := CallModelSync(ctx, messages, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID, 0.0, 10, false, false)
         if err != nil {
                 log.Printf("[classifyTaskIdleStatus] CallModelSync error: %v, defaulting to CONTINUE", err)
