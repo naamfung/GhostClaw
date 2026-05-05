@@ -1362,9 +1362,57 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
         return reqBody, endpoint, baseURL, nil
 }
 
+// ── StableTools Anthropic 工具塊緩存 ──────────────────────────
+// StableTools 啟用時，同一 session 內工具集完全唔變。
+// 緩存 []anthropicToolBlock 避免每次請求重複調用 getFilteredToolsWithContext +
+// 100+ 次 map→struct 轉換。由 syncGlobalsLocked 在配置變更時失效。
+// key: role name（空字串 = nil role = 完整工具集）
+var (
+        stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
+)
+
+// invalidateStableToolsCache 使 StableTools 緩存失效（配置變更時調用）
+func invalidateStableToolsCache() {
+        stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
+}
+
 // getToolsAsAnthropicBlocks 獲取 Anthropic 格式的工具列表，轉換為 anthropicToolBlock。
-// 當 StableTools 啟用時使用完整工具集；否則使用 tier-filtered 工具集。
+// 當 StableTools 啟用時使用完整工具集並緩存結果；否則使用 tier-filtered 工具集。
 func getToolsAsAnthropicBlocks(apiType string, role *Role, contextWindow int) []anthropicToolBlock {
+        // ── StableTools 緩存路徑 ──────────────────────────────────
+        if globalPromptCacheConfig.StableTools && apiType == "anthropic" {
+                cacheKey := ""
+                if role != nil {
+                        cacheKey = role.Name
+                }
+                if cached, ok := stableAnthropicToolBlocksCache[cacheKey]; ok {
+                        blocks := make([]anthropicToolBlock, len(cached))
+                        copy(blocks, cached)
+                        return blocks
+                }
+
+                tools := getFilteredToolsWithContext(apiType, role, contextWindow)
+                toolList, ok := tools.([]map[string]interface{})
+                if !ok || len(toolList) == 0 {
+                        stableAnthropicToolBlocksCache[cacheKey] = nil
+                        return nil
+                }
+                blocks := make([]anthropicToolBlock, len(toolList))
+                for i, t := range toolList {
+                        blocks[i] = anthropicToolBlock{
+                                Name:        getToolName(t),
+                                Description: getToolDescription(t),
+                                InputSchema: t["input_schema"],
+                        }
+                }
+                // 緩存（deep copy 避免外部修改污染緩存）
+                cached := make([]anthropicToolBlock, len(blocks))
+                copy(cached, blocks)
+                stableAnthropicToolBlocksCache[cacheKey] = cached
+                return blocks
+        }
+
+        // ── 非 StableTools 路徑（原有行為）──────────────────────
         tools := getFilteredToolsWithContext(apiType, role, contextWindow)
         toolList, ok := tools.([]map[string]interface{})
         if !ok || len(toolList) == 0 {

@@ -902,6 +902,7 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         globalEscalationThreshold = cm.config.Tools.EscalationThreshold
         globalResilienceConfig = cm.config.Resilience
         globalPromptCacheConfig = cm.config.PromptCache
+        invalidateStableToolsCache() // PromptCache 配置變更時使工具塊緩存失效
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）
