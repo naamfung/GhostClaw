@@ -1264,7 +1264,8 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 
         // ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
         // 唔物理刪除工具，改用 message 標記控制模型行為，保持 prompt cache prefix 一致
-        if apiType == "anthropic" && globalPromptCacheConfig.StableTools &&
+        if apiType == "anthropic" && globalPromptCacheConfig.Enabled &&
+                globalPromptCacheConfig.StableTools &&
                 globalTasksMode != nil && globalTasksMode.IsActive() {
                 tasksPrompt := GetTasksModeSystemPrompt()
                 if tasksPrompt != "" {
@@ -1286,14 +1287,17 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
                 tools := getToolsAsAnthropicBlocks(apiType, role, getModelContextLength(modelID))
                 t7 := time.Now()
 
-                // Build system blocks with cache_control on first block
-                systemBlocks := []anthropicContentBlock{{
+                // Build system blocks; add cache_control only when PromptCache enabled
+                systemBlock := anthropicContentBlock{
                         Type: "text", Text: finalSystemPrompt,
-                        CacheControl: &anthropicCacheControl{Type: "ephemeral"},
-                }}
+                }
+                if globalPromptCacheConfig.Enabled {
+                        systemBlock.CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+                }
+                systemBlocks := []anthropicContentBlock{systemBlock}
 
-                // Add cache_control to last tool block if tools exist
-                if len(tools) > 0 {
+                // Add cache_control to last tool block only when PromptCache enabled
+                if globalPromptCacheConfig.Enabled && len(tools) > 0 {
                         tools[len(tools)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
                 }
 
@@ -1380,7 +1384,7 @@ func invalidateStableToolsCache() {
 // 當 StableTools 啟用時使用完整工具集並緩存結果；否則使用 tier-filtered 工具集。
 func getToolsAsAnthropicBlocks(apiType string, role *Role, contextWindow int) []anthropicToolBlock {
         // ── StableTools 緩存路徑 ──────────────────────────────────
-        if globalPromptCacheConfig.StableTools && apiType == "anthropic" {
+        if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools && apiType == "anthropic" {
                 cacheKey := ""
                 if role != nil {
                         cacheKey = role.Name
@@ -1557,7 +1561,7 @@ func sendRequest(ctx context.Context, reqBody []byte, endpoint, apiKey, apiType 
         }
 
         req.Header.Set("Content-Type", "application/json")
-        if apiType == "anthropic" {
+        if apiType == "anthropic" && globalPromptCacheConfig.Enabled {
                 req.Header.Set("anthropic-version", "2023-06-01")
         }
         if apiKey != "" {

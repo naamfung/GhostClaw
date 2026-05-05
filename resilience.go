@@ -193,7 +193,7 @@ func sendResilientRequest(ctx context.Context, client *http.Client, reqBody []by
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if apiType == "anthropic" {
+	if apiType == "anthropic" && globalPromptCacheConfig.Enabled {
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
 	if apiKey != "" {
