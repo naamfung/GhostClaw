@@ -16,7 +16,13 @@ export const NUMERIC_FIELDS = [
         'maxAgentIterations',
         'compressionThreshold',
         'skillCleanupThresholdDays',
-        'escalationThreshold'
+        'escalationThreshold',
+        'resilienceMaxRetries',
+        'resilienceTimeoutScaleFactor',
+        'resilienceMaxTimeoutSeconds',
+        'resilienceInitialBackoffSeconds',
+        'resilienceMaxBackoffSeconds',
+        'resilienceBackoffMultiplier'
 ] as const;
 
 /**
@@ -30,5 +36,8 @@ export const POSITIVE_INTEGER_FIELDS = [
         'timeoutBrowser',
         'smartShellSyncTimeout',
         'smartShellUnknownTimeout',
-        'smartShellDefaultWakeMins'
+        'smartShellDefaultWakeMins',
+        'resilienceMaxTimeoutSeconds',
+        'resilienceInitialBackoffSeconds',
+        'resilienceMaxBackoffSeconds'
 ] as const;

@@ -106,6 +106,16 @@ func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
                 },
                 "SkillCleanupThresholdDays": globalSkillCleanupThresholdDays,
                 "EscalationThreshold":       globalEscalationThreshold,
+                "Resilience": map[string]interface{}{
+                        "EnableFailover":         globalResilienceConfig.EnableFailover,
+                        "EnableTimeoutScaling":   globalResilienceConfig.EnableTimeoutScaling,
+                        "MaxRetries":             globalResilienceConfig.MaxRetries,
+                        "TimeoutScaleFactor":     globalResilienceConfig.TimeoutScaleFactor,
+                        "MaxTimeoutSeconds":      globalResilienceConfig.MaxTimeoutSeconds,
+                        "InitialBackoffSeconds":  globalResilienceConfig.InitialBackoffSeconds,
+                        "MaxBackoffSeconds":      globalResilienceConfig.MaxBackoffSeconds,
+                        "BackoffMultiplier":      globalResilienceConfig.BackoffMultiplier,
+                },
         }
 
         json.NewEncoder(w).Encode(configData)
@@ -135,6 +145,7 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 BrowserConfig    *BrowserConfig    `json:"BrowserConfig"`
                 Security         *SecurityConfig   `json:"Security"`
                 Tools            *ToolsConfig      `json:"Tools"`
+                Resilience       *ResilienceConfig `json:"Resilience"`
         }
         if err := json.Unmarshal(body, &newConfig); err != nil {
                 http.Error(w, `{"error": "解析 JSON 失败"}`, http.StatusBadRequest)
@@ -279,6 +290,13 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                         if err := globalConfigManager.UpdateEscalationThreshold(threshold); err != nil {
                                 log.Printf("Warning: failed to update escalation threshold: %v", err)
                         }
+                }
+        }
+
+        // 更新網絡韌性配置
+        if _, exists := rawMap["Resilience"]; exists && newConfig.Resilience != nil {
+                if err := globalConfigManager.UpdateResilienceConfig(*newConfig.Resilience); err != nil {
+                        log.Printf("Warning: failed to update resilience config: %v", err)
                 }
         }
 

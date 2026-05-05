@@ -21,6 +21,18 @@ const (
         DefaultBrowserTimeout     = 90  // 浏览器每次操作默认超时（适应慢速网络 + JS 渲染）
 )
 
+// 默认网络韧性配置常量
+const (
+        DefaultResilienceEnableFailover       = true  // 默認啟用故障轉移
+        DefaultResilienceEnableTimeoutScaling = true  // 默認啟用超時自動放寬
+        DefaultResilienceMaxRetries           = 0     // 默認無限重試（無 failover 時）
+        DefaultResilienceTimeoutScaleFactor   = 1.5   // 超時放寬倍率
+        DefaultResilienceMaxTimeoutSeconds    = 600   // 最大超時上限（10 分鐘）
+        DefaultResilienceInitialBackoffSeconds = 5    // 初始重試間隔（秒）
+        DefaultResilienceMaxBackoffSeconds    = 300   // 最大重試間隔（5 分鐘）
+        DefaultResilienceBackoffMultiplier    = 2.0   // 退避倍率
+)
+
 // 内部系统标记常量（仅由程序注入，不在用户输入中出现）
 const (
         LatestRequestMarker = "[USR:LATEST]"       // 标记最新用户请求，引导模型优先处理

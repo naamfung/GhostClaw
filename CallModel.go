@@ -1955,102 +1955,22 @@ func sendRequestAndGetChunks(ctx context.Context, data map[string]interface{}, b
                 }
         }
 
-        // 唯一 URL 拼接點：resolveEndpoint(effectiveBaseURL, apiPath)
-        effectiveEndpoint := resolveEndpoint(effectiveBaseURL, apiPath)
-
-        resp, err := sendRequest(ctx, data, effectiveEndpoint, effectiveKey, apiType)
+        // 使用網絡韌性層發送請求（自動處理超時放寬、Provider 故障轉移、指數退避重試）
+        resp, err := resilientDo(ctx, data, effectiveBaseURL, apiPath, effectiveKey, apiType,
+                &globalResilienceConfig, activeProviderName)
 
         if err != nil {
-                // ── P1: 錯誤分類 + Provider Failover 報告失敗 ─────────
-                if globalErrorClassifier != nil {
-                        classified := globalErrorClassifier.Classify(err)
-                        if classified != nil {
-                                log.Printf("[ErrorClassifier] Request failed: %s (type: %s)",
-                                        err.Error(), ErrorTypeString(classified.Type))
-                                // 報告失敗到 Provider Failover（使用實際 provider 名稱而非硬編碼 default）
-                                if globalProviderFailover != nil {
-                                        globalProviderFailover.ReportFailure(activeProviderName, err)
-                                }
-                                // 報告失敗到憑證池
-                                if globalCredentialPool != nil && activeCredentialID != "" {
-                                        globalCredentialPool.ReportFailure(activeCredentialID, err.Error())
-                                }
-                                // ── P4-RateLimit: 429 時立即切換到另一個憑證重試 ──
-                                if classified.Type == ErrorRateLimit && globalCredentialPool != nil && activeCredentialID != "" {
-                                        retryAfter := classified.RetryAfter
-                                        if retryAfter <= 0 {
-                                                retryAfter = globalErrorClassifier.GetRetryDelayForClassified(classified)
-                                        }
-                                        globalCredentialPool.ReportRateLimit(activeCredentialID, retryAfter)
-                                        log.Printf("[CredentialPool] Rate limit on %s (cooldown %v), switching credential...", MaskAPIKey(activeCredentialID), retryAfter)
-
-                                        maxSwitchAttempts := globalCredentialPool.PoolSize()
-                                        for attempt := 0; attempt < maxSwitchAttempts; attempt++ {
-                                                altCred, altErr := globalCredentialPool.GetCredentialForRetry(activeCredentialID)
-                                                if altErr != nil {
-                                                        log.Printf("[CredentialPool] No alternate credential available: %v", altErr)
-                                                        break
-                                                }
-                                                log.Printf("[CredentialPool] Retrying with alternate credential %s (attempt %d/%d)",
-                                                        MaskAPIKey(altCred.ID), attempt+1, maxSwitchAttempts)
-                                                activeCredentialID = altCred.ID
-                                                effectiveKey = altCred.Key
-                                                resp, err = sendRequest(ctx, data, effectiveEndpoint, effectiveKey, apiType)
-                                                if err == nil {
-                                                        // 成功：跳出重試循環，讓下面的成功路徑處理
-                                                        break
-                                                }
-                                                // 檢查新的錯誤是否也是 429
-                                                if globalErrorClassifier != nil {
-                                                        newClassified := globalErrorClassifier.Classify(err)
-                                                        if newClassified != nil && newClassified.Type == ErrorRateLimit {
-                                                                newRetryAfter := newClassified.RetryAfter
-                                                                if newRetryAfter <= 0 {
-                                                                        newRetryAfter = globalErrorClassifier.GetRetryDelayForClassified(newClassified)
-                                                                }
-                                                                globalCredentialPool.ReportRateLimit(activeCredentialID, newRetryAfter)
-                                                                log.Printf("[CredentialPool] Alternate credential %s also rate limited (cooldown %v)",
-                                                                        MaskAPIKey(activeCredentialID), newRetryAfter)
-                                                                continue // 嘗試下一個憑證
-                                                        }
-                                                }
-                                                // 非速率限制錯誤：不再切換憑證，讓下方通用重試邏輯處理
-                                                break
-                                        }
-                                }
-                                // 如果仍然有錯誤且可重試，使用分類器的延遲
-                                if err != nil && classified.Retryable {
-                                        delay := globalErrorClassifier.GetRetryDelayForClassified(classified)
-                                        log.Printf("[ErrorClassifier] Retryable error, retrying after %v...", delay)
-                                        select {
-                                        case <-ctx.Done():
-                                                return nil, ctx.Err()
-                                        case <-time.After(delay):
-                                        }
-                                        // 重試一次
-                                        resp, err = sendRequest(ctx, data, effectiveEndpoint, effectiveKey, apiType)
-                                        if err != nil {
-                                                return nil, err
-                                        }
-                                }
-                        }
-                } else {
-                        return nil, err
-                }
-                // ── 錯誤分類完成但仍未成功（classified==nil 或不可重試）──
-                if err != nil {
-                        return nil, err
-                }
-                // err == nil 表示重試成功，fall-through 到下方成功路徑
-        } else {
-                // ── P1/P3/P4: 報告成功 ───────────────────────────────
-                if globalProviderFailover != nil {
-                        globalProviderFailover.ReportSuccess(activeProviderName)
-                }
+                // 報告失敗到憑證池
                 if globalCredentialPool != nil && activeCredentialID != "" {
-                        globalCredentialPool.ReportSuccess(activeCredentialID)
-                        globalCredentialPool.RecordRequest(activeCredentialID)
+                        globalCredentialPool.ReportFailure(activeCredentialID, err.Error())
                 }
+                return nil, err
+        }
+
+        // 報告成功到憑證池
+        if globalCredentialPool != nil && activeCredentialID != "" {
+                globalCredentialPool.ReportSuccess(activeCredentialID)
+                globalCredentialPool.RecordRequest(activeCredentialID)
         }
 
         chunkChan := make(chan StreamChunk, 100)

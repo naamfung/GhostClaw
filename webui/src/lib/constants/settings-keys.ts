@@ -51,4 +51,13 @@ export const SETTINGS_KEYS = {
         ESCALATION_THRESHOLD: 'escalationThreshold',
         // Security extra
         ALLOW_PRIVATE_IPS: 'allowPrivateIPs',
+        // Resilience
+        RESILIENCE_ENABLE_FAILOVER: 'resilienceEnableFailover',
+        RESILIENCE_ENABLE_TIMEOUT_SCALING: 'resilienceEnableTimeoutScaling',
+        RESILIENCE_MAX_RETRIES: 'resilienceMaxRetries',
+        RESILIENCE_TIMEOUT_SCALE_FACTOR: 'resilienceTimeoutScaleFactor',
+        RESILIENCE_MAX_TIMEOUT_SECONDS: 'resilienceMaxTimeoutSeconds',
+        RESILIENCE_INITIAL_BACKOFF_SECONDS: 'resilienceInitialBackoffSeconds',
+        RESILIENCE_MAX_BACKOFF_SECONDS: 'resilienceMaxBackoffSeconds',
+        RESILIENCE_BACKOFF_MULTIPLIER: 'resilienceBackoffMultiplier',
 } as const;

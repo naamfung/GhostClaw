@@ -160,6 +160,14 @@ func (cm *ConfigManager) createDefaultConfig() Config {
         config.SystemInfo.IncludeMemory = true
         config.SystemInfo.IncludeGPU = false
         config.SystemInfo.IncludeOSDetails = true
+        config.Resilience.EnableFailover = DefaultResilienceEnableFailover
+        config.Resilience.EnableTimeoutScaling = DefaultResilienceEnableTimeoutScaling
+        config.Resilience.MaxRetries = DefaultResilienceMaxRetries
+        config.Resilience.TimeoutScaleFactor = DefaultResilienceTimeoutScaleFactor
+        config.Resilience.MaxTimeoutSeconds = DefaultResilienceMaxTimeoutSeconds
+        config.Resilience.InitialBackoffSeconds = DefaultResilienceInitialBackoffSeconds
+        config.Resilience.MaxBackoffSeconds = DefaultResilienceMaxBackoffSeconds
+        config.Resilience.BackoffMultiplier = DefaultResilienceBackoffMultiplier
         return config
 }
 
@@ -327,6 +335,37 @@ func (cm *ConfigManager) applyDefaults(config *Config) {
                 fmt.Printf("认证已启用，自动生成密码: %s\n", randomPassword)
                 fmt.Printf("请在配置文件中设置自定义密码: Auth.Password\n")
                 fmt.Printf("========================================\n\n")
+        }
+
+        // Resilience 網絡韌性配置預設值
+        if !config.Resilience.EnableFailover && config.Resilience.MaxRetries == 0 &&
+                config.Resilience.TimeoutScaleFactor == 0 {
+                // 全部為零值表示從未設定，套用完整預設值
+                config.Resilience.EnableFailover = DefaultResilienceEnableFailover
+                config.Resilience.EnableTimeoutScaling = DefaultResilienceEnableTimeoutScaling
+                config.Resilience.MaxRetries = DefaultResilienceMaxRetries
+                config.Resilience.TimeoutScaleFactor = DefaultResilienceTimeoutScaleFactor
+                config.Resilience.MaxTimeoutSeconds = DefaultResilienceMaxTimeoutSeconds
+                config.Resilience.InitialBackoffSeconds = DefaultResilienceInitialBackoffSeconds
+                config.Resilience.MaxBackoffSeconds = DefaultResilienceMaxBackoffSeconds
+                config.Resilience.BackoffMultiplier = DefaultResilienceBackoffMultiplier
+        } else {
+                // 部分設定：補齊個別零值字段
+                if config.Resilience.TimeoutScaleFactor == 0 {
+                        config.Resilience.TimeoutScaleFactor = DefaultResilienceTimeoutScaleFactor
+                }
+                if config.Resilience.MaxTimeoutSeconds == 0 {
+                        config.Resilience.MaxTimeoutSeconds = DefaultResilienceMaxTimeoutSeconds
+                }
+                if config.Resilience.InitialBackoffSeconds == 0 {
+                        config.Resilience.InitialBackoffSeconds = DefaultResilienceInitialBackoffSeconds
+                }
+                if config.Resilience.MaxBackoffSeconds == 0 {
+                        config.Resilience.MaxBackoffSeconds = DefaultResilienceMaxBackoffSeconds
+                }
+                if config.Resilience.BackoffMultiplier == 0 {
+                        config.Resilience.BackoffMultiplier = DefaultResilienceBackoffMultiplier
+                }
         }
 }
 
@@ -710,6 +749,38 @@ func (cm *ConfigManager) UpdateEscalationThreshold(threshold int) error {
         return cm.saveLocked()
 }
 
+// UpdateResilienceConfig 更新網絡韌性配置
+func (cm *ConfigManager) UpdateResilienceConfig(newCfg ResilienceConfig) error {
+        cm.mu.Lock()
+        defer cm.mu.Unlock()
+
+        // 差異合併：只更新非零值字段
+        if newCfg.TimeoutScaleFactor > 0 {
+                cm.config.Resilience.TimeoutScaleFactor = newCfg.TimeoutScaleFactor
+        }
+        if newCfg.MaxTimeoutSeconds > 0 {
+                cm.config.Resilience.MaxTimeoutSeconds = newCfg.MaxTimeoutSeconds
+        }
+        if newCfg.InitialBackoffSeconds > 0 {
+                cm.config.Resilience.InitialBackoffSeconds = newCfg.InitialBackoffSeconds
+        }
+        if newCfg.MaxBackoffSeconds > 0 {
+                cm.config.Resilience.MaxBackoffSeconds = newCfg.MaxBackoffSeconds
+        }
+        if newCfg.BackoffMultiplier > 0 {
+                cm.config.Resilience.BackoffMultiplier = newCfg.BackoffMultiplier
+        }
+        // bool 值始終更新（因為 false 係有意義嘅值）
+        cm.config.Resilience.EnableFailover = newCfg.EnableFailover
+        cm.config.Resilience.EnableTimeoutScaling = newCfg.EnableTimeoutScaling
+        // MaxRetries: 0 表示無限，需要特殊處理——只有請求顯式包含時先更新
+        // 由於 JSON unmarshaling 會將缺失字段設為 0，我哋用指針判斷
+        // 簡化處理：始終更新（前端會發送完整配置）
+        cm.config.Resilience.MaxRetries = newCfg.MaxRetries
+
+        return cm.saveLocked()
+}
+
 // ReplaceConfig 替换整个配置对象（用于配置向导等场景），保存
 func (cm *ConfigManager) ReplaceConfig(config Config) error {
         cm.mu.Lock()
@@ -811,6 +882,7 @@ func (cm *ConfigManager) syncGlobalsLocked() {
         globalCompressionThreshold = cm.config.Tools.CompressionThreshold
         globalSkillCleanupThresholdDays = cm.config.Tools.SkillCleanupThresholdDays
         globalEscalationThreshold = cm.config.Tools.EscalationThreshold
+        globalResilienceConfig = cm.config.Resilience
         setDefaultRole(cm.config.DefaultRole)
 
         // 热重载：应用用户配置的 Agent Loop 迭代上限（0 = 不限制）

@@ -195,6 +195,18 @@ type SystemInfoConfig struct {
         IncludeOSDetails bool `toon:"IncludeOSDetails" json:"IncludeOSDetails"` // 包含详细操作系统信息
 }
 
+// ResilienceConfig 網絡韌性配置
+type ResilienceConfig struct {
+        EnableFailover         bool    `toon:"EnableFailover" json:"EnableFailover"`                 // 啟用故障轉移
+        EnableTimeoutScaling   bool    `toon:"EnableTimeoutScaling" json:"EnableTimeoutScaling"`     // 啟用超時自動放寬
+        MaxRetries             int     `toon:"MaxRetries" json:"MaxRetries"`                         // 最大重試次數，0=無限（當無failover時）
+        TimeoutScaleFactor     float64 `toon:"TimeoutScaleFactor" json:"TimeoutScaleFactor"`         // 超時放寬倍率，預設 1.5
+        MaxTimeoutSeconds      int     `toon:"MaxTimeoutSeconds" json:"MaxTimeoutSeconds"`           // 超時上限（秒），預設 600
+        InitialBackoffSeconds  int     `toon:"InitialBackoffSeconds" json:"InitialBackoffSeconds"`   // 初始重試間隔（秒），預設 5
+        MaxBackoffSeconds      int     `toon:"MaxBackoffSeconds" json:"MaxBackoffSeconds"`           // 最大重試間隔（秒），預設 300
+        BackoffMultiplier      float64 `toon:"BackoffMultiplier" json:"BackoffMultiplier"`           // 退避倍率，預設 2.0
+}
+
 // ModelConfig 模型配置（持久化到 config.toon）
 // 嵌入 ModelBase，toon-go 按嵌套格式序列化/反序列化 ModelBase 字段
 type ModelConfig struct {
@@ -235,7 +247,8 @@ type Config struct {
         GroupChatConfig     *GroupChatConfig        `toon:"GroupChat,omitempty" json:"GroupChat,omitempty"`
         SystemInfo          SystemInfoConfig        `toon:"SystemInfo" json:"SystemInfo"`
         Session             *SessionConfig          `toon:"Session,omitempty" json:"Session,omitempty"`
-        MaxWorkModeResumeRounds int `toon:"MaxWorkModeResumeRounds" json:"MaxWorkModeResumeRounds"` // 工作模式退出守衛最大續行次數，默認3
+        MaxWorkModeResumeRounds int              `toon:"MaxWorkModeResumeRounds" json:"MaxWorkModeResumeRounds"` // 工作模式退出守衛最大續行次數，默認3
+        Resilience               ResilienceConfig `toon:"Resilience" json:"Resilience"`                                             // 網絡韌性配置
 }
 
 // normalizeConfigForSave 在保存配置前将 DataDir 转为相对路径

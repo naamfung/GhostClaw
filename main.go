@@ -86,6 +86,7 @@ var (
         globalCompressionThreshold float64 // 0.1-0.9
         globalSkillCleanupThresholdDays int // 30-365, default 90
         globalEscalationThreshold       int // 1-5, default 3
+        globalResilienceConfig    ResilienceConfig // 網絡韌性配置
 
         // cmdModeActive 控制日志是否输出到终端
         // true = CMD REPL 模式，日志静默（只显示模型对话流）

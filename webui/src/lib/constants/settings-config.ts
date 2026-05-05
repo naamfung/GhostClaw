@@ -48,6 +48,15 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         skillCleanupThresholdDays: 90,
         // escalation
         escalationThreshold: 3,
+        // resilience (network resilience)
+        resilienceEnableFailover: true,
+        resilienceEnableTimeoutScaling: true,
+        resilienceMaxRetries: 0, // 0 = unlimited (when no failover)
+        resilienceTimeoutScaleFactor: 1.5,
+        resilienceMaxTimeoutSeconds: 600,
+        resilienceInitialBackoffSeconds: 5,
+        resilienceMaxBackoffSeconds: 300,
+        resilienceBackoffMultiplier: 2.0,
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
@@ -110,6 +119,15 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         escalationThreshold: '工具連續失敗升級閾值（次）。相同工具+相同參數連續失敗達到此次數後，系統會以用戶身份轉發錯誤記錄畀模型，強制佢改變策略。範圍 1-5，預設 3。',
         // security extra
         allowPrivateIPs: '允许访问私有 IP 地址（如 192.168.x.x、10.x.x.x）。仅在内网开发环境中启用。',
+        // resilience
+        resilienceEnableFailover: '同一模型配置多次失敗時自動切換到下一個可用 provider。需要先配置多個 provider。',
+        resilienceEnableTimeoutScaling: '連續超時時自動放寬 HTTP 請求嘅 ResponseHeaderTimeout，避免臨時網絡波動導致失敗。',
+        resilienceMaxRetries: '每個請求嘅最大重試次數。設為 0 表示無上限（當無 failover 可用時會堅持無限重試）。',
+        resilienceTimeoutScaleFactor: '每次超時後將 ResponseHeaderTimeout 乘以此倍率（例如 1.5 表示每次放寬 50%）。',
+        resilienceMaxTimeoutSeconds: '超時放寬嘅絕對上限（秒）。達到此上限後不再繼續放寬。',
+        resilienceInitialBackoffSeconds: '第一次重試前等待嘅秒數。之後會按退避倍率指數增長。',
+        resilienceMaxBackoffSeconds: '重試間隔嘅上限（秒）。退避時間達到此值後不會再增加。',
+        resilienceBackoffMultiplier: '每次重試後將等待間隔乘以此倍率（例如 2.0 表示每次翻倍）。',
 };
 
 export const SETTINGS_COLOR_MODES_CONFIG = [

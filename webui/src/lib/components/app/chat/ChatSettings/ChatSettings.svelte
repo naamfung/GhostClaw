@@ -12,7 +12,8 @@
                 Users,
                 Timer,
                 Shield,
-                Globe
+                Globe,
+                Wifi
         } from '@lucide/svelte';
         import { McpLogo, McpServersSettings } from '$lib/components/app/mcp';
         import {
@@ -296,6 +297,53 @@
                                         type: SettingsFieldType.INPUT
                                 }
                         ]
+                },
+                // ===== 網絡韌性 =====
+                {
+                        title: SETTINGS_SECTION_TITLES.RESILIENCE,
+                        icon: Wifi,
+                        fields: [
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_ENABLE_FAILOVER,
+                                        label: '啟用故障轉移',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_ENABLE_TIMEOUT_SCALING,
+                                        label: '啟用超時自動放寬',
+                                        type: SettingsFieldType.CHECKBOX
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_MAX_RETRIES,
+                                        label: '最大重試次數（0=無限）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_TIMEOUT_SCALE_FACTOR,
+                                        label: '超時放寬倍率',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_MAX_TIMEOUT_SECONDS,
+                                        label: '最大超時上限（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_INITIAL_BACKOFF_SECONDS,
+                                        label: '初始重試間隔（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_MAX_BACKOFF_SECONDS,
+                                        label: '最大重試間隔（秒）',
+                                        type: SettingsFieldType.INPUT
+                                },
+                                {
+                                        key: SETTINGS_KEYS.RESILIENCE_BACKOFF_MULTIPLIER,
+                                        label: '退避倍率',
+                                        type: SettingsFieldType.INPUT
+                                }
+                        ]
                 }
         ];
 
@@ -446,6 +494,27 @@
                         // Escalation threshold
                         if (processedConfig.escalationThreshold !== undefined) {
                                 backendConfig.EscalationThreshold = Number(processedConfig.escalationThreshold) || 3;
+                        }
+
+                        // Resilience configuration
+                        const resilienceFields = [
+                                'resilienceEnableFailover', 'resilienceEnableTimeoutScaling',
+                                'resilienceMaxRetries', 'resilienceTimeoutScaleFactor',
+                                'resilienceMaxTimeoutSeconds', 'resilienceInitialBackoffSeconds',
+                                'resilienceMaxBackoffSeconds', 'resilienceBackoffMultiplier'
+                        ];
+                        const hasResilienceConfig = resilienceFields.some(f => processedConfig[f] !== undefined);
+                        if (hasResilienceConfig) {
+                                backendConfig.Resilience = {
+                                        EnableFailover: !!processedConfig.resilienceEnableFailover,
+                                        EnableTimeoutScaling: !!processedConfig.resilienceEnableTimeoutScaling,
+                                        MaxRetries: Number(processedConfig.resilienceMaxRetries) ?? 0,
+                                        TimeoutScaleFactor: Number(processedConfig.resilienceTimeoutScaleFactor) || 1.5,
+                                        MaxTimeoutSeconds: Number(processedConfig.resilienceMaxTimeoutSeconds) || 600,
+                                        InitialBackoffSeconds: Number(processedConfig.resilienceInitialBackoffSeconds) || 5,
+                                        MaxBackoffSeconds: Number(processedConfig.resilienceMaxBackoffSeconds) || 300,
+                                        BackoffMultiplier: Number(processedConfig.resilienceBackoffMultiplier) || 2.0
+                                };
                         }
 
                         await fetch('/api/config', {
