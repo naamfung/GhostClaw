@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+// lastWorkModeTodoDigest 記錄上一次 exit guard 檢查時嘅 todos 指紋。
+// 用於進展感知 resume：指紋變咗 = 有進展 → reset counter；指紋唔變 = 卡死 → counter++。
+var lastWorkModeTodoDigest string
+
 // getMaxWorkModeResumeRounds returns the max resume rounds for work mode exit guard.
 // Default is 3 if not configured.
 func getMaxWorkModeResumeRounds() int {
@@ -133,11 +137,19 @@ func RunBranchNone(messages []Message, respContent interface{},
 		}
 	}
 
-	// ========== 工作模式退出守衛 ==========
+	// ========== 工作模式退出守衛（進展感知） ==========
+	// 每次 resume 前比較 todos 指紋：有進展（指紋變咗）→ reset counter；
+	// 冇進展（指紋一樣）→ counter++。卡死先強制退出，唔係計 resume 次數。
 	if TODO.HasUnfinishedItems() {
 		if !TODO.AllUnfinishedAreWaiting() {
-			if *resumeCount < getMaxWorkModeResumeRounds() {
-				*resumeCount++
+			currentDigest := TODO.GetUnfinishedDigest()
+			if currentDigest != lastWorkModeTodoDigest {
+				// 有進展：reset counter，更新 snapshot
+				*resumeCount = 0
+				lastWorkModeTodoDigest = currentDigest
+			}
+			*resumeCount++
+			if *resumeCount <= getMaxWorkModeResumeRounds() {
 				unfinished := TODO.GetUnfinishedSummary()
 				resumePrompt := fmt.Sprintf(
 					"[SYSTEM_RESUME] 你的任務尚未完成。以下待辦事項仍需處理：\n%s\n\n請繼續執行未完成的任務。如果某個任務已通過 SmartShell（異步模式）或 CronAdd 提交為後台操作，請使用 todos 工具將其狀態更新為 waiting，然後等待系統通知結果，切勿重複調用同步模式。",
@@ -148,10 +160,10 @@ func RunBranchNone(messages []Message, respContent interface{},
 					Content:   resumePrompt,
 					Timestamp: time.Now().Unix(),
 				})
-				log.Printf("[AgentLoop] Work mode exit guard: resume #%d, unfinished todos detected", *resumeCount)
+				log.Printf("[AgentLoop] Work mode exit guard: resume #%d (consecutive no-progress=%d), unfinished todos detected", *resumeCount, *resumeCount)
 				return BranchNoneResult{ShouldContinue: true, Messages: messages}
 			}
-			log.Printf("[AgentLoop] Work mode: max resume rounds (%d) reached, allowing exit", getMaxWorkModeResumeRounds())
+			log.Printf("[AgentLoop] Work mode: max consecutive no-progress rounds (%d) reached, allowing exit", getMaxWorkModeResumeRounds())
 		} else {
 			log.Printf("[AgentLoop] Work mode: all remaining todos are waiting, allowing exit")
 		}

@@ -369,6 +369,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 	iteration := 0
 	resumeCount := 0
 	subagentResumeCount := 0
+	lastWorkModeTodoDigest = "" // reset progress snapshot for new agent loop
 	xmlRePromptCount := 0
 	todoReminderCount := 0
 	loopExitedNaturally := false

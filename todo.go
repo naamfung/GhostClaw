@@ -269,6 +269,31 @@ func (tm *TodoManager) GetUnfinishedSummary() string {
         return strings.Join(unfinished, "\n")
 }
 
+// GetUnfinishedDigest 返回未完成項目嘅穩定指紋字串（ID:status 排序後用換行分隔）。
+// 用於 exit guard 檢測兩次 resume 之間 todo 係咪有進展。
+// 指紋唔同 → 有進展 → 應該畀模型繼續做。
+func (tm *TodoManager) GetUnfinishedDigest() string {
+        tm.mu.RLock()
+        defer tm.mu.RUnlock()
+
+        var parts []string
+        for id, list := range tm.lists {
+                if planRelatedListIDs[id] {
+                        continue
+                }
+                for _, item := range list.Items {
+                        if item.Status == "Pending" || item.Status == "InProgress" {
+                                parts = append(parts, item.ID+":"+item.Status)
+                        }
+                }
+        }
+        if len(parts) == 0 {
+                return ""
+        }
+        sort.Strings(parts)
+        return strings.Join(parts, "\n")
+}
+
 // IsEmpty 檢查非 Plan Mode 列表是否有任何項目
 // 排除 Plan Mode 的列表（plan, phase1-2），只檢查用戶自己創建的 todo 列表
 // 用於 todos 使用提醒守衛：如果用戶從未使用過 todos，則為 true
