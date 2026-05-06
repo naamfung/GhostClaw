@@ -1785,11 +1785,18 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
         case []interface{}:
                 itemsInterface = v
         case map[string]interface{}:
-                // 巢狀格式：{"Todos": [...], "summary": "..."} → 提取內層 Todos
+                // 巢狀格式 A：{"Todos": [...], "summary": "..."} → 提取內層 Todos
                 if nested, ok := v["Todos"].([]interface{}); ok {
                         itemsInterface = nested
+                } else if _, hasContent := v["content"]; hasContent {
+                        // 單個 item object：{"id":"1","content":"...","status":"InProgress"}
+                        // 模型有時忘記包 array，我哋自動 wrap 做單元素陣列
+                        itemsInterface = []interface{}{v}
+                } else if statusArr, ok := v["status"].([]interface{}); ok {
+                        // 格式：{"status": ["InProgress","Pending",...]} — 只有 status 冇 id/content
+                        return fmt.Sprintf("Error: Todos 必須係 array of objects。你傳入咗 {\"status\": [...]}，缺少 id 同 content。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅 status 有 %d 個值：%v", len(statusArr), statusArr), TaskStatusFailed
                 } else {
-                        return fmt.Sprintf("Error: Todos 必須是 array。你傳入咗 object，但入面冇 Todos 陣列。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}", ), TaskStatusFailed
+                        return fmt.Sprintf("Error: Todos 必須是 array。你傳入咗 object，但入面冇 Todos 陣列。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅 keys：%v", getMapKeys(v)), TaskStatusFailed
                 }
         case string:
                 // JSON string 格式：嘗試 parse
@@ -1798,8 +1805,12 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
                         if arr, ok := parsed.([]interface{}); ok {
                                 itemsInterface = arr
                         } else if obj, ok := parsed.(map[string]interface{}); ok {
+                                // 巢狀 {"Todos": [...], "summary": "..."}
                                 if nested, ok := obj["Todos"].([]interface{}); ok {
                                         itemsInterface = nested
+                                } else if _, hasContent := obj["content"]; hasContent {
+                                        // 單個 item JSON string：{"id":"1","content":"...","status":"..."}
+                                        itemsInterface = []interface{}{obj}
                                 }
                         }
                 }
@@ -1873,6 +1884,15 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
                 globalTaskTracker.ResetStuckState()
         }
         return output, TaskStatusSuccess
+}
+
+// getMapKeys 返回 map 嘅所有 key（用於錯誤訊息）
+func getMapKeys(m map[string]interface{}) []string {
+        keys := make([]string, 0, len(m))
+        for k := range m {
+                keys = append(keys, k)
+        }
+        return keys
 }
 
 // parseTodosXMLString 將模型以 XML/DSML <item> 格式傳入嘅 Todos string 解析為 []interface{}。
