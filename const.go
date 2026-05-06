@@ -220,6 +220,14 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 prompt.WriteString(toolSection)
         }
 
+        // === 9b. 延遲加載工具提示 ===
+        if globalToolsConfig.DeferExtendedTools {
+                if deferred := GetDeferredToolNames(); deferred != "" {
+                        prompt.WriteString("\n\n")
+                        prompt.WriteString(deferred)
+                }
+        }
+
         // === 10. 静态环境信息（进程生命周期内不变，不影响 prompt cache 命中率）===
         // 使用新的系统信息收集模块
         if globalConfig.SystemInfo.Enabled {

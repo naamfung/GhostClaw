@@ -174,6 +174,7 @@ type ToolsConfig struct {
         SkillCleanupThresholdDays  int     `toon:"SkillCleanupThresholdDays,omitempty" json:"SkillCleanupThresholdDays,omitempty"` // Skill 自動清理天數，預設 90，範圍 30-365
         EscalationThreshold        int     `toon:"EscalationThreshold,omitempty" json:"EscalationThreshold,omitempty"`                 // 工具連續失敗升級閾值，預設 3，範圍 1-5
         EnableParallelTools        bool    `toon:"EnableParallelTools" json:"EnableParallelTools"`                                     // 啟用並行工具調用（部分 provider 唔支援，預設關閉）
+        DeferExtendedTools         bool    `toon:"DeferExtendedTools" json:"DeferExtendedTools"`                                       // 延遲加載非核心工具（Extended/Expert tier 只顯示名稱，通過 Menu 按需加載完整 schema）
 }
 
 // ProfileConfig 个人资料配置

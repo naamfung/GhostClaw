@@ -2,6 +2,7 @@ package main
 
 import (
         "log"
+        "strconv"
         "strings"
         "sync"
 )
@@ -125,6 +126,7 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
         if contextWindow == 0 &&
                 (globalToolDistributionMgr == nil) &&
                 !hasConfigDisabledTools() &&
+                !globalToolsConfig.DeferExtendedTools &&
                 (globalTasksMode == nil || !globalTasksMode.IsActive()) &&
                 (role == nil || role.ToolPermission.Mode == ToolPermissionAll) &&
                 (globalMCPClientManager == nil || len(globalMCPClientManager.GetAllTools()) == 0) {
@@ -163,6 +165,11 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
         // 首先根据工具配置过滤
         tools = filterToolsByConfig(apiType, tools)
 
+        // ── Defer 非核心工具：DeferExtendedTools 啟用時，排除 Extended/Expert ──
+        if globalToolsConfig.DeferExtendedTools {
+                tools = filterDeferredTools(apiType, tools)
+        }
+
         // ── P3: 應用工具分發抽樣結果（StableTools 啟用時跳過）──────
         if len(sampledToolNames) > 0 {
                 tools = applyToolDistributionFilter(apiType, tools, sampledToolNames)
@@ -188,6 +195,37 @@ func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) 
         }
         // 添加 MCP 客户端工具与记忆整合工具
         return appendDynamicTools(apiType, filtered)
+}
+
+// filterDeferredTools 排除 Extended + Expert tier 工具，只保留 Core。
+// DeferExtendedTools 啟用時，非核心工具唔發送完整 schema，改為喺系統 prompt 列出名稱。
+func filterDeferredTools(apiType string, tools interface{}) interface{} {
+        toolList, ok := tools.([]map[string]interface{})
+        if !ok {
+                return tools
+        }
+        filtered := make([]map[string]interface{}, 0, len(toolList))
+        for _, t := range toolList {
+                name := getToolName(t)
+                if td, exists := toolRegistryMap[name]; exists && td.Tier == "core" {
+                        filtered = append(filtered, t)
+                }
+        }
+        return filtered
+}
+
+// GetDeferredToolNames 返回所有被延遲加載嘅工具名稱列表（用於系統 prompt）。
+func GetDeferredToolNames() string {
+        var names []string
+        for _, td := range toolRegistry {
+                if td.Tier != "core" {
+                        names = append(names, td.Name)
+                }
+        }
+        if len(names) == 0 {
+                return ""
+        }
+        return "可通過 Menu 按需加載嘅延遲工具（" + strconv.Itoa(len(names)) + " 個）：" + strings.Join(names, "、")
 }
 
 // hasConfigDisabledTools 快速檢查是否有工具被配置禁用（無需構建工具列表）。
