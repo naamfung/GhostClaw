@@ -132,8 +132,8 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
         resilienceMaxBackoffSeconds: '重試間隔嘅上限（秒）。退避時間達到此值後不會再增加。',
         resilienceBackoffMultiplier: '每次重試後將等待間隔乘以此倍率（例如 2.0 表示每次翻倍）。',
         // prompt cache
-        promptCacheEnabled: '啟用 Anthropic API Prompt 快取。加入 cache_control breakpoints 同 anthropic-version header，令靜態內容（system prompt、tools）可以被 API 快取。僅影響 Anthropic API。',
-        promptCacheStableTools: '請求之間唔改變工具列表，保持 cache prefix 一致。啟用後會使用完整工具集（跳過 tier/sampling/density 過濾），Plan Mode 改用 message 標記而非物理刪除工具。需要啟用「Prompt 快取」先生效。',
+        promptCacheEnabled: '啟用 Prompt 快取優化。Anthropic API 加入 cache_control breakpoints 同 anthropic-version header；其他 API（DeepSeek/OpenAI）透過穩定工具集配合其原生 KV Cache 機制。',
+        promptCacheStableTools: '請求之間唔改變工具列表，保持 cache prefix 一致（適用於所有 API 類型）。啟用後會使用完整工具集（跳過 tier/sampling/density 過濾），Plan Mode 改用 message 標記而非物理刪除工具。需要啟用「Prompt 快取」先生效。',
 };
 
 export const SETTINGS_COLOR_MODES_CONFIG = [

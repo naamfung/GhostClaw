@@ -606,7 +606,7 @@
 <div class="flex h-full flex-col overflow-hidden md:flex-row">
         <!-- Desktop Sidebar -->
         <div class="hidden w-52 flex-shrink-0 border-r border-border/30 p-4 md:block">
-                <nav class="space-y-1 py-2">
+                <nav class="max-h-[calc(100vh-12rem)] space-y-1 overflow-y-auto py-2">
                         {#each settingSections as section (section.title)}
                                 <button
                                         class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent {activeSection ===
