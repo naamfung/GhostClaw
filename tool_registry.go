@@ -2318,6 +2318,20 @@ validate + 可选冒烟测试。
                         "additionalProperties": false,
                 })
 
+        reg("EnterPlanMode",
+                "進入規劃模式（等同 Tasks(PlanPhase=\"design\")）。無需先經 explore，直接開始設計方案同定義任務。",
+                "plan", "core",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "PlanContent": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "計劃內容（可選，可後續補充）",
+                                },
+                        },
+                        "additionalProperties": false,
+                })
+
         reg("ExitPlanMode",
                 "強制退出 Plan/Tasks Mode。正常流程應使用 Tasks(plan_phase=\"execute\") 退出。",
                 "plan", "extended",

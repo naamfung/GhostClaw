@@ -870,8 +870,14 @@ func SafeExecuteTool(ctx context.Context, toolID, toolName string, argsMap map[s
         // Tasks Mode 专用工具处理
         switch toolName {
         case "EnterPlanMode":
-                // 引導使用新 Tasks 工具
-                content := "EnterPlanMode 已棄用。請改用 Tasks 工具：\n- Tasks(PlanPhase=\"explore\") 進入探索階段\n- Tasks(PlanPhase=\"design\", plan_content=\"...\", tasks=[...]) 進入設計階段\n- Tasks(PlanPhase=\"execute\") 退出開始執行"
+                planContent, _ := argsMap["PlanContent"].(string)
+                content, ok := handleTasks(map[string]interface{}{
+                        "PlanPhase":   "design",
+                        "PlanContent": planContent,
+                })
+                if !ok {
+                        content = "Error: " + content
+                }
                 emitToolCallTags(ch, toolName, argsMap, content, TaskStatusSuccess)
                 return EnrichedMessage{
                         Content: content,

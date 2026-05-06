@@ -170,6 +170,9 @@ func (s *GlobalSession) LoadFromPersist() error {
                 log.Printf("Failed to load pending messages: %v", err)
         }
 
+        // ── Tasks Mode 恢復：從 plan.md 自動恢復 Tasks 模式狀態 ──
+        tryRestoreTasksModeFromPlan()
+
         return nil
 }
 

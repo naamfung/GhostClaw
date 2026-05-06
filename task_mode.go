@@ -202,13 +202,67 @@ func enterTasksExplore() (string, bool) {
 	return "已進入 Tasks 模式 — 探索階段。\n\n使用只讀工具（TextSearch、ReadFileLines 等）探索代碼結構。完成後調用 Tasks(PlanPhase=\"design\", ...) 進入設計階段。", true
 }
 
+// autoInitTasksModeLocked 從 inactive 自動初始化 TasksMode（需已持鎖）。
+// 用於從 inactive 直接跳入 design 時嘅內部初始化。
+func autoInitTasksModeLocked() {
+	if globalTasksMode.StartTime.IsZero() {
+		globalTasksMode.StartTime = time.Now()
+	}
+	if globalTasksMode.PhaseStart.IsZero() {
+		globalTasksMode.PhaseStart = time.Now()
+	}
+	if globalTasksMode.TaskDesc == "" {
+		session := GetGlobalSession()
+		history := session.GetHistory()
+		for i := len(history) - 1; i >= 0; i-- {
+			if history[i].Role == "user" {
+				contentStr := fmt.Sprintf("%v", history[i].Content)
+				if !strings.HasPrefix(contentStr, "[SYSTEM_") {
+					if len(contentStr) > 80 {
+						contentStr = contentStr[:80] + "..."
+					}
+					globalTasksMode.TaskDesc = contentStr
+					break
+				}
+			}
+		}
+	}
+	if globalTasksMode.PlanFilePath == "" {
+		globalTasksMode.PlanFilePath = filepath.Join(globalDataDir, "plan.md")
+	}
+	globalTasksMode.PlanPhase = TasksPhaseExplore
+
+	// 啟動 timeout
+	if globalTasksMode.stopTimeout != nil {
+		close(globalTasksMode.stopTimeout)
+	}
+	timeoutCh := make(chan struct{})
+	globalTasksMode.stopTimeout = timeoutCh
+	go func() {
+		select {
+		case <-time.After(tasksPhaseTimeout):
+			log.Printf("[TasksMode] Phase timeout reached, auto advancing")
+			globalTasksMode.mu.Lock()
+			if globalTasksMode.PlanPhase != TasksPhaseInactive {
+				globalTasksMode.PlanPhase = TasksPhaseDesign
+				log.Printf("[TasksMode] Auto advanced to design after phase timeout")
+			}
+			globalTasksMode.mu.Unlock()
+		case <-timeoutCh:
+			return
+		}
+	}()
+}
+
 // enterTasksDesign 進入設計階段
+// 允許直接從 inactive 進入 design（自動初始化 explore 階段），唔再強制先 explore。
 func enterTasksDesign(planContent string, tasks []TaskItem) (string, bool) {
 	globalTasksMode.mu.Lock()
 	defer globalTasksMode.mu.Unlock()
 
+	// 如果從 inactive 直接跳入 design：自動初始化（跳過 explore）
 	if globalTasksMode.PlanPhase == TasksPhaseInactive {
-		return "錯誤：Tasks 模式未激活。請先用 Tasks(PlanPhase=\"explore\") 進入探索階段。", false
+		autoInitTasksModeLocked()
 	}
 
 	globalTasksMode.PlanPhase = TasksPhaseDesign
@@ -903,3 +957,30 @@ func IsTasksModeTimedOut() bool {
 	defer globalTasksMode.mu.RUnlock()
 	return globalTasksMode.TimedOut
 }
+
+// tryRestoreTasksModeFromPlan 從 plan.md 自動恢復 Tasks Mode 狀態（session resume 時調用）。
+// 仿 Claude Code plan 恢復機制：讀取現有 plan 文件 → 恢復 TasksMode。
+func tryRestoreTasksModeFromPlan() {
+	planPath := filepath.Join(globalDataDir, "plan.md")
+	data, err := os.ReadFile(planPath)
+	if err != nil || len(data) == 0 {
+		return
+	}
+
+	globalTasksMode.mu.Lock()
+	defer globalTasksMode.mu.Unlock()
+
+	// 只有在 inactive 時先恢復（避免覆蓋活躍 session）
+	if globalTasksMode.PlanPhase != TasksPhaseInactive {
+		return
+	}
+
+	globalTasksMode.PlanFilePath = planPath
+	globalTasksMode.PlanContent = string(data)
+	globalTasksMode.PlanPhase = TasksPhaseDesign
+	globalTasksMode.StartTime = time.Now()
+	globalTasksMode.PhaseStart = time.Now()
+
+	log.Printf("[TasksMode] Restored from plan.md (%d bytes), entering design phase", len(data))
+}
+
