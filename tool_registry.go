@@ -1410,7 +1410,7 @@ validate + 可选冒烟测试。
                                                                 "description": "進行中嘅動詞形式（例如「Removing socat…」），用於 UI spinner",
                                                         },
                                                 },
-                                                "required": []string{"content", "status", "activeForm"},
+                                                "required": []string{"content", "status"},
                                         },
                                         "description": "完整任務列表（取代現有全部）",
                                 },
