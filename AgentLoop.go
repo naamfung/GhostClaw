@@ -269,6 +269,11 @@ func executeSingleToolCall(ctx context.Context, call ParsedToolCall, ch Channel,
 		return NewToolResultMessage(call.ID, errMsg, TaskStatusFailed, call.Name)
 	}
 
+	// ── DSML/XML 參數標準化 ──────────────────────────────────
+	// 模型（尤其 DeepSeek）有時會將 array/object 參數以 DSML <item> 字串傳入
+	// 而非 JSON array。統一在此 walk argsMap，將 DSML string → []interface{}
+	normalizeDSMLArgs(argsMap)
+
 	// 执行前钩子
 	hookManager := GetHookManager()
 	if hookManager != nil && hookManager.IsEnabled() {
