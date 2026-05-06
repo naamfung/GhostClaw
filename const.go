@@ -35,8 +35,8 @@ const (
 
 // 默認 Prompt 快取配置常量
 const (
-        DefaultPromptCacheEnabled     = true // 默認啟用 Prompt 快取
-        DefaultPromptCacheStableTools = true // 默認使用穩定工具集
+        DefaultPromptCacheEnabled     = false // 默認關閉 Prompt 快取（保留原始行為）
+        DefaultPromptCacheStableTools = false // 默認關閉穩定工具集（保留原始行為）
 )
 
 // 内部系统标记常量（仅由程序注入，不在用户输入中出现）

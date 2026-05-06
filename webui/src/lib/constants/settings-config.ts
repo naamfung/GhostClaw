@@ -58,8 +58,8 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
         resilienceMaxBackoffSeconds: 300,
         resilienceBackoffMultiplier: 2.0,
         // prompt cache
-        promptCacheEnabled: true,
-        promptCacheStableTools: true,
+        promptCacheEnabled: false,
+        promptCacheStableTools: false,
 };
 
 export const SETTING_CONFIG_INFO: Record<string, string> = {
