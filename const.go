@@ -208,14 +208,19 @@ func BuildSystemPromptForActor(actorName string, am *ActorManager, pm *RoleManag
                 }
         }
 
-        // === 8. 通用工具说明（根据角色权限过滤）===
+        // === 8. 工具使用指引 ===
+        guidance := GetToolUsageGuidance()
+        prompt.WriteString("\n\n")
+        prompt.WriteString(guidance)
+
+        // === 9. 通用工具说明（根据角色权限过滤）===
         toolSection := BuildToolSectionForRole(role)
         if toolSection != "" {
                 prompt.WriteString("\n\n")
                 prompt.WriteString(toolSection)
         }
 
-        // === 9. 静态环境信息（进程生命周期内不变，不影响 prompt cache 命中率）===
+        // === 10. 静态环境信息（进程生命周期内不变，不影响 prompt cache 命中率）===
         // 使用新的系统信息收集模块
         if globalConfig.SystemInfo.Enabled {
                 sysInfo := GetSystemInfo()

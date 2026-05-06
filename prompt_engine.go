@@ -138,6 +138,25 @@ func GetConciseModeInstructions() string {
 - 当你需要的操作在当前工具列表中找不到对应工具时，使用 Menu 工具浏览更多可用工具：menu() 或 menu(action="root") 查看全部分类 → menu(action="show", target="<分类名>") 展开分类 → menu(action="load", target="<分类名>") 加载到会话。`
 }
 
+// GetToolUsageGuidance 返回任務管理與工具使用最佳實踐指引（仿 Claude Code）。
+// 根據 globalToolsConfig.EnableParallelTools 決定係咪加入並行調用指引。
+func GetToolUsageGuidance() string {
+        base := `[任務管理與工具使用指引]
+- 當任務涉及 3 個以上步驟時，必須使用 TodoWrite 進行規劃。每個任務包含 content（祈使句）同 activeForm（進行中嘅動詞形式）。
+- 每次更新任務狀態時，傳入完整列表俾 TodoWrite。完成一個任務即刻標記為 Completed，唔好批量標記。
+- 全部任務完成後，使用 TodoWrite(todos=[]) 清空列表。
+- 優先使用專用工具（ReadFileLine、TextGrep 等）而唔係 SmartShell 執行 ls/cat/grep。
+- 使用工具前先檢查歷史記錄，避免重複調用相同參數。如果連續兩次返回相同錯誤，嘗試不同方法。
+- 遇到嘅操作喺當前工具列表中冇對應工具時，使用 Menu 工具瀏覽。`
+
+        if globalToolsConfig.EnableParallelTools {
+                base += "\n- 當需要調用多個獨立工具（互不依賴）時，可以喺同一輪並行調用佢哋以提升效率。只讀工具（ReadFileLine、TextGrep、TodoList 等）可以安全並行。"
+        }
+
+        return base
+}
+
+
 // GetCompactBehaviorRules 返回精简版行为规则（~200 tokens vs 原版 ~1500 tokens）
 func GetCompactBehaviorRules() string {
         return `核心行为规则：

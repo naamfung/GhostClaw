@@ -259,6 +259,12 @@ func parseToolCallsFromAnthropic(content interface{}) []ParsedToolCall {
 
 // executeSingleToolCall 执行单个工具调用，包含钩子、循环检测
 func executeSingleToolCall(ctx context.Context, call ParsedToolCall, ch Channel, role *Role, iteration int) EnrichedMessage {
+	// ── 追蹤 task 工具使用（用於 stale task reminder）──
+	lower := strings.ToLower(call.Name)
+	if lower == "todowrite" || lower == "todocreate" || lower == "todoupdate" || lower == "todolist" {
+		turnsSinceLastTaskTool = 0
+	}
+
 	// 解析参数
 	var argsMap map[string]interface{}
 	if err := json.Unmarshal([]byte(call.ArgsJSON), &argsMap); err != nil {
@@ -373,6 +379,8 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 	lastWorkModeTodoDigest = "" // reset progress snapshot for new agent loop
 	xmlRePromptCount := 0
 	todoReminderCount := 0
+	turnsSinceLastTaskTool = 0
+	turnsSinceLastReminder = 0
 	loopExitedNaturally := false
 	var lastTokenUsage *TokenUsage
 

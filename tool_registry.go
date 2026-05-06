@@ -2332,6 +2332,32 @@ validate + 可选冒烟测试。
         initMenuCategories()
 }
 
+// readOnlyToolNames 只讀工具集合。模型可以安全調用呢啲工具而無需擔心副作用。
+// 用於系統提示詞引導模型並行調用只讀工具，同埋輔助判斷權限。
+var readOnlyToolNames = map[string]bool{
+        "ReadFileLine": true, "ReadFileLines": true, "ReadFileRange": true, "FileInfo": true,
+        "TextSearch": true, "TextGrep": true,
+        "BrowserSearch": true, "BrowserVisit": true, "BrowserDownload": true,
+        "BrowserExtractLinks": true, "BrowserExtractImages": true, "BrowserExtractElements": true,
+        "BrowserGetCookies": true, "BrowserScreenshot": true, "BrowserSnapshot": true,
+        "BrowserElementScreenshot": true, "BrowserPdf": true, "BrowserPdfFromFile": true,
+        "MemoryRecall": true, "MemoryList": true,
+        "PluginList": true, "PluginApis": true, "PluginDetail": true,
+        "SkillList": true, "SkillGet": true, "SkillStats": true,
+        "SkillSuggest": true, "SkillEvaluate": true, "SkillCleanupSuggest": true,
+        "CredentialList": true, "SSHList": true,
+        "CronList": true, "CronStatus": true,
+        "TaskList": true, "TaskCheck": true,
+        "ProfileCheck": true, "ProfileList": true,
+        "TodoList": true,
+        "SpawnList": true, "SpawnCheck": true,
+}
+
+// IsToolReadOnly 檢查工具是否為只讀（無副作用，可安全並行調用）
+func IsToolReadOnly(name string) bool {
+        return readOnlyToolNames[name]
+}
+
 // ============================================================
 // 格式转换函数
 // ============================================================

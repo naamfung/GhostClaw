@@ -14,6 +14,15 @@ import (
 // 用於進展感知 resume：指紋變咗 = 有進展 → reset counter；指紋唔變 = 卡死 → counter++。
 var lastWorkModeTodoDigest string
 
+// turnsSinceLastTaskTool 距離上次調用 task 工具（TodoWrite/TodoCreate/TodoUpdate/TodoList）嘅 turns 數。
+// executeSingleToolCall 喺每次 task 工具調用時重置為 0；RunBranchNone 每 turn +1。
+// 用於 Stale Task Reminder：>3 turns 冇用 task 工具 → inject reminder。
+var turnsSinceLastTaskTool int
+
+// turnsSinceLastReminder 距離上次 inject stale reminder 嘅 turns 數。
+// 避免連續 inject：>5 turns 先會再次 remind。
+var turnsSinceLastReminder int
+
 // getMaxWorkModeResumeRounds returns the max resume rounds for work mode exit guard.
 // Default is 3 if not configured.
 func getMaxWorkModeResumeRounds() int {
@@ -136,6 +145,29 @@ func RunBranchNone(messages []Message, respContent interface{},
 			}
 		}
 	}
+
+	// ========== Stale Task Reminder（仿 Claude Code） ==========
+	// 模型已有一段時間冇用 task 工具 → inject reminder 連同當前任務列表
+	// 同 todoReminderCount（強制規劃）唔同：呢個係溫和提醒，只喺已有任務時觸發
+	if !TODO.IsEmpty() && turnsSinceLastTaskTool >= 3 && turnsSinceLastReminder >= 5 {
+		turnsSinceLastReminder = 0
+		currentTasks := TODO.Render()
+		reminderMsg := fmt.Sprintf(
+			"[SYSTEM_REMINDER] 你已有一段時間未更新任務狀態。以下係當前任務列表：\n\n%s\n\n如有任務已完成或狀態有變，請使用 TodoWrite 更新。",
+			currentTasks,
+		)
+		messages = append(messages, Message{
+			Role:      "user",
+			Content:   reminderMsg,
+			Timestamp: time.Now().Unix(),
+		})
+		log.Printf("[AgentLoop] Stale task reminder injected (turns=%d, tasks_present=true)", turnsSinceLastTaskTool)
+		return BranchNoneResult{ShouldContinue: true, Messages: messages}
+	}
+
+	// 追蹤距離上次 task 工具調用嘅 turns
+	turnsSinceLastTaskTool++
+	turnsSinceLastReminder++
 
 	// ========== 工作模式退出守衛（進展感知） ==========
 	// 每次 resume 前比較 todos 指紋：有進展（指紋變咗）→ reset counter；
