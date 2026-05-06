@@ -434,3 +434,169 @@ func TestIsToolUseStopReason(t *testing.T) {
 		})
 	}
 }
+
+// ============================================================================
+// RunBranchNone — Stale Task Reminder + Work Mode Exit Guard (進展感知)
+// ============================================================================
+
+func TestRunBranchNone_StaleReminderInjected(t *testing.T) {
+	// Setup: non-empty TODO, >=3 turns since task tool, >=5 turns since reminder
+	TODO.ClearAll()
+	TODO.Create("test task", "Pending")
+	turnsSinceLastTaskTool = 3
+	turnsSinceLastReminder = 5
+	lastWorkModeTodoDigest = ""
+
+	var xmlCount, resume, subResume, todoReminder int
+	var exited bool
+	messages := []Message{
+		{Role: "system", Content: "test"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "text response"},
+	}
+	dc := &dummyChannel{}
+
+	result := RunBranchNone(messages, messages[2].Content, "", "",
+		&xmlCount, &resume, &subResume, &todoReminder, &exited,
+		dc, 1, 4096)
+
+	if !result.ShouldContinue {
+		t.Error("stale reminder should trigger ShouldContinue (not break)")
+	}
+	if turnsSinceLastReminder != 0 {
+		t.Errorf("turnsSinceLastReminder should reset to 0, got %d", turnsSinceLastReminder)
+	}
+	if len(result.Messages) <= len(messages) {
+		t.Error("stale reminder should append a reminder message")
+	}
+
+	TODO.ClearAll()
+	turnsSinceLastTaskTool = 0
+	turnsSinceLastReminder = 0
+}
+
+func TestRunBranchNone_StaleReminderNotWhenRecent(t *testing.T) {
+	TODO.ClearAll()
+	TODO.Create("test task", "Pending")
+	turnsSinceLastTaskTool = 1 // too recent
+	turnsSinceLastReminder = 0
+
+	var xmlCount, resume, subResume, todoReminder int
+	var exited bool
+	messages := []Message{
+		{Role: "system", Content: "test"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "text response"},
+	}
+	dc := &dummyChannel{}
+
+	result := RunBranchNone(messages, messages[2].Content, "", "",
+		&xmlCount, &resume, &subResume, &todoReminder, &exited,
+		dc, 1, 4096)
+
+	// reminder 唔應該觸發（turns too recent）
+	if result.ShouldContinue {
+		hasReminder := len(result.Messages) > len(messages)
+		if hasReminder && turnsSinceLastReminder == 0 {
+			t.Error("stale reminder should NOT fire when task tools used recently")
+		}
+	}
+
+	TODO.ClearAll()
+	turnsSinceLastTaskTool = 0
+	turnsSinceLastReminder = 0
+}
+
+func TestRunBranchNone_WorkModeExitGuardResume(t *testing.T) {
+	TODO.ClearAll()
+	TODO.Create("unfinished", "InProgress")
+	lastWorkModeTodoDigest = "old_digest" // different from current
+
+	var xmlCount, resume, subResume, todoReminder int
+	var exited bool
+	messages := []Message{
+		{Role: "system", Content: "test"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "text response"},
+	}
+	dc := &dummyChannel{}
+
+	if globalTaskTracker != nil {
+		globalTaskTracker.StartNewTask("test", 1)
+	}
+
+	result := RunBranchNone(messages, messages[2].Content, "", "",
+		&xmlCount, &resume, &subResume, &todoReminder, &exited,
+		dc, 1, 4096)
+
+	if resume != 1 {
+		t.Errorf("expected resume count=1 (progress detected, reset + increment), got %d", resume)
+	}
+	if !result.ShouldContinue {
+		t.Error("with progress detected, should continue")
+	}
+
+	TODO.ClearAll()
+	lastWorkModeTodoDigest = ""
+}
+
+func TestRunBranchNone_ExitGuardMaxRounds(t *testing.T) {
+	TODO.ClearAll()
+	TODO.Create("stuck_task", "InProgress")
+	lastWorkModeTodoDigest = TODO.GetUnfinishedDigest() // same → no progress
+
+	var xmlCount, resume, subResume, todoReminder int
+	resume = 3 // already at max
+	var exited bool
+	messages := []Message{
+		{Role: "system", Content: "test"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "text response"},
+	}
+	dc := &dummyChannel{}
+
+	result := RunBranchNone(messages, messages[2].Content, "", "",
+		&xmlCount, &resume, &subResume, &todoReminder, &exited,
+		dc, 1, 4096)
+
+	if !result.ShouldBreak {
+		t.Error("max rounds reached with no progress, should break")
+	}
+
+	TODO.ClearAll()
+	lastWorkModeTodoDigest = ""
+}
+
+// ============================================================================
+// getFilteredToolsWithContext — Fast Path
+// ============================================================================
+
+func TestGetFilteredToolsWithContext_FastPath(t *testing.T) {
+	oldDefer := globalToolsConfig.DeferExtendedTools
+	globalToolsConfig.DeferExtendedTools = false
+	defer func() { globalToolsConfig.DeferExtendedTools = oldDefer }()
+
+	result := getFilteredToolsWithContext("openai", nil, 0)
+	toolList, ok := result.([]map[string]interface{})
+	if !ok || len(toolList) == 0 {
+		t.Fatal("fast path should return full tool list")
+	}
+	if len(toolList) < 30 {
+		t.Errorf("expected >=30 tools from fast path, got %d", len(toolList))
+	}
+}
+
+func TestGetFilteredToolsWithContext_FastPathWithDefer(t *testing.T) {
+	oldDefer := globalToolsConfig.DeferExtendedTools
+	globalToolsConfig.DeferExtendedTools = true
+	defer func() { globalToolsConfig.DeferExtendedTools = oldDefer }()
+
+	result := getFilteredToolsWithContext("openai", nil, 0)
+	toolList, ok := result.([]map[string]interface{})
+	if !ok || len(toolList) == 0 {
+		t.Fatal("should return tools even when fast path bypassed")
+	}
+	if len(toolList) >= 90 {
+		t.Errorf("deferred mode should have fewer tools (<90), got %d", len(toolList))
+	}
+}
