@@ -72,14 +72,17 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 					ModelID: effectiveModelID,
 				}
 				globalFeedbackCollector.RecordCompletionAsk()
-				askCtx, askCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				completed := globalFeedbackCollector.AskModelTaskCompletion(askCtx, lastUserMsg, lastAssistantMsg, apiConfig)
-				askCancel()
-
-				if completed {
-					globalFeedbackCollector.MarkTaskCompleted(lastUserMsg, lastAssistantMsg)
-					log.Printf("[FeedbackCollector] Task marked as completed (implicit, no user prompt)")
-				}
+				// 使用獨立 goroutine 異步執行，避免 FeedbackCollector timeout
+				// 阻擋 done=true 發送，導致前端長時間等待後模型看似「無故終止」。
+				go func(userMsg, assistantMsg string, cfg TaskCompletionQuery) {
+					askCtx, askCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer askCancel()
+					completed := globalFeedbackCollector.AskModelTaskCompletion(askCtx, userMsg, assistantMsg, cfg)
+					if completed {
+						globalFeedbackCollector.MarkTaskCompleted(userMsg, assistantMsg)
+						log.Printf("[FeedbackCollector] Task marked as completed (implicit, no user prompt)")
+					}
+				}(lastUserMsg, lastAssistantMsg, apiConfig)
 			}
 		}
 	}
