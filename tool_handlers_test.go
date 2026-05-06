@@ -685,6 +685,69 @@ func TestTasksModeReenterBlockedByUnfinishedTodos(t *testing.T) {
 	ResetTasksMode()
 }
 
+func TestHandleTasks_DesignWithTasks(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	msg, ok := handleTasks(map[string]interface{}{
+		"PlanPhase": "design",
+		"tasks": []interface{}{
+			map[string]interface{}{"id": "start", "title": "啟動服務", "status": "Pending"},
+			map[string]interface{}{"id": "verify", "title": "驗證連線", "status": "Pending"},
+		},
+	})
+	if !ok {
+		t.Errorf("design with tasks should succeed, got: %s", msg)
+	}
+	if !strings.Contains(msg, "2 個任務") {
+		t.Errorf("expected '2 個任務', got: %s", msg)
+	}
+
+	ResetTasksMode()
+}
+
+func TestHandleTasks_DesignAutoInitsFromInactive(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	// P0: design from inactive should auto-init (not error)
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "design"})
+	if !ok {
+		t.Errorf("design from inactive should auto-init, got: %s", msg)
+	}
+
+	ResetTasksMode()
+}
+
+func TestHandleTasks_UpdateTasksList(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	// 未指定 PlanPhase → 純更新任務列表
+	msg, ok := handleTasks(map[string]interface{}{
+		"tasks": []interface{}{
+			map[string]interface{}{"id": "a", "title": "Task A", "status": "Pending"},
+		},
+	})
+	if !ok {
+		t.Errorf("update tasks list should succeed, got: %s", msg)
+	}
+
+	ResetTasksMode()
+}
+
+func TestHandleTasks_InvalidPlanPhase(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "invalid_phase"})
+	if !ok {
+		t.Errorf("invalid phase should fall through to updateTasksList, got: %s", msg)
+	}
+
+	ResetTasksMode()
+}
+
 // ============================================================
 // SSH
 // ============================================================
