@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // skipIfNoOpenCLI 默認跳過 OpenCLI 測試（因為會調用外部 opencli 二進制檔，消耗資源）
@@ -588,6 +589,100 @@ func TestExecTodoList_Empty(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
 	content, status := execTodoList(ec)
 	requireSuccess(t, status, content)
+}
+
+// ============================================================
+// Tasks Mode guard: 有未完成 Todos 時禁止進入
+// ============================================================
+
+func TestTasksModeBlockedByUnfinishedTodos(t *testing.T) {
+	// 清理狀態
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	// 創建未完成嘅 todo
+	TODO.Create("incomplete task", "Pending")
+
+	// 嘗試進入 Tasks Mode
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "design"})
+	if ok {
+		t.Errorf("should be blocked by unfinished todos, but got success: %s", msg)
+	}
+	if !strings.Contains(msg, "未完成") {
+		t.Errorf("expected '未完成' in error message, got: %s", msg)
+	}
+
+	TODO.ClearAll()
+	ResetTasksMode()
+}
+
+func TestTasksModeAllowedWhenEmpty(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "explore"})
+	if !ok {
+		t.Errorf("should allow Tasks Mode when empty, got: %s", msg)
+	}
+
+	ResetTasksMode()
+}
+
+func TestTasksModeAllowedWhenAllCompleted(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	TODO.Create("completed task", "Completed")
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "design"})
+	if !ok {
+		t.Errorf("should allow Tasks Mode when all completed, got: %s", msg)
+	}
+
+	TODO.ClearAll()
+	ResetTasksMode()
+}
+
+func TestTasksModeExecuteNotBlocked(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	// 先手動設置 Tasks Mode 為 active（避免 handleTasks 觸發 session save）
+	globalTasksMode.mu.Lock()
+	globalTasksMode.PlanPhase = TasksPhaseExplore
+	globalTasksMode.StartTime = time.Now()
+	globalTasksMode.PhaseStart = time.Now()
+	globalTasksMode.mu.Unlock()
+
+	TODO.Create("incomplete task", "InProgress")
+
+	// execute phase 應該唔受阻擋（exit guard 唔檢查待辦）
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "execute"})
+	if !ok {
+		t.Errorf("execute should not be blocked, got: %s", msg)
+	}
+
+	TODO.ClearAll()
+	ResetTasksMode()
+}
+
+func TestTasksModeReenterBlockedByUnfinishedTodos(t *testing.T) {
+	TODO.ClearAll()
+	ResetTasksMode()
+
+	// 退出後有未完成 todos（手動模擬已退出狀態）
+	TODO.Create("unfinished", "Pending")
+
+	// 重新進入應該被阻擋
+	msg, ok := handleTasks(map[string]interface{}{"PlanPhase": "design"})
+	if ok {
+		t.Errorf("should be blocked re-entering with unfinished todos, got: %s", msg)
+	}
+	if !strings.Contains(msg, "未完成") {
+		t.Errorf("expected '未完成' in error, got: %s", msg)
+	}
+
+	TODO.ClearAll()
+	ResetTasksMode()
 }
 
 // ============================================================

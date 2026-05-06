@@ -126,6 +126,19 @@ func handleTasks(args map[string]interface{}) (string, bool) {
 		}
 	}
 
+	// ── 守衛：有未完成 Todos 時禁止進入 Tasks Mode ──
+	// 模型必須先完成或清空現有任務，先可以切換到結構化規劃模式。
+	// 已在 Tasks Mode 中 / 執行退出（execute）唔受此限。
+	if (planPhase == "explore" || planPhase == "design") &&
+		!globalTasksMode.IsActive() &&
+		!TODO.IsEmpty() && TODO.HasUnfinishedItems() {
+		unfinished := TODO.GetUnfinishedSummary()
+		return fmt.Sprintf(
+			"無法進入 Tasks Mode：當前仍有未完成嘅任務。\n\n%s\n\n請先完成或清空現有任務（使用 TodoWrite），然後再進入 Tasks Mode。",
+			unfinished,
+		), false
+	}
+
 	switch planPhase {
 	case "explore":
 		return enterTasksExplore()

@@ -963,6 +963,9 @@ func (s *GlobalSession) EnqueueOutput(chunk StreamChunk) {
 // autoSaveHistory 自动保存当前会话元数据（token stats、description）
 // DB 只保存元數據，唔保存內存滑窗消息（原始消息由 AddToHistory → AppendMessage 逐條寫入）
 func (s *GlobalSession) autoSaveHistory() {
+        if globalSessionPersist == nil {
+                return
+        }
         s.persistMu.Lock()
         defer s.persistMu.Unlock()
 
