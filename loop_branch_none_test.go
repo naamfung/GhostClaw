@@ -37,7 +37,7 @@ func TestDetectXML_InvokeWithKnownTool(t *testing.T) {
 		},
 		{
 			name:    "invoke with todos",
-			content: `<invoke name="todos"><parameter name="action">create</parameter></invoke>`,
+			content: `<invoke name="TodoCreate"><parameter name="content">test task</parameter></invoke>`,
 			want:    true,
 		},
 		{

@@ -116,6 +116,95 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
         return tm.renderListLocked(id), nil
 }
 
+// Create 創建單個任務，自動分配 ID
+func (tm *TodoManager) Create(content, status string) (string, error) {
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+
+        content = strings.TrimSpace(content)
+        if content == "" {
+                return "", fmt.Errorf("content is required")
+        }
+
+        status = normalizeTodoStatus(status)
+        if status == "" {
+                status = "Pending"
+        }
+        if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
+                return "", fmt.Errorf("invalid status: %s", status)
+        }
+
+        if status == "InProgress" {
+                // 先將所有 InProgress 降為 Pending（只允許一個 InProgress）
+                for _, list := range tm.lists {
+                        for j, item := range list.Items {
+                                if item.Status == "InProgress" {
+                                        list.Items[j].Status = "Pending"
+                                }
+                        }
+                }
+        }
+
+        list := tm.lists["default"]
+        if list == nil {
+                list = &TodoList{ID: "default"}
+                tm.lists["default"] = list
+        }
+
+        if len(list.Items) >= 20 {
+                return "", fmt.Errorf("max 20 todos")
+        }
+
+        // 自動分配 ID（計數 + 1）
+        newID := strconv.Itoa(len(list.Items) + 1)
+        item := TodoItem{ID: newID, Text: content, Status: status}
+        list.Items = append(list.Items, item)
+        return tm.renderListLocked("default"), nil
+}
+
+// UpdateSingle 更新或刪除單個任務
+// status 為空字串時刪除該任務
+func (tm *TodoManager) UpdateSingle(id, content, status string) (string, error) {
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+
+        list := tm.lists["default"]
+        if list == nil {
+                return "沒有任何任務", nil
+        }
+
+        for i, item := range list.Items {
+                if item.ID == id {
+                        // 刪除：status 為空字串
+                        if status == "" && content == "" {
+                                list.Items = append(list.Items[:i], list.Items[i+1:]...)
+                                return tm.renderListLocked("default"), nil
+                        }
+
+                        if content != "" {
+                                list.Items[i].Text = strings.TrimSpace(content)
+                        }
+                        if status != "" {
+                                s := normalizeTodoStatus(status)
+                                if s != "Pending" && s != "InProgress" && s != "Completed" && s != "Waiting" {
+                                        return "", fmt.Errorf("invalid status: %s", status)
+                                }
+                                if s == "InProgress" {
+                                        // 只允許一個 InProgress
+                                        for j := range list.Items {
+                                                if j != i && list.Items[j].Status == "InProgress" {
+                                                        list.Items[j].Status = "Pending"
+                                                }
+                                        }
+                                }
+                                list.Items[i].Status = s
+                        }
+                        return tm.renderListLocked("default"), nil
+                }
+        }
+        return "", fmt.Errorf("task %s not found", id)
+}
+
 // UpdateDefault 舊接口兼容：更新默認列表
 func (tm *TodoManager) UpdateDefault(items []TodoItem) (string, error) {
         return tm.Update(items)

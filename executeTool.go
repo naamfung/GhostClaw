@@ -1776,106 +1776,16 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
         return string(resultTOON), TaskStatusSuccess
 }
 
-func execTodos(ec *ToolExecContext) (string, TaskStatus) {
-        // 智能解析 Todos 參數：支援 array、巢狀 object、JSON string 三種格式
-        rawTodos := ec.ArgsMap["Todos"]
-        var itemsInterface []interface{}
-
-        switch v := rawTodos.(type) {
-        case []interface{}:
-                itemsInterface = v
-        case map[string]interface{}:
-                // 巢狀格式 A：{"Todos": [...], "summary": "..."} → 提取內層 Todos
-                if nested, ok := v["Todos"].([]interface{}); ok {
-                        itemsInterface = nested
-                } else if _, hasContent := v["content"]; hasContent {
-                        // 單個 item object：{"id":"1","content":"...","status":"InProgress"}
-                        // 模型有時忘記包 array，我哋自動 wrap 做單元素陣列
-                        itemsInterface = []interface{}{v}
-                } else if statusArr, ok := v["status"].([]interface{}); ok {
-                        // 格式：{"status": ["InProgress","Pending",...]} — 只有 status 冇 id/content
-                        return fmt.Sprintf("Error: Todos 必須係 array of objects。你傳入咗 {\"status\": [...]}，缺少 id 同 content。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅 status 有 %d 個值：%v", len(statusArr), statusArr), TaskStatusFailed
-                } else {
-                        return fmt.Sprintf("Error: Todos 必須是 array。你傳入咗 object，但入面冇 Todos 陣列。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅 keys：%v", getMapKeys(v)), TaskStatusFailed
-                }
-        case string:
-                // JSON string 格式：嘗試 parse
-                var parsed interface{}
-                if err := json.Unmarshal([]byte(v), &parsed); err == nil {
-                        if arr, ok := parsed.([]interface{}); ok {
-                                itemsInterface = arr
-                        } else if obj, ok := parsed.(map[string]interface{}); ok {
-                                // 巢狀 {"Todos": [...], "summary": "..."}
-                                if nested, ok := obj["Todos"].([]interface{}); ok {
-                                        itemsInterface = nested
-                                } else if _, hasContent := obj["content"]; hasContent {
-                                        // 單個 item JSON string：{"id":"1","content":"...","status":"..."}
-                                        itemsInterface = []interface{}{obj}
-                                }
-                        }
-                }
-                // XML/DSML string 格式：模型有時以 XML <item> 格式傳入（DeepSeek DSML 殘留）
-                if itemsInterface == nil && strings.Contains(v, "<item") {
-                        itemsInterface = parseTodosXMLString(v)
-                }
-                if itemsInterface == nil {
-                        return fmt.Sprintf("Error: Todos 必須係 JSON array，你傳入咗 string 但 parse 唔到。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}。你傳入嘅係：%.100s", v), TaskStatusFailed
-                }
-        default:
-                return fmt.Sprintf("Error: Todos 必須係 array，你傳入咗 %T 類型。正確格式：{\"Todos\": [{\"id\":\"1\",\"content\":\"...\",\"status\":\"Pending\"}]}", rawTodos), TaskStatusFailed
+func execTodoCreate(ec *ToolExecContext) (string, TaskStatus) {
+        content, _ := ec.ArgsMap["content"].(string)
+        if content == "" {
+                return "Error: content 係必填參數（任務內容描述）", TaskStatusFailed
         }
-
-        var items []TodoItem
-        var errs []string
-        for i, itemInterface := range itemsInterface {
-                itemMap, ok := itemInterface.(map[string]interface{})
-                if !ok {
-                        errs = append(errs, fmt.Sprintf("item[%d]: 必須係 object，但你傳入咗 %T", i, itemInterface))
-                        continue
-                }
-                item := TodoItem{}
-                if id, ok := itemMap["id"].(string); ok {
-                        item.ID = id
-                } else if idFloat, ok := itemMap["id"].(float64); ok {
-                        item.ID = fmt.Sprintf("%.0f", idFloat)
-                }
-                if text, ok := itemMap["content"].(string); ok {
-                        item.Text = text
-                } else {
-                        errs = append(errs, fmt.Sprintf("item[%d]: 缺少 content 欄位或唔係 string（必填）", i))
-                        continue
-                }
-                if status, ok := itemMap["status"].(string); ok {
-                        item.Status = status
-                } else {
-                        errs = append(errs, fmt.Sprintf("item[%d]: 缺少 status 欄位或唔係 string（必填，可選：Pending/InProgress/Completed/Waiting）", i))
-                        continue
-                }
-                items = append(items, item)
+        status, _ := ec.ArgsMap["status"].(string)
+        if status == "" {
+                status = "Pending"
         }
-        if len(errs) > 0 {
-                return "Error: " + strings.Join(errs, "; "), TaskStatusFailed
-        }
-
-        // 支持 list_id 參數（Plan Mode 每階段使用不同列表）
-        listID, _ := ec.ArgsMap["ListId"].(string)
-        // Tasks Mode 自動檢測：如果在 Tasks Mode 中且未指定 ListId，自動使用當前 Phase 的列表
-        if listID == "" && globalTasksMode != nil && globalTasksMode.IsActive() {
-                switch globalTasksMode.Phase() {
-                case TasksPhaseExplore:
-                        listID = "explore"
-                case TasksPhaseDesign:
-                        listID = "design"
-                }
-        }
-
-        var err error
-        var output string
-        if listID != "" {
-                output, err = TODO.Update(items, listID)
-        } else {
-                output, err = TODO.Update(items)
-        }
+        output, err := TODO.Create(content, status)
         if err != nil {
                 return "Error: " + err.Error(), TaskStatusFailed
         }
@@ -1886,107 +1796,26 @@ func execTodos(ec *ToolExecContext) (string, TaskStatus) {
         return output, TaskStatusSuccess
 }
 
-// getMapKeys 返回 map 嘅所有 key（用於錯誤訊息）
-func getMapKeys(m map[string]interface{}) []string {
-        keys := make([]string, 0, len(m))
-        for k := range m {
-                keys = append(keys, k)
+func execTodoUpdate(ec *ToolExecContext) (string, TaskStatus) {
+        id, _ := ec.ArgsMap["id"].(string)
+        if id == "" {
+                return "Error: id 係必填參數（任務唯一標識）", TaskStatusFailed
         }
-        return keys
+        content, _ := ec.ArgsMap["content"].(string)
+        status, _ := ec.ArgsMap["status"].(string)
+        output, err := TODO.UpdateSingle(id, content, status)
+        if err != nil {
+                return "Error: " + err.Error(), TaskStatusFailed
+        }
+        if !TODO.HasUnfinishedItems() && globalTaskTracker != nil {
+                globalTaskTracker.MarkCompleted()
+                globalTaskTracker.ResetStuckState()
+        }
+        return output, TaskStatusSuccess
 }
 
-// parseTodosXMLString 將模型以 XML/DSML <item> 格式傳入嘅 Todos string 解析為 []interface{}。
-// 支援兩種 closing tag 格式：</tag> 同 <|DSML|tag>（DeepSeek DSML 殘留）。
-func parseTodosXMLString(s string) []interface{} {
-        // 提取所有 <item>...</item> 區塊（支援 DSML closing tag 變體）
-        itemPattern := regexp.MustCompile(`(?s)<item\s*>(.*?)</item>`)
-        // DSML 格式：<|DSML|item> 作為 closing tag
-        dsmlClose := regexp.MustCompile(`<\|DSML\|item>`)
-        s = dsmlClose.ReplaceAllString(s, "</item>")
-
-        matches := itemPattern.FindAllStringSubmatch(s, -1)
-        if len(matches) == 0 {
-                return nil
-        }
-
-        var items []interface{}
-        for _, match := range matches {
-                if len(match) < 2 {
-                        continue
-                }
-                inner := match[1]
-                itemMap := make(map[string]interface{})
-
-                // 提取 id, content, status, priority
-                extractField := func(field string) string {
-                        // 支援標準 XML：<field>value</field>
-                        stdPattern := regexp.MustCompile(`(?s)<` + field + `[^>]*>(.*?)</` + field + `>`)
-                        if m := stdPattern.FindStringSubmatch(inner); len(m) > 1 {
-                                val := strings.TrimSpace(m[1])
-                                // 去除 CDATA 包裝
-                                val = strings.TrimPrefix(val, "<![CDATA[")
-                                val = strings.TrimSuffix(val, "]]>")
-                                return val
-                        }
-                        // 支援 DSML closing tag：<field>value<|DSML|field>
-                        dsmlPattern := regexp.MustCompile(`(?s)<` + field + `[^>]*>(.*?)<\|DSML\|` + field + `>`)
-                        if m := dsmlPattern.FindStringSubmatch(inner); len(m) > 1 {
-                                val := strings.TrimSpace(m[1])
-                                val = strings.TrimPrefix(val, "<![CDATA[")
-                                val = strings.TrimSuffix(val, "]]>")
-                                return val
-                        }
-                        return ""
-                }
-
-                if id := extractField("id"); id != "" {
-                        itemMap["id"] = id
-                }
-                if content := extractField("content"); content != "" {
-                        itemMap["content"] = content
-                } else {
-                        continue // content 係必填
-                }
-                if status := extractField("status"); status != "" {
-                        itemMap["status"] = status
-                } else {
-                        itemMap["status"] = "Pending" // default
-                }
-                if priority := extractField("priority"); priority != "" {
-                        itemMap["priority"] = priority
-                }
-
-                items = append(items, itemMap)
-        }
-
-        if len(items) == 0 {
-                return nil
-        }
-        return items
-}
-
-// normalizeDSMLArgs walk argsMap 並將任何 DSML/XML string 值標準化為對應嘅 Go 類型。
-// 模型（尤其 DeepSeek）有時會將 array 參數以 <item> 格式傳入而非 JSON array。
-// 此函數在 executeSingleToolCall 中 json.Unmarshal 成功後、handler 執行前調用。
-func normalizeDSMLArgs(argsMap map[string]interface{}) {
-        for key, val := range argsMap {
-                strVal, ok := val.(string)
-                if !ok || !strings.Contains(strVal, "<item") {
-                        continue
-                }
-                // 嘗試 parse 為 JSON array（可能係 escapes XML 嘅 JSON 字串）
-                var parsed interface{}
-                if err := json.Unmarshal([]byte(strVal), &parsed); err == nil {
-                        if arr, ok := parsed.([]interface{}); ok && len(arr) > 0 {
-                                argsMap[key] = arr
-                                continue
-                        }
-                }
-                // 嘗試 DSML XML <item> 格式
-                if items := parseTodosXMLString(strVal); items != nil {
-                        argsMap[key] = items
-                }
-        }
+func execTodoList(ec *ToolExecContext) (string, TaskStatus) {
+        return TODO.Render(), TaskStatusSuccess
 }
 
 // --- Wrappers for existing handler functions ---
@@ -3082,7 +2911,9 @@ func init() {
                 "BrowserFormFill":  execBrowserFormFill,
 
                 // Todo tools
-                "Todos": execTodos,
+                "TodoCreate": execTodoCreate,
+                "TodoUpdate": execTodoUpdate,
+                "TodoList":   execTodoList,
 
                 // Cron tools
                 "CronAdd":    execCronAdd,

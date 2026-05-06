@@ -188,7 +188,8 @@ func isExecutionTool(name string) bool {
 	lower := strings.ToLower(name)
 
 	// 規劃類工具 — 永遠放行
-	if lower == "todos" || lower == "enterplanmode" || lower == "exitplanmode" {
+	if lower == "todocreate" || lower == "todoupdate" || lower == "todolist" ||
+		lower == "enterplanmode" || lower == "exitplanmode" {
 		return false
 	}
 
@@ -268,11 +269,6 @@ func executeSingleToolCall(ctx context.Context, call ParsedToolCall, ch Channel,
 		emitToolCallTags(ch, call.Name, nil, errMsg, TaskStatusFailed)
 		return NewToolResultMessage(call.ID, errMsg, TaskStatusFailed, call.Name)
 	}
-
-	// ── DSML/XML 參數標準化 ──────────────────────────────────
-	// 模型（尤其 DeepSeek）有時會將 array/object 參數以 DSML <item> 字串傳入
-	// 而非 JSON array。統一在此 walk argsMap，將 DSML string → []interface{}
-	normalizeDSMLArgs(argsMap)
 
 	// 执行前钩子
 	hookManager := GetHookManager()

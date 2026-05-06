@@ -457,13 +457,13 @@ func TestExecTextTransform_MissingArgs(t *testing.T) {
 }
 
 // ============================================================
-// Todos
+// TodoCreate
 // ============================================================
 
-func TestExecTodos_EmptyArgs(t *testing.T) {
+func TestExecTodoCreate_EmptyArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
-	_, status := execTodos(ec)
-	requireFailed(t, status, "Todos empty args")
+	_, status := execTodoCreate(ec)
+	requireFailed(t, status, "TodoCreate empty args")
 }
 
 // ============================================================

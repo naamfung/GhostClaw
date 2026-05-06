@@ -1382,46 +1382,54 @@ validate + 可选冒烟测试。
                         "required": []string{"name"},
                 })
 
-        reg("Todos",
-                "管理待办事项列表（CRUD）。传入 todos 数组可批量创建/更新/删除任务。每个任务需包含 id、content、status。",
+        reg("TodoCreate",
+                "创建新任务。传入 content（任务内容）同可选 status（默认 Pending）。",
                 "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
-                                "Todos": map[string]interface{}{
-                                        "type": "array",
-                                        "items": map[string]interface{}{
-                                                "type": "object",
-                                                "properties": map[string]interface{}{
-                                                        "id": map[string]interface{}{
-                                                                "type":        "string",
-                                                                "description": "任务唯一标识",
-                                                        },
-                                                        "content": map[string]interface{}{
-                                                                "type":        "string",
-                                                                "description": "任务内容",
-                                                        },
-                                                        "status": map[string]interface{}{
-                                                                "type":        "string",
-                                                                "enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
-                                                                "description": "任务状态：Pending（待处理）、InProgress（进行中）、Completed（已完成）、Waiting（异步等待中）",
-                                                        },
-                                                        "priority": map[string]interface{}{
-                                                                "type":        "string",
-                                                                "enum":        []string{"high", "medium", "low"},
-                                                                "description": "任务优先级：high（高）、medium（中）、low（低）",
-                                                        },
-                                                },
-                                                "required": []string{"id", "content", "status"},
-                                        },
-                                        "description": "待办事项列表",
-                                },
-                                "summary": map[string]interface{}{
+                                "content": map[string]interface{}{
                                         "type":        "string",
-                                        "description": "任务执行摘要（可选）",
+                                        "description": "任务内容描述",
+                                },
+                                "status": map[string]interface{}{
+                                        "type":        "string",
+                                        "enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
+                                        "description": "任务状态，默认为 Pending",
                                 },
                         },
-                        "required": []string{"Todos"},
+                        "required": []string{"content"},
+                })
+
+        reg("TodoUpdate",
+                "更新或刪除任務。傳入 id（任務 ID）同需要修改嘅欄位（content、status）。status 設為空字串可刪除該任務。",
+                "schedule", "core",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "id": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "任務唯一標識",
+                                },
+                                "content": map[string]interface{}{
+                                        "type":        "string",
+                                        "description": "新的任務內容（可選）",
+                                },
+                                "status": map[string]interface{}{
+                                        "type":        "string",
+                                        "enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
+                                        "description": "新狀態。設為空字串可刪除該任務",
+                                },
+                        },
+                        "required": []string{"id"},
+                })
+
+        reg("TodoList",
+                "列出當前所有任務及其狀態。無需參數。",
+                "schedule", "core",
+                map[string]interface{}{
+                        "type":       "object",
+                        "properties": map[string]interface{}{},
                 })
 
         // ========== 记忆管理工具 ==========

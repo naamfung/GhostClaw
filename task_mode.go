@@ -460,7 +460,7 @@ func IsToolAllowedInTasksMode(toolName string) bool {
 func getTasksPhaseTools() []string {
 	tools := make([]string, 0, len(PhaseReadTools)+6)
 	tools = append(tools, PhaseReadTools...)
-	tools = append(tools, "Tasks", "Todos") // Tasks 同 Todos 始終可用
+	tools = append(tools, "Tasks", "TodoCreate", "TodoUpdate", "TodoList") // Tasks 同 Todo 工具始終可用
 	tools = append(tools, "Spawn", "SpawnCheck", "SpawnList")
 
 	if globalTasksMode.PlanPhase == TasksPhaseDesign {
