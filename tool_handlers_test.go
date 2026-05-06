@@ -26,7 +26,14 @@ func newTestEC(args map[string]interface{}) *ToolExecContext {
 func requireFailed(t *testing.T, status TaskStatus, msg string) {
 	t.Helper()
 	if status != TaskStatusFailed {
-		t.Errorf("%s: should fail", msg)
+		t.Errorf("%s: should fail but got success", msg)
+	}
+}
+
+func requireSuccess(t *testing.T, status TaskStatus, details string) {
+	t.Helper()
+	if status != TaskStatusSuccess {
+		t.Errorf("expected success but got failed: %s", details)
 	}
 }
 
@@ -457,13 +464,130 @@ func TestExecTextTransform_MissingArgs(t *testing.T) {
 }
 
 // ============================================================
-// TodoCreate
+// TodoCreate / TodoWrite / TodoUpdate / TodoList
 // ============================================================
 
 func TestExecTodoCreate_EmptyArgs(t *testing.T) {
 	ec := newTestEC(map[string]interface{}{})
 	_, status := execTodoCreate(ec)
 	requireFailed(t, status, "TodoCreate empty args")
+}
+
+func TestExecTodoCreate_Valid(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"content": "test task",
+		"status":  "InProgress",
+	})
+	content, status := execTodoCreate(ec)
+	requireSuccess(t, status, content)
+	if !strings.Contains(content, "test task") {
+		t.Errorf("expected content to contain 'test task', got: %s", content)
+	}
+}
+
+func TestExecTodoWrite_ValidArray(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"todos": []interface{}{
+			map[string]interface{}{"content": "task one", "status": "Pending", "activeForm": "Doing task one"},
+			map[string]interface{}{"content": "task two", "status": "InProgress", "activeForm": "Doing task two"},
+		},
+	})
+	content, status := execTodoWrite(ec)
+	requireSuccess(t, status, content)
+	if !strings.Contains(content, "task one") {
+		t.Errorf("expected 'task one' in output, got: %s", content)
+	}
+}
+
+func TestExecTodoWrite_EmptyArray(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"todos": []interface{}{},
+	})
+	content, status := execTodoWrite(ec)
+	requireSuccess(t, status, content)
+}
+
+func TestExecTodoWrite_MissingTodos(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execTodoWrite(ec)
+	requireFailed(t, status, "TodoWrite missing todos")
+}
+
+func TestExecTodoWrite_MissingContent(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"todos": []interface{}{
+			map[string]interface{}{"status": "Pending"},
+		},
+	})
+	_, status := execTodoWrite(ec)
+	requireFailed(t, status, "TodoWrite missing content")
+}
+
+func TestExecTodoWrite_InvalidStatus(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"todos": []interface{}{
+			map[string]interface{}{"content": "task", "status": "unknown", "activeForm": "doing"},
+		},
+	})
+	_, status := execTodoWrite(ec)
+	requireFailed(t, status, "TodoWrite invalid status")
+}
+
+func TestExecTodoUpdate_UpdateStatus(t *testing.T) {
+	// First create a task
+	TODO.Create("test task", "Pending")
+	ec := newTestEC(map[string]interface{}{
+		"id":     "1",
+		"status": "Completed",
+	})
+	content, status := execTodoUpdate(ec)
+	requireSuccess(t, status, content)
+	// Completed items render as [x]
+	if !strings.Contains(content, "[x]") {
+		t.Errorf("expected '[x]' (completed marker) in output, got: %s", content)
+	}
+}
+
+func TestExecTodoUpdate_Delete(t *testing.T) {
+	TODO.Create("test task", "Pending")
+	ec := newTestEC(map[string]interface{}{
+		"id":     "1",
+		"status": "",
+	})
+	content, status := execTodoUpdate(ec)
+	requireSuccess(t, status, content)
+}
+
+func TestExecTodoUpdate_MissingID(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{})
+	_, status := execTodoUpdate(ec)
+	requireFailed(t, status, "TodoUpdate missing id")
+}
+
+func TestExecTodoUpdate_NotFound(t *testing.T) {
+	ec := newTestEC(map[string]interface{}{
+		"id": "999",
+	})
+	_, status := execTodoUpdate(ec)
+	requireFailed(t, status, "TodoUpdate not found")
+}
+
+func TestExecTodoList_ReturnsList(t *testing.T) {
+	TODO.ClearAll()
+	TODO.Create("task one", "Pending")
+	ec := newTestEC(map[string]interface{}{})
+	content, status := execTodoList(ec)
+	requireSuccess(t, status, content)
+	if !strings.Contains(content, "task one") {
+		t.Errorf("expected 'task one' in output, got: %s", content)
+	}
+}
+
+func TestExecTodoList_Empty(t *testing.T) {
+	TODO.ClearAll()
+	ec := newTestEC(map[string]interface{}{})
+	content, status := execTodoList(ec)
+	requireSuccess(t, status, content)
 }
 
 // ============================================================

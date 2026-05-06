@@ -678,3 +678,191 @@ func TestTodoUpdate_WaitingAndPending(t *testing.T) {
 		t.Error("should return false when pending items exist alongside waiting")
 	}
 }
+
+// ============================================================================
+// TodoManager — Create (V2 single-item)
+// ============================================================================
+
+func TestTodoCreate_Basic(t *testing.T) {
+	tm := NewTodoManager()
+	_, err := tm.Create("test task", "Pending")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := tm.GetItems()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ID != "1" {
+		t.Errorf("expected ID '1', got '%s'", items[0].ID)
+	}
+	if items[0].Text != "test task" {
+		t.Errorf("expected text 'test task', got '%s'", items[0].Text)
+	}
+	if items[0].Status != "Pending" {
+		t.Errorf("expected status 'Pending', got '%s'", items[0].Status)
+	}
+}
+
+func TestTodoCreate_DefaultStatus(t *testing.T) {
+	tm := NewTodoManager()
+	_, err := tm.Create("task", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := tm.GetItems()
+	if items[0].Status != "Pending" {
+		t.Errorf("expected default status 'Pending', got '%s'", items[0].Status)
+	}
+}
+
+func TestTodoCreate_AutoIDSequence(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("first", "Pending")
+	tm.Create("second", "Pending")
+	tm.Create("third", "Pending")
+	items := tm.GetItems()
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+	if items[2].ID != "3" {
+		t.Errorf("expected third item ID '3', got '%s'", items[2].ID)
+	}
+}
+
+func TestTodoCreate_InvalidStatus(t *testing.T) {
+	tm := NewTodoManager()
+	_, err := tm.Create("task", "unknown")
+	if err == nil {
+		t.Error("expected error for invalid status")
+	}
+}
+
+func TestTodoCreate_EmptyContent(t *testing.T) {
+	tm := NewTodoManager()
+	_, err := tm.Create("", "Pending")
+	if err == nil {
+		t.Error("expected error for empty content")
+	}
+}
+
+func TestTodoCreate_SingleInProgress(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task1", "InProgress")
+	tm.Create("task2", "InProgress")
+	items := tm.GetItems()
+	if items[0].Status != "Pending" {
+		t.Errorf("expected task1 auto-demoted to Pending, got %s", items[0].Status)
+	}
+	if items[1].Status != "InProgress" {
+		t.Errorf("expected task2 stays InProgress, got %s", items[1].Status)
+	}
+}
+
+// ============================================================================
+// TodoManager — UpdateSingle (V2 single-item update/delete)
+// ============================================================================
+
+func TestTodoUpdateSingle_UpdateStatus(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task", "Pending")
+	_, err := tm.UpdateSingle("1", "", "Completed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := tm.GetItems()
+	if items[0].Status != "Completed" {
+		t.Errorf("expected 'Completed', got '%s'", items[0].Status)
+	}
+}
+
+func TestTodoUpdateSingle_UpdateContent(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("original", "Pending")
+	_, err := tm.UpdateSingle("1", "updated", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := tm.GetItems()
+	if items[0].Text != "updated" {
+		t.Errorf("expected 'updated', got '%s'", items[0].Text)
+	}
+}
+
+func TestTodoUpdateSingle_Delete(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task", "Pending")
+	_, err := tm.UpdateSingle("1", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := tm.GetItems()
+	if len(items) != 0 {
+		t.Errorf("expected 0 items after delete, got %d", len(items))
+	}
+}
+
+func TestTodoUpdateSingle_NotFound(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("existing", "Pending")
+	_, err := tm.UpdateSingle("99", "", "Completed")
+	if err == nil {
+		t.Error("expected error for non-existing task ID")
+	}
+}
+
+func TestTodoUpdateSingle_InvalidStatus(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task", "Pending")
+	_, err := tm.UpdateSingle("1", "", "unknown")
+	if err == nil {
+		t.Error("expected error for invalid status")
+	}
+}
+
+func TestTodoUpdateSingle_SingleInProgress(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task1", "InProgress")
+	tm.Create("task2", "Pending")
+	tm.UpdateSingle("2", "", "InProgress")
+	items := tm.GetItems()
+	if items[0].Status != "Pending" {
+		t.Errorf("expected task1 auto-demoted, got %s", items[0].Status)
+	}
+	if items[1].Status != "InProgress" {
+		t.Errorf("expected task2 InProgress, got %s", items[1].Status)
+	}
+}
+
+// ============================================================================
+// TodoManager — GetUnfinishedDigest (progress-aware resume)
+// ============================================================================
+
+func TestGetUnfinishedDigest_Stable(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task1", "Pending")
+	d1 := tm.GetUnfinishedDigest()
+	d2 := tm.GetUnfinishedDigest()
+	if d1 != d2 {
+		t.Errorf("digest should be stable: '%s' vs '%s'", d1, d2)
+	}
+}
+
+func TestGetUnfinishedDigest_ChangesOnProgress(t *testing.T) {
+	tm := NewTodoManager()
+	tm.Create("task1", "Pending")
+	d1 := tm.GetUnfinishedDigest()
+	tm.UpdateSingle("1", "", "InProgress")
+	d2 := tm.GetUnfinishedDigest()
+	if d1 == d2 {
+		t.Error("digest should change when status changes")
+	}
+}
+
+func TestGetUnfinishedDigest_Empty(t *testing.T) {
+	tm := NewTodoManager()
+	d := tm.GetUnfinishedDigest()
+	if d != "" {
+		t.Errorf("expected empty digest, got '%s'", d)
+	}
+}
