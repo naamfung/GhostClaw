@@ -1382,6 +1382,43 @@ validate + 可选冒烟测试。
                         "required": []string{"name"},
                 })
 
+        // ── TodoWrite (V1 批量替換) — 主要任務管理工具 ──
+        // 模型每次傳入完整任務列表，完全取代現有列表。
+        // 全部 Completed 時可傳 [] 清空。簡單語義杜絕 duplicate 問題。
+        reg("TodoWrite",
+                "批量更新任務列表。傳入完整嘅 todos 陣列，會完全取代現有任務。全部完成後傳 [] 清空。每個任務需包含 content（任務內容）、status（Pending/InProgress/Completed）、activeForm（進行中嘅動詞形式，如「啟動緊 garpress」）。",
+                "schedule", "core",
+                map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                                "todos": map[string]interface{}{
+                                        "type": "array",
+                                        "items": map[string]interface{}{
+                                                "type": "object",
+                                                "properties": map[string]interface{}{
+                                                        "content": map[string]interface{}{
+                                                                "type":        "string",
+                                                                "description": "任務內容（祈使句，例如「Remove socat」）",
+                                                        },
+                                                        "status": map[string]interface{}{
+                                                                "type":        "string",
+                                                                "enum":        []string{"Pending", "InProgress", "Completed"},
+                                                                "description": "任務狀態",
+                                                        },
+                                                        "activeForm": map[string]interface{}{
+                                                                "type":        "string",
+                                                                "description": "進行中嘅動詞形式（例如「Removing socat…」），用於 UI spinner",
+                                                        },
+                                                },
+                                                "required": []string{"content", "status", "activeForm"},
+                                        },
+                                        "description": "完整任務列表（取代現有全部）",
+                                },
+                        },
+                        "required": []string{"todos"},
+                })
+
+        // ── V2 獨立工具（保留作回退，見 globalTodoV2Mode toggle）──
         reg("TodoCreate",
                 "创建新任务。传入 content（任务内容）同可选 status（默认 Pending）。",
                 "schedule", "core",

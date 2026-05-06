@@ -1776,6 +1776,47 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
         return string(resultTOON), TaskStatusSuccess
 }
 
+// execTodoWrite 批量替換任務列表（V1 模式）。
+// 模型每次傳入完整列表，完全取代現有。全部 Completed 時傳 [] 清空。
+func execTodoWrite(ec *ToolExecContext) (string, TaskStatus) {
+        rawTodos, ok := ec.ArgsMap["todos"].([]interface{})
+        if !ok {
+                return "Error: todos 必須係 array。正確格式：{\"todos\": [{\"content\":\"...\",\"status\":\"Pending\",\"activeForm\":\"...\"}]}", TaskStatusFailed
+        }
+
+        var items []TodoItem
+        for i, itemInterface := range rawTodos {
+                itemMap, ok := itemInterface.(map[string]interface{})
+                if !ok {
+                        return fmt.Sprintf("Error: todos[%d] 必須係 object", i), TaskStatusFailed
+                }
+                content, _ := itemMap["content"].(string)
+                status, _ := itemMap["status"].(string)
+                if content == "" || status == "" {
+                        return fmt.Sprintf("Error: todos[%d] 缺少 content 或 status（必填）", i), TaskStatusFailed
+                }
+                status = normalizeTodoStatus(status)
+                if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
+                        return fmt.Sprintf("Error: todos[%d] status 無效：%s（可選：Pending/InProgress/Completed）", i, status), TaskStatusFailed
+                }
+                items = append(items, TodoItem{
+                        ID:     strconv.Itoa(i + 1),
+                        Text:   strings.TrimSpace(content),
+                        Status: status,
+                })
+        }
+
+        output, err := TODO.Update(items)
+        if err != nil {
+                return "Error: " + err.Error(), TaskStatusFailed
+        }
+        if !TODO.HasUnfinishedItems() && globalTaskTracker != nil {
+                globalTaskTracker.MarkCompleted()
+                globalTaskTracker.ResetStuckState()
+        }
+        return output, TaskStatusSuccess
+}
+
 func execTodoCreate(ec *ToolExecContext) (string, TaskStatus) {
         content, _ := ec.ArgsMap["content"].(string)
         if content == "" {
@@ -2911,6 +2952,7 @@ func init() {
                 "BrowserFormFill":  execBrowserFormFill,
 
                 // Todo tools
+                "TodoWrite":  execTodoWrite,
                 "TodoCreate": execTodoCreate,
                 "TodoUpdate": execTodoUpdate,
                 "TodoList":   execTodoList,

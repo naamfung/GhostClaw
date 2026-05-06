@@ -188,7 +188,7 @@ func isExecutionTool(name string) bool {
 	lower := strings.ToLower(name)
 
 	// 規劃類工具 — 永遠放行
-	if lower == "todocreate" || lower == "todoupdate" || lower == "todolist" ||
+	if lower == "todowrite" || lower == "todocreate" || lower == "todoupdate" || lower == "todolist" ||
 		lower == "enterplanmode" || lower == "exitplanmode" {
 		return false
 	}
