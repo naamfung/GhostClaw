@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,7 @@ func saveRestoreGlobals() func() {
 	oldCompressionThresh := globalCompressionThreshold
 	oldSkillCleanup := globalSkillCleanupThresholdDays
 	oldEscalation := globalEscalationThreshold
+	oldPromptCache := globalPromptCacheConfig
 	oldDefaultRole := getDefaultRole()
 
 	return func() {
@@ -42,6 +44,7 @@ func saveRestoreGlobals() func() {
 		globalCompressionThreshold = oldCompressionThresh
 		globalSkillCleanupThresholdDays = oldSkillCleanup
 		globalEscalationThreshold = oldEscalation
+		globalPromptCacheConfig = oldPromptCache
 		setDefaultRole(oldDefaultRole)
 	}
 }
@@ -647,7 +650,7 @@ func TestGetConfig_Success(t *testing.T) {
 	}
 
 	// Verify response structure
-	for _, key := range []string{"APIConfig", "DefaultRole", "NeedsSetup", "Timeout", "Compression", "SkillCleanupThresholdDays", "EscalationThreshold"} {
+	for _, key := range []string{"APIConfig", "DefaultRole", "NeedsSetup", "Timeout", "Compression", "SkillCleanupThresholdDays", "EscalationThreshold", "PromptCache"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("response missing key %q", key)
 		}
@@ -961,5 +964,166 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================
+// BDD: PromptCache config GET/PUT roundtrip
+// ============================================================
+
+// TestGetConfig_PromptCacheDefaults 驗證 GET /api/config 返回 PromptCache 默認值。
+func TestGetConfig_PromptCacheDefaults(t *testing.T) {
+	s := testHTTPServer()
+	_ = setupTestConfigManager(t)
+
+	// 設置 PromptCache 為默認值（同 createDefaultConfig）
+	globalPromptCacheConfig = PromptCacheConfig{Enabled: false, StableTools: false}
+
+	// 必須設置其他依賴全局變數
+	globalTimeoutConfig = TimeoutConfig{Shell: 60, HTTP: 60, Plugin: 60, Browser: 60}
+	globalCompressionMode = "token"
+	globalCompressionThreshold = 0.8
+	setDefaultRole("coder")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	s.getConfig(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	pc, ok := resp["PromptCache"].(map[string]interface{})
+	if !ok {
+		t.Fatal("PromptCache missing from response")
+	}
+	if pc["Enabled"] != false {
+		t.Errorf("PromptCache.Enabled = %v, want false", pc["Enabled"])
+	}
+	if pc["StableTools"] != false {
+		t.Errorf("PromptCache.StableTools = %v, want false", pc["StableTools"])
+	}
+}
+
+// TestPromptCache_Roundtrip 驗證 PUT → GET 完整流程。
+// Scenario: 用戶啟用 PromptCache，刷新頁面後前端 GET 到正確值。
+func TestPromptCache_Roundtrip(t *testing.T) {
+	s := testHTTPServer()
+	cm := setupTestConfigManager(t)
+
+	globalTimeoutConfig = TimeoutConfig{Shell: 60, HTTP: 60, Plugin: 60, Browser: 60}
+	globalCompressionMode = "token"
+	globalCompressionThreshold = 0.8
+	setDefaultRole("coder")
+
+	// Step 1: PUT — enable PromptCache + StableTools
+	putBody := `{"PromptCache":{"Enabled":true,"StableTools":true}}`
+	putReq := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putW := httptest.NewRecorder()
+	s.updateConfig(putW, putReq)
+
+	if putW.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", putW.Code, putW.Body.String())
+	}
+
+	// Step 2: syncGlobals — 確保 config 已同步到 globalPromptCacheConfig
+	cm.syncGlobals()
+
+	// Step 3: GET — 確認前端會收到正確值
+	getW := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	s.getConfig(getW, getReq)
+
+	if getW.Code != http.StatusOK {
+		t.Fatalf("GET status = %d", getW.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(getW.Body).Decode(&resp)
+
+	pc, ok := resp["PromptCache"].(map[string]interface{})
+	if !ok {
+		t.Fatal("PromptCache missing from GET response after PUT")
+	}
+	if pc["Enabled"] != true {
+		t.Errorf("PromptCache.Enabled = %v, want true", pc["Enabled"])
+	}
+	if pc["StableTools"] != true {
+		t.Errorf("PromptCache.StableTools = %v, want true", pc["StableTools"])
+	}
+}
+
+// TestPromptCache_DefaultOff 驗證默認關閉時模型行為正確（唔加 cache_control）。
+// 呢個係 BDD scenario：用戶冇開啟 PromptCache → 請求唔帶 cache_control。
+func TestPromptCache_DefaultOff(t *testing.T) {
+	cm := setupTestConfigManager(t)
+	cm.syncGlobals()
+
+	// 默認配置應該係 false/false
+	if globalPromptCacheConfig.Enabled {
+		t.Error("PromptCache.Enabled should default to false")
+	}
+	if globalPromptCacheConfig.StableTools {
+		t.Error("PromptCache.StableTools should default to false")
+	}
+
+	// 驗證 createDefaultConfig 嘅 PromptCache 字段
+	cfg := cm.GetConfig()
+	if cfg.PromptCache.Enabled {
+		t.Error("Config.PromptCache.Enabled should default to false")
+	}
+	if cfg.PromptCache.StableTools {
+		t.Error("Config.PromptCache.StableTools should default to false")
+	}
+}
+
+// TestPromptCache_ResilienceRoundtrip 驗證 PromptCache 同 Resilience 並存唔衝突。
+func TestPromptCache_ResilienceRoundtrip(t *testing.T) {
+	s := testHTTPServer()
+	cm := setupTestConfigManager(t)
+
+	globalTimeoutConfig = TimeoutConfig{Shell: 60, HTTP: 60, Plugin: 60, Browser: 60}
+	globalCompressionMode = "token"
+	globalCompressionThreshold = 0.8
+	setDefaultRole("coder")
+
+	// PUT both Resilience and PromptCache
+	putBody := `{"Resilience":{"EnableFailover":false,"MaxRetries":5},"PromptCache":{"Enabled":true,"StableTools":false}}`
+	putReq := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putW := httptest.NewRecorder()
+	s.updateConfig(putW, putReq)
+
+	if putW.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", putW.Code, putW.Body.String())
+	}
+
+	cm.syncGlobals()
+
+	getW := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	s.getConfig(getW, getReq)
+
+	var resp map[string]interface{}
+	json.NewDecoder(getW.Body).Decode(&resp)
+
+	// Check both exist
+	if _, ok := resp["PromptCache"]; !ok {
+		t.Error("PromptCache missing from response")
+	}
+	if _, ok := resp["Resilience"]; !ok {
+		t.Error("Resilience missing from response")
+	}
+
+	pc := resp["PromptCache"].(map[string]interface{})
+	if pc["Enabled"] != true {
+		t.Errorf("PromptCache.Enabled = %v, want true", pc["Enabled"])
+	}
+	if pc["StableTools"] != false {
+		t.Errorf("PromptCache.StableTools = %v, want false", pc["StableTools"])
+	}
 }
 
