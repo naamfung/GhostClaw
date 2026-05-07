@@ -304,7 +304,8 @@ MEMORY: <记忆更新>`, currentMemory, strings.Join(msgTexts, "\n"))
         {Role: "user", Content: prompt},
     }
 
-    response, err := CallModelSync(ctx, chatMessages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, false, false)
+    useAPIType, useBaseURL, useAPIKey, useModelID, useTemp, useMaxTokens, _, _ := getEffectiveAPIConfig()
+    response, err := CallModelSync(ctx, chatMessages, useAPIType, useBaseURL, useAPIKey, useModelID, useTemp, useMaxTokens, false, false)
     if err != nil {
         return nil, fmt.Errorf("model call failed: %w", err)
     }

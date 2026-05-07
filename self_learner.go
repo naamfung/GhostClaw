@@ -102,22 +102,23 @@ func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, 
 		{Role: "user", Content: userPrompt},
 	}
 
-	// 使用與主聊天相同的 apiType/baseURL/apiKey/modelID（全局變量）
-	reqBaseURL := baseURL
-	if reqBaseURL == "" {
-		if apiType == "anthropic" {
-			reqBaseURL = ANTHROPIC_BASE_URL
+	// 使用配置管理器統一獲取當前啟用嘅模型配置，避免直接讀全局變量
+	// （直接讀全局變量會喺模型切換後出現不一致嘅請求目標）
+	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+	if useBaseURL == "" {
+		if useAPIType == "anthropic" {
+			useBaseURL = ANTHROPIC_BASE_URL
 		} else {
-			reqBaseURL = OPENAI_BASE_URL
+			useBaseURL = OPENAI_BASE_URL
 		}
 	}
 
-	reqBody, endpoint, _, err := prepareRequestData(messages, apiType, reqBaseURL, modelID, 0, 200, false, false, nil)
+	reqBody, endpoint, _, err := prepareRequestData(messages, useAPIType, useBaseURL, useModelID, 0, 200, false, false, nil)
 	if err != nil {
 		return "", fmt.Errorf("prepare request: %w", err)
 	}
 
-	resp, err := sendRequest(ctx, reqBody, reqBaseURL+endpoint, apiKey, apiType)
+	resp, err := sendRequest(ctx, reqBody, useBaseURL+endpoint, useAPIKey, useAPIType)
 	if err != nil {
 		return "", fmt.Errorf("send: %w", err)
 	}

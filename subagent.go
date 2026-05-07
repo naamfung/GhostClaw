@@ -469,10 +469,7 @@ func (sm *SubagentManager) runSubagent(task *SubagentTask) {
 // resolveSubagentCredentials 根据 SubagentTask 的覆盖设置解析最终的 API 参数
 // 优先级：1. task.CredentialOverride/ModelOverride  2. sm.DefaultSubagentCredential/Model  3. 全局变量
 func (sm *SubagentManager) resolveSubagentCredentials(task *SubagentTask) (resolvedAPIType, resolvedBaseURL, resolvedAPIKey, resolvedModelID string) {
-    resolvedAPIType = apiType
-    resolvedBaseURL = baseURL
-    resolvedAPIKey = apiKey
-    resolvedModelID = modelID
+    resolvedAPIType, resolvedBaseURL, resolvedAPIKey, resolvedModelID, _, _, _, _ = getEffectiveAPIConfig()
 
     // 1. 模型覆盖
     if task.ModelOverride != "" {
@@ -570,7 +567,8 @@ func (task *SubagentTask) resolveCredentials() (resolvedAPIType, resolvedBaseURL
     if globalSubagentManager != nil {
         return globalSubagentManager.resolveSubagentCredentials(task)
     }
-    return apiType, baseURL, apiKey, modelID
+    resolvedAPIType, resolvedBaseURL, resolvedAPIKey, resolvedModelID, _, _, _, _ = getEffectiveAPIConfig()
+    return
 }
 
 // executeToolForSubagent 为子代理执行工具，使用 nilChannel 避免 panic

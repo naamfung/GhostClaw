@@ -397,6 +397,9 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 			break
 		}
 
+		// ---- 刷新 API 配置（支援運行期間模型切換） ----
+		config.RefreshAPIConfig()
+
 		// ---- 安全檢查 (P0: CRITICAL) ----
 		if stop, err := RunSafetyCheck(ctx, ch, iteration); stop {
 			if err != nil {

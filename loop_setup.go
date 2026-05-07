@@ -31,6 +31,19 @@ type AgentLoopConfig struct {
 	Compressor           *ContextCompressor
 }
 
+// RefreshAPIConfig 從配置管理器刷新 API 相關配置欄位。
+// 當用戶喺 AgentLoop 運行期間切換模型時，下次迭代會自動使用新配置，
+// 避免請求繼續發送去舊嘅模型服務商。
+func (c *AgentLoopConfig) RefreshAPIConfig() {
+	useAPIType, useBaseURL, useAPIKey, useModelID, useTemp, useMaxTokens, _, _ := getEffectiveAPIConfig()
+	c.EffectiveAPIType = useAPIType
+	c.EffectiveBaseURL = useBaseURL
+	c.EffectiveAPIKey = useAPIKey
+	c.EffectiveModelID = useModelID
+	c.EffectiveTemperature = useTemp
+	c.EffectiveMaxTokens = useMaxTokens
+}
+
 // RunPreLoopSetup performs all pre-loop initialization.
 // Modifies messages in place and returns the resolved configuration.
 func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,

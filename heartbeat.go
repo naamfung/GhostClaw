@@ -246,7 +246,8 @@ func (s *HeartbeatService) executeCheck(task string) (string, error) {
                 {Role: "user", Content: fmt.Sprintf("请执行以下检查任务：\n\n%s", task)},
         }
 
-        response, err := CallModelSync(ctx, history, apiType, baseURL, apiKey, modelID, temperature, maxTokens, false, false)
+        useAPIType, useBaseURL, useAPIKey, useModelID, useTemp, useMaxTokens, _, _ := getEffectiveAPIConfig()
+        response, err := CallModelSync(ctx, history, useAPIType, useBaseURL, useAPIKey, useModelID, useTemp, useMaxTokens, false, false)
         if err != nil {
                 return "", fmt.Errorf("model call failed: %w", err)
         }
