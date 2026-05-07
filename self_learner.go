@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"strings"
 	"sync"
@@ -58,12 +56,27 @@ func (sl *SelfLearner) Reflect(ctx context.Context, taskDesc string, sessionID s
 	reflectCtx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	go func() {
 		defer cancel()
-		result, err := sl.callLLM(reflectCtx, prompt)
+		messages := []Message{
+			{Role: "system", Content: reflectionSystemPrompt},
+			{Role: "user", Content: prompt},
+		}
+		useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+		resp, err := CallModelSync(reflectCtx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 200, false, false)
 		if err != nil {
 			log.Printf("[SelfLearner] Reflection LLM call failed: %v", err)
 			return
 		}
-		sl.processReflectionResult(result)
+		content, ok := resp.Content.(string)
+		if !ok || content == "" {
+			if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
+				content = rc
+			}
+		}
+		if content == "" {
+			log.Printf("[SelfLearner] Reflection empty response content")
+			return
+		}
+		sl.processReflectionResult(content)
 	}()
 }
 
@@ -93,80 +106,6 @@ func (sl *SelfLearner) buildReflectionPrompt(taskDesc string, messages []Message
 	}
 
 	return fmt.Sprintf("## 任务描述\n%s\n\n## 最近对话\n%s", taskDesc, strings.Join(recent, "\n"))
-}
-
-// callLLM 調用 LLM（復用現有 sendRequest 基礎設施）
-func (sl *SelfLearner) callLLM(ctx context.Context, userPrompt string) (string, error) {
-	messages := []Message{
-		{Role: "system", Content: reflectionSystemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	// 使用配置管理器統一獲取當前啟用嘅模型配置，避免直接讀全局變量
-	// （直接讀全局變量會喺模型切換後出現不一致嘅請求目標）
-	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	if useBaseURL == "" {
-		if useAPIType == "anthropic" {
-			useBaseURL = ANTHROPIC_BASE_URL
-		} else {
-			useBaseURL = OPENAI_BASE_URL
-		}
-	}
-
-	reqBody, endpoint, _, err := prepareRequestData(messages, useAPIType, useBaseURL, useModelID, 0, 200, false, false, nil)
-	if err != nil {
-		return "", fmt.Errorf("prepare request: %w", err)
-	}
-
-	resp, err := sendRequest(ctx, reqBody, useBaseURL+endpoint, useAPIKey, useAPIType)
-	if err != nil {
-		return "", fmt.Errorf("send: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("parse: %w", err)
-	}
-
-	// OpenAI 格式
-	if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
-		if choice, ok := choices[0].(map[string]interface{}); ok {
-			if msg, ok := choice["message"].(map[string]interface{}); ok {
-				if content, ok := msg["content"].(string); ok && content != "" {
-					return content, nil
-				}
-				// DeepSeek 模型有時將文本放在 reasoning_content 而非 content
-				// （即使 thinking=false，模型仍可能產生 reasoning_content）
-				if reasoning, ok := msg["reasoning_content"].(string); ok && reasoning != "" {
-					return reasoning, nil
-				}
-			}
-		}
-	}
-
-	// Anthropic 格式
-	if contentList, ok := result["content"].([]interface{}); ok {
-		for _, c := range contentList {
-			if cm, ok := c.(map[string]interface{}); ok {
-				if text, ok := cm["text"].(string); ok {
-					return text, nil
-				}
-				// DeepSeek thinking block (type: thinking)
-				if text, ok := cm["thinking"].(string); ok {
-					return text, nil
-				}
-			}
-		}
-	}
-
-	log.Printf("[SelfLearner] Unexpected response format, raw body: %s", string(body))
-	return "", fmt.Errorf("unexpected response format")
 }
 
 // processReflectionResult 解析 LLM 自省結果並保存

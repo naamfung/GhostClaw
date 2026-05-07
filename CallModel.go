@@ -1640,6 +1640,7 @@ func handleOpenAIResponse(resp *http.Response) (Response, error) {
                                         Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
                                 } `json:"function_call"`
                                 ReasoningContent  interface{} `json:"reasoning_content,omitempty"`
+                                Reasoning         interface{} `json:"reasoning,omitempty"`       // MiniMax 等模型
                                 ThinkingSignature string      `json:"thinking_signature,omitempty"`
                         } `json:"message"`
                         FinishReason string `json:"finish_reason"`
@@ -1725,6 +1726,8 @@ func handleOpenAIResponse(resp *http.Response) (Response, error) {
                                         result.Content = choice.Message.Content
                                 }
                                 if reasoningStr, ok := choice.Message.ReasoningContent.(string); ok {
+                                        result.ReasoningContent = applyReplacements(reasoningStr)
+                                } else if reasoningStr, ok := choice.Message.Reasoning.(string); ok {
                                         result.ReasoningContent = applyReplacements(reasoningStr)
                                 } else {
                                         result.ReasoningContent = choice.Message.ReasoningContent

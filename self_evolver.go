@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"strings"
 	"sync"
@@ -74,13 +72,28 @@ func (se *SelfEvolver) AnalyzePromptEffectiveness(ctx context.Context, sessionID
 		return
 	}
 
-	result, err := se.callLLM(ctx, promptAnalysisSystemPrompt, prompt)
+	messages = []Message{
+		{Role: "system", Content: promptAnalysisSystemPrompt},
+		{Role: "user", Content: prompt},
+	}
+	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
 	if err != nil {
 		log.Printf("[SelfEvolver] PromptAnalysis LLM call failed: %v", err)
 		return
 	}
+	content, ok := resp.Content.(string)
+	if !ok || content == "" {
+		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
+			content = rc
+		}
+	}
+	if content == "" {
+		log.Printf("[SelfEvolver] PromptAnalysis empty response content")
+		return
+	}
 
-	se.processAnalysisResult(result, "prompt_insight")
+	se.processAnalysisResult(content, "prompt_insight")
 	se.markSessionAnalyzed(sessionID)
 }
 
@@ -105,13 +118,28 @@ func (se *SelfEvolver) AnalyzeToolPatterns(ctx context.Context, sessionID string
 		return
 	}
 
-	result, err := se.callLLM(ctx, toolAnalysisSystemPrompt, prompt)
+	messages = []Message{
+		{Role: "system", Content: toolAnalysisSystemPrompt},
+		{Role: "user", Content: prompt},
+	}
+	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
 	if err != nil {
 		log.Printf("[SelfEvolver] ToolAnalysis LLM call failed: %v", err)
 		return
 	}
+	content, ok := resp.Content.(string)
+	if !ok || content == "" {
+		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
+			content = rc
+		}
+	}
+	if content == "" {
+		log.Printf("[SelfEvolver] ToolAnalysis empty response content")
+		return
+	}
 
-	se.processAnalysisResult(result, "tool_pattern")
+	se.processAnalysisResult(content, "tool_pattern")
 	se.markSessionAnalyzed(sessionID)
 }
 
@@ -136,13 +164,28 @@ func (se *SelfEvolver) AnalyzeErrorRecovery(ctx context.Context, sessionID strin
 		return
 	}
 
-	result, err := se.callLLM(ctx, errorAnalysisSystemPrompt, prompt)
+	messages = []Message{
+		{Role: "system", Content: errorAnalysisSystemPrompt},
+		{Role: "user", Content: prompt},
+	}
+	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
 	if err != nil {
 		log.Printf("[SelfEvolver] ErrorAnalysis LLM call failed: %v", err)
 		return
 	}
+	content, ok := resp.Content.(string)
+	if !ok || content == "" {
+		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
+			content = rc
+		}
+	}
+	if content == "" {
+		log.Printf("[SelfEvolver] ErrorAnalysis empty response content")
+		return
+	}
 
-	se.processAnalysisResult(result, "error_recovery")
+	se.processAnalysisResult(content, "error_recovery")
 	se.markSessionAnalyzed(sessionID)
 }
 
@@ -173,13 +216,28 @@ func (se *SelfEvolver) SynthesizeCrossSession(ctx context.Context) {
 		return
 	}
 
-	result, err := se.callLLM(ctx, crossSessionSystemPrompt, prompt)
+	messages := []Message{
+		{Role: "system", Content: crossSessionSystemPrompt},
+		{Role: "user", Content: prompt},
+	}
+	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
+	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
 	if err != nil {
 		log.Printf("[SelfEvolver] CrossSession LLM call failed: %v", err)
 		return
 	}
+	content, ok := resp.Content.(string)
+	if !ok || content == "" {
+		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
+			content = rc
+		}
+	}
+	if content == "" {
+		log.Printf("[SelfEvolver] CrossSession empty response content")
+		return
+	}
 
-	se.processAnalysisResult(result, "cross_strategy")
+	se.processAnalysisResult(content, "cross_strategy")
 }
 
 // ============================================================
@@ -451,79 +509,6 @@ func (se *SelfEvolver) buildCrossSessionPrompt(allMessages []Message) string {
 	}
 
 	return sb.String()
-}
-
-// ============================================================
-// LLM 調用
-// ============================================================
-
-func (se *SelfEvolver) callLLM(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	// 使用配置管理器統一獲取當前啟用嘅模型配置，避免直接讀全局變量
-	// （直接讀全局變量會喺模型切換後出現不一致嘅請求目標）
-	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	if useBaseURL == "" {
-		if useAPIType == "anthropic" {
-			useBaseURL = ANTHROPIC_BASE_URL
-		} else {
-			useBaseURL = OPENAI_BASE_URL
-		}
-	}
-
-	reqBody, endpoint, _, err := prepareRequestData(messages, useAPIType, useBaseURL, useModelID, 0, 300, false, false, nil)
-	if err != nil {
-		return "", fmt.Errorf("prepare request: %w", err)
-	}
-
-	resp, err := sendRequest(ctx, reqBody, useBaseURL+endpoint, useAPIKey, useAPIType)
-	if err != nil {
-		return "", fmt.Errorf("send: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("parse: %w", err)
-	}
-
-	// OpenAI 格式
-	if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
-		if choice, ok := choices[0].(map[string]interface{}); ok {
-			if msg, ok := choice["message"].(map[string]interface{}); ok {
-				if content, ok := msg["content"].(string); ok && content != "" {
-					return content, nil
-				}
-				if reasoning, ok := msg["reasoning_content"].(string); ok && reasoning != "" {
-					return reasoning, nil
-				}
-			}
-		}
-	}
-
-	// Anthropic 格式
-	if contentList, ok := result["content"].([]interface{}); ok {
-		for _, c := range contentList {
-			if cm, ok := c.(map[string]interface{}); ok {
-				if text, ok := cm["text"].(string); ok {
-					return text, nil
-				}
-				if text, ok := cm["thinking"].(string); ok {
-					return text, nil
-				}
-			}
-		}
-	}
-
-	return "", fmt.Errorf("unexpected response format")
 }
 
 // ============================================================
