@@ -869,6 +869,10 @@ func (lec *LoopEventCollector) GetEvents() []LoopDetectionEvent {
 var monitoredTools = map[string]bool{
         "SmartShell":   true,
         "SSHExec":      true,
+        "SSHConnect":   true,
+        "SSHList":      true,
+        "TodoList":     true,
+        "TodoWrite":    true,
 }
 
 // LoopDetector 循环检测器
@@ -983,6 +987,13 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
         if toolName == "SmartShell" {
                 if cmd, ok := args["command"].(string); ok {
                         return toolName + ":" + cmd
+                }
+        }
+
+        // 对于 SSHConnect，使用主机作为指纹（区分不同主机）
+        if toolName == "SSHConnect" {
+                if host, ok := args["host"].(string); ok {
+                        return toolName + ":" + host
                 }
         }
 
@@ -1634,6 +1645,9 @@ func (ldo *LoopDetectionOptimizer) UpdateThresholds(maxHistory, interruptThresho
         newConfig.Thresholds.WarningThreshold = warningThreshold
         newConfig.Thresholds.PatternWindow = patternWindow
 
+        // 补全空白的警告消息字段（防止配置文件损坏导致验证失败）
+        ldo.fillEmptyWarningDefaults(&newConfig)
+
         // 验证
         if errors := ldo.ValidateConfig(&newConfig); len(errors) > 0 {
                 return fmt.Errorf("配置验证失败: %v", errors)
@@ -1716,6 +1730,30 @@ func (ldo *LoopDetectionOptimizer) UpdateWarningMessage(warningType, title, mess
         log.Printf("[LoopDetectionOptimizer] Warning message updated for type: %s", warningType)
 
         return nil
+}
+
+// fillEmptyWarningDefaults 补全配置中空白的警告消息字段，防止配置文件损坏导致验证失败
+func (ldo *LoopDetectionOptimizer) fillEmptyWarningDefaults(config *LoopDetectionConfig) {
+        defaults := getDefaultLoopDetectionConfig()
+
+        if config.Warnings.LoopInterrupt.Message == "" {
+                config.Warnings.LoopInterrupt = defaults.Warnings.LoopInterrupt
+        }
+        if config.Warnings.LoopWarning.Message == "" {
+                config.Warnings.LoopWarning = defaults.Warnings.LoopWarning
+        }
+        if config.Warnings.FailureInterrupt.Message == "" {
+                config.Warnings.FailureInterrupt = defaults.Warnings.FailureInterrupt
+        }
+        if config.Warnings.FailureWarning.Message == "" {
+                config.Warnings.FailureWarning = defaults.Warnings.FailureWarning
+        }
+        if config.Warnings.SequenceInterrupt.Message == "" {
+                config.Warnings.SequenceInterrupt = defaults.Warnings.SequenceInterrupt
+        }
+        if config.Warnings.SequenceWarning.Message == "" {
+                config.Warnings.SequenceWarning = defaults.Warnings.SequenceWarning
+        }
 }
 
 // AnalyzeEventData 分析事件数据并生成优化建议
@@ -1850,6 +1888,9 @@ func (ldo *LoopDetectionOptimizer) UpdateConfig(config *LoopDetectionConfig) err
         if config == nil {
                 return fmt.Errorf("配置不能为空")
         }
+
+        // 补全空白的警告消息字段
+        ldo.fillEmptyWarningDefaults(config)
 
         // 验证
         if errors := ldo.ValidateConfig(config); len(errors) > 0 {
