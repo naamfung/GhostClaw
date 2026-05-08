@@ -68,7 +68,7 @@ type MCPClientTool struct {
 // NewMCPClient 创建 MCP 客户端
 func NewMCPClient(config *MCPClientConfig) *MCPClient {
     if config.ToolTimeout == 0 {
-        config.ToolTimeout = 30
+        config.ToolTimeout = 60
     }
     return &MCPClient{
         config: config,

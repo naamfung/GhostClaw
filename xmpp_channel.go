@@ -190,7 +190,7 @@ func (xc *XMPPChannel) WriteChunk(chunk StreamChunk) error {
         }
 
         // 发送消息
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         // 创建 body payload
@@ -219,7 +219,7 @@ func (xc *XMPPChannel) SendToUser(userID string, message string) error {
         }
 
         // 发送消息
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         // 创建 body payload

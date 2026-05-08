@@ -15,7 +15,7 @@ var (
 const (
         DefaultMinTimeout         = 0   // 全局最低超时（秒），0=不限制
         DefaultShellTimeout       = 60  // shell 命令默认超时
-        DefaultBlockingCmdTimeout = 5   // 可能阻塞的命令超时（交互式命令确认后执行）
+        DefaultBlockingCmdTimeout = 30  // 可能阻塞的命令超时（交互式命令确认后执行）
         DefaultHTTPTimeout        = 120 // HTTP 请求默认超时
         DefaultPluginTimeout      = 120 // 插件 HTTP 请求默认超时
         DefaultBrowserTimeout     = 90  // 浏览器每次操作默认超时（适应慢速网络 + JS 渲染）

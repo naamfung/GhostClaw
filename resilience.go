@@ -141,7 +141,15 @@ func resilientDo(
 				resilience.MaxRetries, attempt+1, err)
 		}
 
-		// 7. 計算退避延遲
+		// 7. 檢查 context 是否已經取消（例如 HTTP 請求因 context deadline exceeded 失敗）
+		//    如果 ctx 已 dead，retry 冇意義，直接返回
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		// 8. 計算退避延遲
 		waitDuration := computeBackoff(classified, currentBackoff, resilience)
 
 		// 為下一次重試增加 backoff（指數增長）
@@ -155,7 +163,7 @@ func resilientDo(
 		log.Printf("[Resilience] Retrying in %v (attempt %d, next backoff %v)...",
 			waitDuration.Round(time.Second), attempt+1, currentBackoff.Round(time.Second))
 
-		// 8. 等待（尊重 context 取消）
+		// 9. 等待（尊重 context 取消）
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -179,15 +187,19 @@ func buildResilientHTTPClient(responseHeaderTimeout time.Duration) *http.Client 
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			TLSHandshakeTimeout:   10 * time.Second,
+			TLSHandshakeTimeout:   30 * time.Second,
 			ResponseHeaderTimeout: responseHeaderTimeout,
 		},
 	}
 }
 
 // sendResilientRequest 發送 HTTP 請求並返回 response（與 sendRequest 類似，但使用自定義 client）
-func sendResilientRequest(ctx context.Context, client *http.Client, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqBody))
+// 使用 context.Background() 而非 parent ctx 發送請求：
+// parent ctx 可能有短 deadline（例如 FeedbackCollector 得 10s），
+// 一旦 deadline fired 就會令所有 retry 失敗。
+// HTTP 層級超時由 ResponseHeaderTimeout 控制，parent ctx 只喺 retry loop 頂部分別 check。
+func sendResilientRequest(parentCtx context.Context, client *http.Client, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), "POST", endpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

@@ -513,7 +513,7 @@ func tryConnectExistingBrowser() string {
 // 当 Chrome 已在运行时，可以通过 http://127.0.0.1:{port}/json/version 获取 websocketDebuggerUrl
 func getDevToolsURLViaHTTP(port int) string {
         // 使用 net/http 获取 Chrome 的 version 信息
-        httpClient := &http.Client{Timeout: 3 * time.Second}
+        httpClient := &http.Client{Timeout: 30 * time.Second}
         resp, err := httpClient.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port))
         if err != nil {
                 return ""

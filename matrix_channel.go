@@ -189,7 +189,7 @@ func (mc *MatrixChannel) WriteChunk(chunk StreamChunk) error {
         }
 
         // 发送消息
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         if _, err := mc.client.SendMessageEvent(ctx, roomID, event.EventMessage, content); err != nil {
@@ -215,7 +215,7 @@ func (mc *MatrixChannel) SendToUser(roomID string, message string) error {
         }
 
         // 发送消息
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         if _, err := mc.client.SendMessageEvent(ctx, rid, event.EventMessage, content); err != nil {

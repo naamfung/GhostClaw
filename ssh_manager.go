@@ -82,7 +82,7 @@ func (m *SSHSessionManager) Connect(user, host, password, privateKeyPath string,
             User:            user,
             Auth:            authMethods,
             HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-            Timeout:         30 * time.Second,
+            Timeout:         60 * time.Second,
         }
         addr := fmt.Sprintf("%s:%d", host, port)
         client, err := ssh.Dial("tcp", addr, config)
@@ -112,7 +112,7 @@ func (m *SSHSessionManager) Connect(user, host, password, privateKeyPath string,
             User:            user,
             Auth:            authMethods,
             HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-            Timeout:         30 * time.Second,
+            Timeout:         60 * time.Second,
         }
         addr := fmt.Sprintf("%s:%d", host, port)
         client, err := ssh.Dial("tcp", addr, config)

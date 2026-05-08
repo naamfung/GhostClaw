@@ -75,7 +75,7 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 				// 使用獨立 goroutine 異步執行，避免 FeedbackCollector timeout
 				// 阻擋 done=true 發送，導致前端長時間等待後模型看似「無故終止」。
 				go func(userMsg, assistantMsg string, cfg TaskCompletionQuery) {
-					askCtx, askCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					askCtx, askCancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer askCancel()
 					completed := globalFeedbackCollector.AskModelTaskCompletion(askCtx, userMsg, assistantMsg, cfg)
 					if completed {

@@ -240,7 +240,7 @@ func browserWaitElementImpl(sessionID, url, selector string, waitTimeout int) (*
                 return nil, err
         }
         if waitTimeout <= 0 {
-                waitTimeout = 10
+                waitTimeout = 30
         }
         page, _, err := getOrCreatePage(sessionID, "default", url)
         if err != nil {
@@ -272,7 +272,7 @@ func browserWaitIdleImpl(sessionID, url string, waitTimeout int) (*BrowserWaitRe
                 return nil, err
         }
         if waitTimeout <= 0 {
-                waitTimeout = 10
+                waitTimeout = 30
         }
         page, _, err := getOrCreatePage(sessionID, "default", url)
         if err != nil {

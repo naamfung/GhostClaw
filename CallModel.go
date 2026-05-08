@@ -182,7 +182,7 @@ var httpClient = &http.Client{
                         Timeout:   30 * time.Second,
                         KeepAlive: 30 * time.Second,
                 }).DialContext,
-                TLSHandshakeTimeout:   10 * time.Second,
+                TLSHandshakeTimeout:   30 * time.Second,
                 ResponseHeaderTimeout: 60 * time.Second,
         },
 }
