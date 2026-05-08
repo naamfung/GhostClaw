@@ -600,23 +600,22 @@ func buildFrontend(pkgManager string) error {
 }
 
 // installDeps 安装前端依赖（pnpm v10+ 新安全模型兼容）
-// pnpm v10+ 預設 block native build scripts，需要 approve-builds 先可以正常安裝
 func installDeps(pkgManager string) error {
 	if pkgManager == "pnpm" {
-		// 先試正常 install
+		// 1) 先試正常 install
 		cmd := exec.Command("pnpm", "install")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err == nil {
 			return nil
 		}
-		// pnpm v11 可能因 ignored builds 返回非零 exit code
-		// 批准需要 native build 嘅 packages 後重試
+		// 2) 失敗 → approve native build scripts + 清舊 node_modules 重試
 		printWarning("pnpm install 失败，尝试 approve-builds 後重試...\n")
+		os.RemoveAll("node_modules")
 		approveCmd := exec.Command("pnpm", "approve-builds", "esbuild", "@parcel/watcher")
 		approveCmd.Stdout = os.Stdout
 		approveCmd.Stderr = os.Stderr
-		approveCmd.Run() // 忽略錯誤，approve-builds 可能已經執行過
+		approveCmd.Run()
 
 		cmd2 := exec.Command("pnpm", "install")
 		cmd2.Stdout = os.Stdout
@@ -625,8 +624,9 @@ func installDeps(pkgManager string) error {
 			return nil
 		}
 	}
-	// pnpm 失敗或非 pnpm → fallback 到 npm
+	// 3) pnpm 失敗或非 pnpm → fallback 到 npm
 	printWarning(fmt.Sprintf("%s 失败，尝试使用 npm...\n", pkgManager))
+	os.RemoveAll("node_modules")
 	cmd := exec.Command("npm", "install")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
