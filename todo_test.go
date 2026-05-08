@@ -89,7 +89,8 @@ func TestTodoUpdate_ListIsolation(t *testing.T) {
 	}
 }
 
-func TestTodoUpdate_Overwrite(t *testing.T) {
+func TestTodoUpdate_MergePreservesOld(t *testing.T) {
+	// BDD: TodoWrite 改為 merge 模式 — 唔再全量覆蓋，未提及嘅舊項自動保留
 	tm := NewTodoManager()
 
 	tm.Update([]TodoItem{
@@ -101,11 +102,15 @@ func TestTodoUpdate_Overwrite(t *testing.T) {
 	})
 
 	items := tm.GetItems()
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item after overwrite, got %d", len(items))
+	// Merge: New item appended, Old item preserved
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items after merge, got %d", len(items))
 	}
-	if items[0].Text != "New item" {
-		t.Errorf("expected 'New item', got '%s'", items[0].Text)
+	if items[0].Text != "New item" || items[0].ID != "2" {
+		t.Errorf("expected first item 'New item' (ID 2), got '%s' (ID %s)", items[0].Text, items[0].ID)
+	}
+	if items[1].Text != "Old item" || items[1].ID != "1" {
+		t.Errorf("expected second item 'Old item' (ID 1, preserved), got '%s' (ID %s)", items[1].Text, items[1].ID)
 	}
 }
 
@@ -864,5 +869,583 @@ func TestGetUnfinishedDigest_Empty(t *testing.T) {
 	d := tm.GetUnfinishedDigest()
 	if d != "" {
 		t.Errorf("expected empty digest, got '%s'", d)
+	}
+}
+
+// ============================================================================
+// BDD: 跨工具交互 — Merge 行為
+// ============================================================================
+
+func TestBDD_Merge_PreservesUnmentioned(t *testing.T) {
+	// Scenario: TodoWrite 同舊列表合併，保存未被提及的項目
+	// Given: 現有 3 項 [A, B, C]
+	// When: TodoWrite 傳入 2 項 [A'(matched A by ID), D(new)]
+	// Then: 最終列表 [A'(updated), D(new), B(preserved), C(preserved)]
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Setup environment", Status: "Completed"},
+		{ID: "2", Text: "Write tests", Status: "Pending"},
+		{ID: "3", Text: "Deploy to staging", Status: "Pending"},
+	})
+
+	out, err := tm.Update([]TodoItem{
+		{ID: "1", Text: "Setup environment", Status: "Completed"},
+		{ID: "4", Text: "Monitor logs", Status: "InProgress"},
+	})
+	if err != nil {
+		t.Fatalf("merge failed: %v", err)
+	}
+
+	items := tm.GetItems()
+	if len(items) != 4 {
+		t.Fatalf("expected 4 items after merge, got %d", len(items))
+	}
+	// Order: matched item A'(1), new item D(4), preserved B(2), preserved C(3)
+	if items[0].ID != "1" || items[0].Text != "Setup environment" {
+		t.Errorf("item 0 mismatch: ID=%s text=%s", items[0].ID, items[0].Text)
+	}
+	if items[1].ID != "4" || items[1].Text != "Monitor logs" || items[1].Status != "InProgress" {
+		t.Errorf("item 1 mismatch: ID=%s text=%s status=%s", items[1].ID, items[1].Text, items[1].Status)
+	}
+	if items[2].ID != "2" || items[2].Text != "Write tests" {
+		t.Errorf("item 2 should be preserved 'Write tests', got ID=%s text=%s", items[2].ID, items[2].Text)
+	}
+	if items[3].ID != "3" || items[3].Text != "Deploy to staging" {
+		t.Errorf("item 3 should be preserved 'Deploy to staging', got ID=%s text=%s", items[3].ID, items[3].Text)
+	}
+
+	// Guard: 2 unmentioned <= 2, should NOT trigger warning
+	if strings.Contains(out, "項舊任務未被本次更新提及") {
+		t.Error("should NOT emit guard warning for ≤2 unmentioned items")
+	}
+}
+
+func TestBDD_Merge_ContentSimilarityMatch(t *testing.T) {
+	// Scenario: 內容高度相似時自動匹配（唔重複）
+	// Given: 現有 "Read the project documentation carefully"
+	// When: TodoWrite "Read project documentation"（相似但唔完全一樣）
+	// Then: 舊項目被更新，而非新增重複項
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Read the project documentation carefully", Status: "Pending"},
+	})
+
+	tm.Update([]TodoItem{
+		{ID: "2", Text: "Read project documentation", Status: "InProgress"},
+	})
+
+	items := tm.GetItems()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item (similarity match), got %d items", len(items))
+	}
+	// 保留舊 ID，內容更新為新文本
+	if items[0].ID != "1" {
+		t.Errorf("expected preserved ID '1', got '%s'", items[0].ID)
+	}
+	if items[0].Status != "InProgress" {
+		t.Errorf("expected updated status 'InProgress', got '%s'", items[0].Status)
+	}
+	// 文本用新嘅
+	if items[0].Text != "Read project documentation" {
+		t.Errorf("expected updated text, got '%s'", items[0].Text)
+	}
+}
+
+func TestBDD_Merge_EmptyArrayClears(t *testing.T) {
+	// Scenario: 傳 [] 清空列表（兼容舊行為）
+	// Given: 現有 2 項
+	// When: TodoWrite([])
+	// Then: 列表清空
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Task A", Status: "Completed"},
+		{ID: "2", Text: "Task B", Status: "Completed"},
+	})
+
+	out, err := tm.Update([]TodoItem{})
+	if err != nil {
+		t.Fatalf("empty update should clear list: %v", err)
+	}
+
+	items := tm.GetItems()
+	if items != nil {
+		t.Errorf("expected nil items after clear, got %d items", len(items))
+	}
+	if !strings.Contains(out, "列表已清空") {
+		t.Errorf("expected '列表已清空' in output, got: %s", out)
+	}
+}
+
+func TestBDD_Merge_GuardWarning(t *testing.T) {
+	// Scenario: 當新 items 未提及 >2 項舊任務時發出警告
+	// Given: 現有 5 項
+	// When: TodoWrite 傳入 1 項（僅匹配其中 1 項）
+	// Then: 輸出包含 guard warning（>2 項未提及）
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Setup", Status: "Completed"},
+		{ID: "2", Text: "Code", Status: "Pending"},
+		{ID: "3", Text: "Test", Status: "Pending"},
+		{ID: "4", Text: "Deploy", Status: "Pending"},
+		{ID: "5", Text: "Monitor", Status: "Pending"},
+	})
+
+	out, err := tm.Update([]TodoItem{
+		{ID: "1", Text: "Setup done", Status: "Completed"},
+	})
+	if err != nil {
+		t.Fatalf("merge failed: %v", err)
+	}
+
+	// 4 項未提及 (items 2-5) > 2, 應該觸發 guard warning
+	if !strings.Contains(out, "項舊任務未被本次更新提及") {
+		t.Errorf("expected guard warning for >2 unmentioned items, got: %s", out)
+	}
+
+	// 驗證所有 4 項都被保留
+	items := tm.GetItems()
+	if len(items) != 5 {
+		t.Errorf("expected all 5 items preserved, got %d", len(items))
+	}
+}
+
+// ============================================================================
+// BDD: 跨工具交互 — Cancelled 狀態
+// ============================================================================
+
+func TestBDD_Cancelled_RendersCorrectly(t *testing.T) {
+	// Scenario: Cancelled 狀態顯示 [-]
+	// Given: Create + Update to Cancelled
+	// Then: render shows [-] marker
+	tm := NewTodoManager()
+
+	tm.Create("Abandoned feature", "Pending")
+	tm.UpdateSingle("1", "", "Cancelled")
+
+	out := tm.Render()
+	if !strings.Contains(out, "[-]") {
+		t.Errorf("expected [-] marker for cancelled, got: %s", out)
+	}
+}
+
+func TestBDD_Cancelled_NotCountedAsCompleted(t *testing.T) {
+	// Scenario: Cancelled 唔計入 completed count
+	// Given: 1 Completed + 1 Cancelled
+	// Then: render shows (1/2 completed)
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Done task", Status: "Completed"},
+		{ID: "2", Text: "Dropped task", Status: "Cancelled"},
+	})
+
+	out := tm.Render()
+	if !strings.Contains(out, "(1/2 completed)") {
+		t.Errorf("expected (1/2 completed) — Cancelled should not count, got: %s", out)
+	}
+}
+
+func TestBDD_Cancelled_Normalize(t *testing.T) {
+	// Scenario: 模型傳入 "canceled"（美式拼法）或 "cancelled"（英式拼法）
+	// Both should be accepted and normalized to "Cancelled"
+	tm := NewTodoManager()
+
+	_, err := tm.Update([]TodoItem{
+		{ID: "1", Text: "US canceled spelling", Status: "canceled"},
+		{ID: "2", Text: "UK cancelled spelling", Status: "cancelled"},
+	})
+	if err != nil {
+		t.Fatalf("both spellings should be valid: %v", err)
+	}
+
+	items := tm.GetItems()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if items[0].Status != "Cancelled" {
+		t.Errorf("expected 'Cancelled', got '%s'", items[0].Status)
+	}
+	if items[1].Status != "Cancelled" {
+		t.Errorf("expected 'Cancelled', got '%s'", items[1].Status)
+	}
+}
+
+func TestBDD_Cancelled_InTodoWrite(t *testing.T) {
+	// Scenario: TodoWrite 直接 set Cancelled status
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Won't do this", Status: "Cancelled"},
+	})
+
+	items := tm.GetItems()
+	if items[0].Status != "Cancelled" {
+		t.Errorf("expected Cancelled status, got '%s'", items[0].Status)
+	}
+}
+
+// ============================================================================
+// BDD: 跨工具交互 — TodoDelete
+// ============================================================================
+
+func TestBDD_Delete_RemovesSingleItem(t *testing.T) {
+	// Scenario: Delete 精準刪除單項
+	// Given: 3 items via Create
+	// When: Delete #2
+	// Then: only #1 and #3 remain
+	tm := NewTodoManager()
+
+	tm.Create("Task 1", "Pending")
+	tm.Create("Task 2", "InProgress")
+	tm.Create("Task 3", "Pending")
+
+	_, err := tm.Delete("2")
+	if err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	items := tm.GetItems()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items after delete, got %d", len(items))
+	}
+	if items[0].ID != "1" || items[1].ID != "3" {
+		t.Errorf("expected IDs [1,3], got [%s,%s]", items[0].ID, items[1].ID)
+	}
+}
+
+func TestBDD_Delete_NotFound(t *testing.T) {
+	// Scenario: Delete 不存在的 ID return error
+	tm := NewTodoManager()
+	tm.Create("Only task", "Pending")
+
+	_, err := tm.Delete("99")
+	if err == nil {
+		t.Error("expected error for non-existent task")
+	}
+}
+
+func TestBDD_Delete_AfterMerge(t *testing.T) {
+	// Scenario: TodoWrite merge 之後 Delete 可以正確定位保留的舊項
+	// Given: Create 3 items, then TodoWrite merge (只提及2項,保留1項)
+	// When: Delete the preserved item
+	// Then: 被保留的舊項可以被精準刪除
+	tm := NewTodoManager()
+
+	tm.Create("Apple", "Pending")
+	tm.Create("Banana", "Pending")
+	tm.Create("Cherry", "Pending")
+
+	// Merge: only mention Apple(updated) and Date(new), Banana & Cherry preserved
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Apple updated", Status: "Completed"},
+		{ID: "4", Text: "Date", Status: "Pending"},
+	})
+
+	// Delete preserved item "Banana" which should still have ID "2"
+	_, err := tm.Delete("2")
+	if err != nil {
+		t.Fatalf("Delete of preserved item failed: %v", err)
+	}
+
+	items := tm.GetItems()
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+	// IDs should be: 1 (Apple, matched), 4 (Date, new), 3 (Cherry, preserved)
+	for _, item := range items {
+		if item.ID == "2" {
+			t.Error("item 2 (Banana) should be deleted")
+		}
+	}
+}
+
+// ============================================================================
+// BDD: 跨工具交互 — InProgress 合併衝突
+// ============================================================================
+
+func TestBDD_Merge_InProgressConflict(t *testing.T) {
+	// Scenario: Merge 時新舊列表都有 InProgress → 優先保留新的，舊的自動降級
+	// Given: 現有 [A(InProgress), B(Pending)]
+	// When: TodoWrite [A(InProgress), C(InProgress)]  — A matched, C new with InProgress
+	// Then: A 降級為 Pending, C 保持 InProgress (新 InProgress 優先)
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Old InProgress task", Status: "InProgress"},
+		{ID: "2", Text: "Pending task", Status: "Pending"},
+	})
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Old task became InProgress again", Status: "InProgress"},
+		{ID: "3", Text: "New InProgress task", Status: "InProgress"},
+	})
+
+	items := tm.GetItems()
+	// 應該只有 1 個 InProgress — 第一個聲明的 (ID 1) 保持，ID 3 降級
+	inProgressCount := 0
+	for _, item := range items {
+		if item.Status == "InProgress" {
+			inProgressCount++
+		}
+	}
+	if inProgressCount > 1 {
+		t.Errorf("expected at most 1 InProgress after merge, got %d", inProgressCount)
+	}
+	// ID 1 should be InProgress (was the first in new list)
+	if items[0].ID != "1" || items[0].Status != "InProgress" {
+		t.Errorf("expected item 1 InProgress, got ID=%s status=%s", items[0].ID, items[0].Status)
+	}
+}
+
+func TestBDD_Merge_InProgressConflictWithPreserved(t *testing.T) {
+	// Scenario: 舊列表有 preserved InProgress → 新列表亦有 InProgress → preserved 降級
+	// Given: 現有 [A(InProgress), B(Pending)]
+	// When: TodoWrite [C(InProgress)] — A preserved with InProgress, C new with InProgress
+	// Then: A 降級為 Pending, C 保持 InProgress
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Preserved InProgress", Status: "InProgress"},
+		{ID: "2", Text: "Pending item", Status: "Pending"},
+	})
+
+	tm.Update([]TodoItem{
+		{ID: "3", Text: "New InProgress task", Status: "InProgress"},
+	})
+
+	items := tm.GetItems()
+	inProgressCount := 0
+	var inProgressID string
+	for _, item := range items {
+		if item.Status == "InProgress" {
+			inProgressCount++
+			inProgressID = item.ID
+		}
+	}
+	if inProgressCount != 1 {
+		t.Fatalf("expected exactly 1 InProgress after merge, got %d", inProgressCount)
+	}
+	// 新 InProgress 優先，舊 preserved InProgress 降級
+	if inProgressID != "3" {
+		t.Errorf("expected ID 3 (new) to be InProgress, got ID %s", inProgressID)
+	}
+	// 驗證 ID 1 被降級
+	for _, item := range items {
+		if item.ID == "1" && item.Status != "Pending" {
+			t.Errorf("expected preserved InProgress item 1 demoted to Pending, got %s", item.Status)
+		}
+	}
+}
+
+// ============================================================================
+// BDD: 跨工具交互 — 完整 CRUD 工作流
+// ============================================================================
+
+func TestBDD_FullCRUD_Workflow(t *testing.T) {
+	// Scenario: 完整 Create → Write(merge) → Update → Delete → List 流程
+	// Given: empty list
+	// When: Create A, Create B, TodoWrite merge [A(Completed), C(Pending)], Update B→InProgress, Delete C, List
+	// Then: A(Completed) + B(InProgress) remain
+	tm := NewTodoManager()
+
+	// Create A, B
+	tm.Create("Task Alpha", "Pending")
+	tm.Create("Task Bravo", "Pending")
+
+	// TodoWrite merge: update A to Completed, add new C
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Task Alpha done", Status: "Completed"},
+		{ID: "3", Text: "Task Charlie", Status: "Pending"},
+	})
+
+	// Update B to InProgress
+	_, err := tm.UpdateSingle("2", "", "InProgress")
+	if err != nil {
+		t.Fatalf("UpdateSingle B failed: %v", err)
+	}
+
+	// Delete C
+	_, err = tm.Delete("3")
+	if err != nil {
+		t.Fatalf("Delete C failed: %v", err)
+	}
+
+	// List
+	out := tm.Render()
+
+	// Verify: A(Completed) + B(InProgress)
+	items := tm.GetItems()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+
+	if items[0].ID != "1" || items[0].Status != "Completed" {
+		t.Errorf("item 1: expected Completed, got %s", items[0].Status)
+	}
+	if items[1].ID != "2" || items[1].Status != "InProgress" {
+		t.Errorf("item 2: expected InProgress, got %s", items[1].Status)
+	}
+
+	// Output should contain both items
+	if !strings.Contains(out, "Task Alpha") {
+		t.Error("render should contain Task Alpha")
+	}
+	if !strings.Contains(out, "Task Bravo") {
+		t.Error("render should contain Task Bravo")
+	}
+	if strings.Contains(out, "Task Charlie") {
+		t.Error("render should NOT contain deleted Task Charlie")
+	}
+	if !strings.Contains(out, "(1/2 completed)") {
+		t.Errorf("expected (1/2 completed), got: %s", out)
+	}
+}
+
+func TestBDD_FullCRUD_AllDoneClear(t *testing.T) {
+	// Scenario: 全部完成後用 TodoWrite([]) 清空
+	// Given: Create 3 items, complete all
+	// When: TodoWrite([])
+	// Then: list cleared
+	tm := NewTodoManager()
+
+	tm.Create("Eat", "Pending")
+	tm.Create("Sleep", "Pending")
+	tm.Create("Code", "Pending")
+
+	tm.UpdateSingle("1", "", "Completed")
+	tm.UpdateSingle("2", "", "Completed")
+	tm.UpdateSingle("3", "", "Completed")
+
+	out, err := tm.Update([]TodoItem{})
+	if err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	if !strings.Contains(out, "列表已清空") {
+		t.Errorf("expected clear confirmation, got: %s", out)
+	}
+	if len(tm.GetItems()) > 0 {
+		t.Error("list should be empty after TodoWrite([])")
+	}
+}
+
+// ============================================================================
+// BDD: Merge 邊界條件
+// ============================================================================
+
+func TestBDD_Merge_Exceeds20Items(t *testing.T) {
+	// Scenario: Merge 結果超過 20 項上限時應報錯
+	// Given: 現有 19 項
+	// When: TodoWrite 傳入 3 新項（無匹配）
+	// Then: error "merge result exceeds max 20 todos"
+	tm := NewTodoManager()
+
+	oldItems := make([]TodoItem, 19)
+	for i := 0; i < 19; i++ {
+		oldItems[i] = TodoItem{ID: string(rune('a' + i%26)), Text: "old", Status: "Pending"}
+	}
+	tm.Update(oldItems)
+
+	_, err := tm.Update([]TodoItem{
+		{ID: "x1", Text: "new 1", Status: "Pending"},
+		{ID: "x2", Text: "new 2", Status: "Pending"},
+		{ID: "x3", Text: "new 3", Status: "Pending"},
+	})
+
+	if err == nil {
+		t.Error("expected error for merge exceeding 20 items")
+	}
+	if !strings.Contains(err.Error(), "max 20") {
+		t.Errorf("expected 'max 20' error, got: %v", err)
+	}
+}
+
+func TestBDD_Merge_NoMatchKeepsAll(t *testing.T) {
+	// Scenario: 兩組完全不同的項目，全部保留
+	// Given: [A, B]
+	// When: TodoWrite [C, D] (no IDs or content match)
+	// Then: [C, D, A, B]
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Original task", Status: "Pending"},
+		{ID: "2", Text: "Another original", Status: "Completed"},
+	})
+
+	tm.Update([]TodoItem{
+		{ID: "3", Text: "Brand new task", Status: "InProgress"},
+		{ID: "4", Text: "Second new", Status: "Pending"},
+	})
+
+	items := tm.GetItems()
+	if len(items) != 4 {
+		t.Fatalf("expected 4 items, got %d", len(items))
+	}
+}
+
+func TestBDD_Create_ThenMerge_Clean(t *testing.T) {
+	// Scenario: Create 建立項目 → TodoWrite merge 更新 → ID 保持一致
+	// Given: Create 3 items
+	// When: TodoWrite 提及部分項目（用相同 ID + 新內容）
+	// Then: 項目 ID 不變，內容更新，未提及項目保留
+	tm := NewTodoManager()
+
+	tm.Create("Buy milk", "Pending")
+	tm.Create("Write report", "Pending")
+	tm.Create("Call client", "Pending")
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Buy milk and eggs", Status: "Completed"},
+	})
+
+	items := tm.GetItems()
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+	if items[0].ID != "1" || items[0].Text != "Buy milk and eggs" || items[0].Status != "Completed" {
+		t.Errorf("item 1 not updated correctly: ID=%s text=%s status=%s", items[0].ID, items[0].Text, items[0].Status)
+	}
+}
+
+// ============================================================================
+// BDD: Cancelled 同 guard 交互
+// ============================================================================
+
+func TestBDD_Cancelled_NotUnfinished(t *testing.T) {
+	// Scenario: Cancelled 不等於 Unfinished — 唔會觸發 exit guard
+	// Given: 只有 Cancelled items
+	// Then: HasUnfinishedItems = false
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "We gave up", Status: "Cancelled"},
+	})
+
+	if tm.HasUnfinishedItems() {
+		t.Error("Cancelled items should NOT count as unfinished")
+	}
+}
+
+func TestBDD_Cancelled_NotInDigest(t *testing.T) {
+	// Scenario: Cancelled items should not appear in unfinished digest
+	// Given: 1 Pending + 1 Cancelled
+	// Then: digest only contains the Pending item
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Still active", Status: "Pending"},
+		{ID: "2", Text: "Never mind", Status: "Cancelled"},
+	})
+
+	digest := tm.GetUnfinishedDigest()
+	if strings.Contains(digest, "2:") {
+		t.Errorf("Cancelled item should not appear in digest, got: %s", digest)
+	}
+	if !strings.Contains(digest, "1:Pending") {
+		t.Errorf("Pending item should appear in digest, got: %s", digest)
 	}
 }

@@ -55,12 +55,20 @@ func normalizeTodoStatus(status string) string {
                 return "Completed"
         case "waiting", "blocked":
                 return "Waiting"
+        case "cancelled", "canceled":
+                return "Cancelled"
         default:
                 return status
         }
 }
 
-// Update 更新指定列表的待辦事項
+// Update 更新指定列表的待辦事項（智能合併模式）
+// 唔再全量覆蓋，而係將新 items 同現有列表合併：
+//   - ID 匹配或內容高度相似 → 更新現有項
+//   - 新項（無匹配）→ 追加
+//   - 未被提及的舊項 → 保留
+//   - 排序：按新 items 嘅順序排匹配項，然後保留未提及嘅舊項
+//
 // list_id 為空時使用 "default"
 func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error) {
         id := "default"
@@ -71,11 +79,28 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
         tm.mu.Lock()
         defer tm.mu.Unlock()
 
+        // 獲取現有列表
+        oldItems := []TodoItem{}
+        if existing, ok := tm.lists[id]; ok {
+                oldItems = existing.Items
+        }
+
+        // 空列表 → 清空（兼容舊行為：全部完成後傳 [] 清空）
+        if len(items) == 0 {
+                delete(tm.lists, id)
+                return fmt.Sprintf(" todos[%s] (0/0 completed)\n  (列表已清空)", id), nil
+        }
+
         if len(items) > 20 {
                 return "", fmt.Errorf("max 20 todos per list")
         }
 
-        validated := []TodoItem{}
+        // Step 1: 驗證新 items
+        type validatedItem struct {
+                item     TodoItem
+                origIdx  int
+        }
+        validated := []validatedItem{}
         inProgressCount := 0
 
         for i, item := range items {
@@ -93,7 +118,7 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
                         return "", fmt.Errorf("item %s: text required", itemID)
                 }
 
-                if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
+                if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
                         return "", fmt.Errorf("item %s: invalid status '%s'", itemID, status)
                 }
 
@@ -101,10 +126,9 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
                         inProgressCount++
                 }
 
-                validated = append(validated, TodoItem{
-                        ID:     itemID,
-                        Text:   text,
-                        Status: status,
+                validated = append(validated, validatedItem{
+                        item:    TodoItem{ID: itemID, Text: text, Status: status},
+                        origIdx: i,
                 })
         }
 
@@ -112,8 +136,156 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
                 return "", fmt.Errorf("only one task can be InProgress at a time")
         }
 
-        tm.lists[id] = &TodoList{ID: id, Items: validated}
-        return tm.renderListLocked(id), nil
+        // Step 2: 將新 items 同舊列表做匹配
+        matchedOld := make(map[int]bool)       // oldItems 中已被匹配的 index
+        oldMatchNew := make(map[int]int)       // new item origIdx -> oldItems index
+        usedOldIDs := make(map[string]bool)   // 已用的舊 ID（避免重複匹配）
+
+        for vi, v := range validated {
+                // 優先 ID 精確匹配
+                matched := false
+                for oi, old := range oldItems {
+                        if matchedOld[oi] || usedOldIDs[old.ID] {
+                                continue
+                        }
+                        if v.item.ID == old.ID {
+                                oldMatchNew[vi] = oi
+                                matchedOld[oi] = true
+                                usedOldIDs[old.ID] = true
+                                matched = true
+                                break
+                        }
+                }
+
+                // ID 唔匹配，試內容相似度匹配
+                if !matched {
+                        bestMatch := -1
+                        bestScore := 0.0
+                        for oi, old := range oldItems {
+                                if matchedOld[oi] {
+                                        continue
+                                }
+                                score := textSimilarity(v.item.Text, old.Text)
+                                if score > bestScore {
+                                        bestScore = score
+                                        bestMatch = oi
+                                }
+                        }
+                        // 相似度 > 80% 視為同一項
+                        if bestMatch >= 0 && bestScore > 0.8 {
+                                oldMatchNew[vi] = bestMatch
+                                matchedOld[bestMatch] = true
+                        }
+                }
+        }
+
+        // Step 3: 構建最終列表
+        // 先按新 items 順序排放匹配項，然後追加未匹配的舊項
+        finalItems := []TodoItem{}
+        usedFinalIDs := make(map[string]bool)
+        hasInProgress := false
+
+        for _, v := range validated {
+                if oi, matched := oldMatchNew[v.origIdx]; matched {
+                        // 匹配項：保留舊 ID，更新內容同狀態
+                        status := v.item.Status
+                        if status == "InProgress" {
+                                if hasInProgress {
+                                        status = "Pending" // 只允許一個 InProgress
+                                } else {
+                                        hasInProgress = true
+                                }
+                        }
+                        updated := TodoItem{
+                                ID:     oldItems[oi].ID,
+                                Text:   v.item.Text,
+                                Status: status,
+                        }
+                        finalItems = append(finalItems, updated)
+                        usedFinalIDs[oldItems[oi].ID] = true
+                } else {
+                        // 新項：用新 ID
+                        status := v.item.Status
+                        if status == "InProgress" {
+                                if hasInProgress {
+                                        status = "Pending"
+                                } else {
+                                        hasInProgress = true
+                                }
+                        }
+                        finalItems = append(finalItems, TodoItem{
+                                ID:     v.item.ID,
+                                Text:   v.item.Text,
+                                Status: status,
+                        })
+                        usedFinalIDs[v.item.ID] = true
+                }
+        }
+
+        // 追加未被提及的舊項（如有 InProgress 衝突則降級）
+        preservedCount := 0
+        for oi, old := range oldItems {
+                if !matchedOld[oi] && !usedFinalIDs[old.ID] {
+                        item := old
+                        if item.Status == "InProgress" && hasInProgress {
+                                item.Status = "Pending"
+                        }
+                        finalItems = append(finalItems, item)
+                        preservedCount++
+                }
+        }
+
+        if len(finalItems) > 20 {
+                return "", fmt.Errorf("merge result exceeds max 20 todos (would be %d)", len(finalItems))
+        }
+
+        tm.lists[id] = &TodoList{ID: id, Items: finalItems}
+        result := tm.renderListLocked(id)
+
+        // Step 4: Guard — 如果新 items 數量明顯少過舊列表，加提醒
+        if len(items) > 0 && len(oldItems) > 0 {
+                unmentioned := len(oldItems) - len(matchedOld)
+                if unmentioned > 2 {
+                        result += fmt.Sprintf("\n\n⚠️  %d 項舊任務未被本次更新提及，已自動保留。如果其中部分已完成或不再需要，請用 TodoDelete 清理。", unmentioned)
+                }
+        }
+
+        return result, nil
+}
+
+// textSimilarity 計算兩段文本的簡單相似度（0.0 ~ 1.0）
+// 基於字符級 overlap：較短文本有多少比例字符出現在較長文本中
+func textSimilarity(a, b string) float64 {
+        // 歸一化：去空白、轉小寫
+        na := strings.ToLower(strings.Join(strings.Fields(a), ""))
+        nb := strings.ToLower(strings.Join(strings.Fields(b), ""))
+
+        if na == nb {
+                return 1.0
+        }
+        if len(na) == 0 || len(nb) == 0 {
+                return 0.0
+        }
+
+        // 確保 na 是較短的那個
+        if len(na) > len(nb) {
+                na, nb = nb, na
+        }
+
+        // 計算 na 中每個字符在 nb 中出現的比例
+        nbRunes := []rune(nb)
+        nbUsed := make([]bool, len(nbRunes))
+        matched := 0
+        for _, ra := range na {
+                for j, rb := range nbRunes {
+                        if !nbUsed[j] && ra == rb {
+                                nbUsed[j] = true
+                                matched++
+                                break
+                        }
+                }
+        }
+        return float64(matched) / float64(len(na))
 }
 
 // Create 創建單個任務，自動分配 ID
@@ -130,7 +302,7 @@ func (tm *TodoManager) Create(content, status string) (string, error) {
         if status == "" {
                 status = "Pending"
         }
-        if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
+        if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
                 return "", fmt.Errorf("invalid status: %s", status)
         }
 
@@ -186,7 +358,7 @@ func (tm *TodoManager) UpdateSingle(id, content, status string) (string, error) 
                         }
                         if status != "" {
                                 s := normalizeTodoStatus(status)
-                                if s != "Pending" && s != "InProgress" && s != "Completed" && s != "Waiting" {
+                                if s != "Pending" && s != "InProgress" && s != "Completed" && s != "Waiting" && s != "Cancelled" {
                                         return "", fmt.Errorf("invalid status: %s", status)
                                 }
                                 if s == "InProgress" {
@@ -200,6 +372,30 @@ func (tm *TodoManager) UpdateSingle(id, content, status string) (string, error) 
                                 list.Items[i].Status = s
                         }
                         return tm.renderListLocked("default"), nil
+                }
+        }
+        return "", fmt.Errorf("task %s not found", id)
+}
+
+// Delete 刪除指定 ID 的任務
+func (tm *TodoManager) Delete(id string, listID ...string) (string, error) {
+        lid := "default"
+        if len(listID) > 0 && listID[0] != "" {
+                lid = listID[0]
+        }
+
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+
+        list := tm.lists[lid]
+        if list == nil {
+                return "", fmt.Errorf("task %s not found", id)
+        }
+
+        for i, item := range list.Items {
+                if item.ID == id {
+                        list.Items = append(list.Items[:i], list.Items[i+1:]...)
+                        return tm.renderListLocked(lid), nil
                 }
         }
         return "", fmt.Errorf("task %s not found", id)
@@ -264,6 +460,8 @@ func (tm *TodoManager) renderListLocked(id string) string {
                 case "Completed":
                         marker = "[x]"
                         done++
+                case "Cancelled":
+                        marker = "[-]"
                 default:
                         marker = "[?]"
                 }

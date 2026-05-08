@@ -1859,6 +1859,22 @@ func execTodoList(ec *ToolExecContext) (string, TaskStatus) {
         return TODO.Render(), TaskStatusSuccess
 }
 
+func execTodoDelete(ec *ToolExecContext) (string, TaskStatus) {
+        id, _ := ec.ArgsMap["id"].(string)
+        if id == "" {
+                return "Error: id 係必填參數（要刪除嘅任務 ID）", TaskStatusFailed
+        }
+        output, err := TODO.Delete(id)
+        if err != nil {
+                return "Error: " + err.Error(), TaskStatusFailed
+        }
+        if !TODO.HasUnfinishedItems() && globalTaskTracker != nil {
+                globalTaskTracker.MarkCompleted()
+                globalTaskTracker.ResetStuckState()
+        }
+        return output, TaskStatusSuccess
+}
+
 // --- Wrappers for existing handler functions ---
 
 func execCronAdd(ec *ToolExecContext) (string, TaskStatus) {
@@ -2956,6 +2972,7 @@ func init() {
                 "TodoCreate": execTodoCreate,
                 "TodoUpdate": execTodoUpdate,
                 "TodoList":   execTodoList,
+                "TodoDelete": execTodoDelete,
 
                 // Cron tools
                 "CronAdd":    execCronAdd,
