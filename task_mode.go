@@ -109,20 +109,32 @@ func handleTasks(args map[string]interface{}) (string, bool) {
 		planContent, _ = args["PlanContent"].(string) // 兼容小寫
 	}
 
-	// 解析 tasks
+	// 解析 tasks（帶格式驗證，防止 silent failure）
 	var tasks []TaskItem
 	if rawTasks, ok := args["tasks"]; ok {
-		if arr, ok := rawTasks.([]interface{}); ok {
-			for _, item := range arr {
-				if m, ok := item.(map[string]interface{}); ok {
-					task := TaskItem{
-						ID:     fmt.Sprintf("%v", m["id"]),
-						Title:  fmt.Sprintf("%v", m["title"]),
-						Status: normalizeTodoStatus(fmt.Sprintf("%v", m["status"])),
-					}
-					tasks = append(tasks, task)
-				}
+		arr, ok := rawTasks.([]interface{})
+		if !ok {
+			return fmt.Sprintf("Error: tasks 必須係 array。正確格式：{\"tasks\": [{\"id\": \"1\", \"title\": \"...\", \"status\": \"Pending\"}]}"), false
+		}
+		for i, item := range arr {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				return fmt.Sprintf("Error: tasks[%d] 必須係 object（包含 id/title/status）", i), false
 			}
+			id := fmt.Sprintf("%v", m["id"])
+			title := fmt.Sprintf("%v", m["title"])
+			status := normalizeTodoStatus(fmt.Sprintf("%v", m["status"]))
+			if id == "" || id == "<nil>" || title == "" || title == "<nil>" {
+				return fmt.Sprintf("Error: tasks[%d] 缺少 id 或 title（必填）。\n\n💡 正確格式：{\"tasks\": [{\"id\": \"1\", \"title\": \"任務標題\", \"status\": \"Pending\"}]}", i), false
+			}
+			if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
+				return fmt.Sprintf("Error: tasks[%d] status 無效：%s（可選：Pending/InProgress/Completed/Waiting）", i, status), false
+			}
+			tasks = append(tasks, TaskItem{
+				ID:     id,
+				Title:  title,
+				Status: status,
+			})
 		}
 	}
 
