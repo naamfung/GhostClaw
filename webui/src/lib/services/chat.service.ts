@@ -23,6 +23,13 @@ import type { ApiChatMessageContentPart, ApiChatCompletionToolCall } from '$lib/
 import type { DatabaseMessageExtraMcpPrompt, DatabaseMessageExtraMcpResource, DatabaseMessageExtraTextFile, DatabaseMessageExtraPdfFile, DatabaseMessageExtraImageFile } from '$lib/types';
 import { modelsStore } from '$lib/stores/models.svelte';
 
+// Todo item from backend
+export interface TodoItem {
+        id: string;
+        text: string;
+        status: string; // Pending | InProgress | Completed | Waiting | Cancelled
+}
+
 // WebSocket connection manager
 class WebSocketManager {
         private ws: WebSocket | null = null;
@@ -36,6 +43,7 @@ class WebSocketManager {
                 onComplete?: (content: string, reasoning?: string, timings?: unknown, toolCalls?: string) => void;
                 onError?: (error: Error) => void;
                 onTaskRunning?: (running: boolean, isReconnect?: boolean) => void;
+                onTodosUpdate?: (todos: TodoItem[]) => void;
         }> = new Map();
         private accumulatedContent: string = '';
         private accumulatedReasoning: string = '';
@@ -95,6 +103,7 @@ class WebSocketManager {
                 error?: string;
                 task_running?: boolean;
                 is_reconnect?: boolean;
+                todos?: TodoItem[];
         }): void {
                 if (chunk.session_id) {
                         this.sessionId = chunk.session_id;
@@ -117,6 +126,11 @@ class WebSocketManager {
                 // Handle task_running status (wake notifications from async tasks)
                 if (chunk.task_running !== undefined) {
                         this.messageCallbacks.forEach(cb => cb.onTaskRunning?.(chunk.task_running!, chunk.is_reconnect));
+                }
+
+                // Handle todo list updates from backend
+                if (chunk.todos !== undefined) {
+                        this.messageCallbacks.forEach(cb => cb.onTodosUpdate?.(chunk.todos!));
                 }
 
                 if (chunk.content) {
@@ -163,6 +177,7 @@ class WebSocketManager {
                         onComplete?: (content: string, reasoning?: string, timings?: unknown, toolCalls?: string) => void;
                         onError?: (error: Error) => void;
                         onTaskRunning?: (running: boolean, isReconnect?: boolean) => void;
+                        onTodosUpdate?: (todos: TodoItem[]) => void;
                 }
         ): Promise<void> {
                 // Clear old callbacks before registering new ones.
@@ -263,6 +278,7 @@ export class ChatService {
                         onToolCallChunk,
                         onModel,
                         onTaskRunning,
+                        onTodosUpdate,
                 } = options;
 
                 // Get the last user message
@@ -358,6 +374,9 @@ export class ChatService {
                                 },
                                 onTaskRunning: (running, isReconnect) => {
                                         onTaskRunning?.(running, isReconnect);
+                                },
+                                onTodosUpdate: (todos) => {
+                                        onTodosUpdate?.(todos);
                                 }
                         });
                 });

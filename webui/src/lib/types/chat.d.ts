@@ -117,6 +117,7 @@ export interface ChatStreamCallbacks {
         onError?: (error: Error) => void;
         onTurnComplete?: (intermediateTimings: ChatMessageTimings) => void;
         onTaskRunning?: (running: boolean) => void;
+        onTodosUpdate?: (todos: { id: string; text: string; status: string }[]) => void;
 }
 
 /**

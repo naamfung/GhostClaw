@@ -12,7 +12,7 @@
  */
 
 import { SvelteMap } from 'svelte/reactivity';
-import { DatabaseService, ChatService } from '$lib/services';
+import { DatabaseService, ChatService, type TodoItem } from '$lib/services';
 import { conversationsStore } from '$lib/stores/conversations.svelte';
 import { config } from '$lib/stores/settings.svelte';
 import { agenticStore } from '$lib/stores/agentic.svelte';
@@ -63,6 +63,7 @@ const wrapReasoningContent = (content: string, reasoningContent?: string): strin
 class ChatStore {
         activeProcessingState = $state<ApiProcessingState | null>(null);
         currentResponse = $state('');
+        currentTodos = $state<TodoItem[]>([]);
         errorDialogState = $state<ErrorDialogState | null>(null);
         isLoading = $state(false);
         chatLoadingStates = new SvelteMap<string, boolean>();
@@ -842,6 +843,9 @@ class ChatStore {
                                         this.setChatLoading(assistantMessage.convId, false);
                                         this.clearChatStreaming(assistantMessage.convId);
                                 }
+                        },
+                        onTodosUpdate: (todos: TodoItem[]) => {
+                                this.currentTodos = todos;
                         }
                 };
                 const perChatOverrides = conversationsStore.activeConversation?.mcpServerOverrides;

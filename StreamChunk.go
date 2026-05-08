@@ -25,6 +25,9 @@ type StreamChunk struct {
         IsReconnect      bool                     `json:"is_reconnect,omitempty"`  // 此连接是否為重新連接（前端可用於跳過首個 task_running）
         HistorySync      []Message                `json:"history_sync,omitempty"`  // 重连时同步的历史消息
 
+        // 待辦事項列表（每次 Todo 工具執行後推送當前狀態）
+        Todos []TodoItem `json:"todos,omitempty"`
+
         // Token 使用量（僅在 Done=true 時填充，來自 API 響應的 usage 字段）
         Usage *TokenUsage `json:"usage,omitempty"`
 }

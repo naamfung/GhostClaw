@@ -172,6 +172,9 @@ func (s *HTTPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
                 }
         }
 
+        // 推送當前 Todo 列表狀態到前端面板
+        pushTodoStateToChannel(wsChannel)
+
         for {
                 var msg struct {
                         Content string `json:"content"`

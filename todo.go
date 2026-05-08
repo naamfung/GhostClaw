@@ -406,6 +406,22 @@ func (tm *TodoManager) UpdateDefault(items []TodoItem) (string, error) {
         return tm.Update(items)
 }
 
+// GetStructuredItems 獲取默認列表嘅結構化事項（用於前端即時面板）
+// 排除 plan 相關列表，只返回用戶自己創建嘅任務
+func (tm *TodoManager) GetStructuredItems() []TodoItem {
+        tm.mu.RLock()
+        defer tm.mu.RUnlock()
+
+        var allItems []TodoItem
+        for id, list := range tm.lists {
+                if planRelatedListIDs[id] {
+                        continue
+                }
+                allItems = append(allItems, list.Items...)
+        }
+        return allItems
+}
+
 // GetItems 獲取指定列表的所有事項（副本）
 func (tm *TodoManager) GetItems(listID ...string) []TodoItem {
         id := "default"

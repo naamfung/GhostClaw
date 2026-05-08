@@ -3124,7 +3124,27 @@ func executeTool(ctx context.Context, toolID, toolName string, argsMap map[strin
                 ch.WriteChunk(StreamChunk{Content: content + "\n"})
         }
 
+        // Todo 工具執行後推送當前列表狀態到前端面板
+        if status == TaskStatusSuccess && isTodoTool(toolName) {
+                pushTodoStateToChannel(ch)
+        }
+
         return NewToolResultMessage(toolID, content, status, toolName)
+}
+
+// isTodoTool 判斷是否為 Todo 系列工具
+func isTodoTool(name string) bool {
+        switch name {
+        case "TodoWrite", "TodoCreate", "TodoUpdate", "TodoDelete", "TodoList":
+                return true
+        }
+        return false
+}
+
+// pushTodoStateToChannel 將當前 Todo 列表狀態推送到前端
+func pushTodoStateToChannel(ch Channel) {
+        items := TODO.GetStructuredItems()
+        ch.WriteChunk(StreamChunk{Todos: items})
 }
 
 // ============================================================

@@ -39,6 +39,7 @@
         import { Trash2, AlertTriangle, RefreshCw } from '@lucide/svelte';
         import ChatScreenDragOverlay from './ChatScreenDragOverlay.svelte';
         import ChatMessageNav from '$lib/components/app/chat/ChatMessageNav.svelte';
+        import TodoPanel from '$lib/components/app/chat/TodoPanel.svelte';
 
         let { showCenteredEmpty = false } = $props();
 
@@ -402,6 +403,7 @@
                         {/if}
 
                         <div class="conversation-chat-form pointer-events-auto rounded-t-3xl">
+                                <TodoPanel />
                                 <ChatScreenForm
                                         disabled={hasPropsError || isEditing()}
                                         {initialMessage}
@@ -465,6 +467,7 @@
                         {/if}
 
                         <div in:fly={{ y: 10, duration: 250, delay: hasPropsError ? 0 : 300 }}>
+                                <TodoPanel />
                                 <ChatScreenForm
                                         disabled={hasPropsError}
                                         {initialMessage}

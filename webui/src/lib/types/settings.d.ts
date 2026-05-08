@@ -67,6 +67,7 @@ export interface SettingsChatServiceOptions {
 	) => void;
 	onError?: (error: Error) => void;
 	onTaskRunning?: (running: boolean) => void;
+	onTodosUpdate?: (todos: { id: string; text: string; status: string }[]) => void;
 }
 
 export type SettingsConfigType = typeof SETTING_CONFIG_DEFAULT & {
