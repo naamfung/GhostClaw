@@ -14,6 +14,14 @@ import (
 // 用於進展感知 resume：指紋變咗 = 有進展 → reset counter；指紋唔變 = 卡死 → counter++。
 var lastWorkModeTodoDigest string
 
+// lastExitGuardToolCallCount 記錄上一次 exit guard 檢查時嘅有效工具調用計數。
+// 如果兩次檢查之間有新嘅有效工具調用（非唯讀/連接檢查工具），視為有進展 → reset counter。
+var lastExitGuardToolCallCount int
+
+// meaningfulToolCallCount 統計當前 turn 中有效工具調用（非純唯讀/連接檢查）。
+// executeSingleToolCall 喺每次工具調用後遞增；exit guard 檢查後同步到 lastExitGuardToolCallCount。
+var meaningfulToolCallCount int
+
 // turnsSinceLastTaskTool 距離上次調用 task 工具（TodoWrite/TodoCreate/TodoUpdate/TodoList）嘅 turns 數。
 // executeSingleToolCall 喺每次 task 工具調用時重置為 0；RunBranchNone 每 turn +1。
 // 用於 Stale Task Reminder：>3 turns 冇用 task 工具 → inject reminder。
@@ -22,6 +30,25 @@ var turnsSinceLastTaskTool int
 // turnsSinceLastReminder 距離上次 inject stale reminder 嘅 turns 數。
 // 避免連續 inject：>5 turns 先會再次 remind。
 var turnsSinceLastReminder int
+
+// progressTrackingExempt 定義不應計入進展追蹤的工具（純唯讀/連接檢查類）
+// 呢啲工具被調用時唔代表任務有實質進展
+var progressTrackingExempt = map[string]bool{
+	"SSHConnect": true,
+	"SSHList":    true,
+	"SSHClose":   true,
+	"TodoList":   true,
+	"TaskList":   true,
+	"SpawnList":  true,
+}
+
+// isProgressTrackingExempt 檢查工具調用是否為進展追蹤豁免類
+func isProgressTrackingExempt(toolName string) bool {
+	if progressTrackingExempt[toolName] {
+		return true
+	}
+	return readOnlyToolNames[toolName]
+}
 
 // getMaxWorkModeResumeRounds returns the max resume rounds for work mode exit guard.
 // Default is 3 if not configured.
@@ -169,16 +196,20 @@ func RunBranchNone(messages []Message, respContent interface{},
 	turnsSinceLastTaskTool++
 	turnsSinceLastReminder++
 
-	// ========== 工作模式退出守衛（進展感知） ==========
-	// 每次 resume 前比較 todos 指紋：有進展（指紋變咗）→ reset counter；
-	// 冇進展（指紋一樣）→ counter++。卡死先強制退出，唔係計 resume 次數。
+	// ========== 工作模式退出守衛（進展感知 + 工具調用感知） ==========
+	// 雙重檢測：todo 指紋變咗 OR 有實質工具調用 → 視為有進展 → reset counter。
+	// 只睇 todo digest 會漏判：模型可能 busy 咁 call SSHExec/WriteFileLine 但未 update todo。
 	if TODO.HasUnfinishedItems() {
 		if !TODO.AllUnfinishedAreWaiting() {
 			currentDigest := TODO.GetUnfinishedDigest()
-			if currentDigest != lastWorkModeTodoDigest {
-				// 有進展：reset counter，更新 snapshot
+			todoProgress := currentDigest != lastWorkModeTodoDigest
+			toolProgress := meaningfulToolCallCount > lastExitGuardToolCallCount
+
+			if todoProgress || toolProgress {
+				// 有進展：reset counter，更新 snapshots
 				*resumeCount = 0
 				lastWorkModeTodoDigest = currentDigest
+				lastExitGuardToolCallCount = meaningfulToolCallCount
 			}
 			*resumeCount++
 			if *resumeCount <= getMaxWorkModeResumeRounds() {

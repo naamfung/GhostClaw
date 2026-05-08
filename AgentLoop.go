@@ -265,6 +265,12 @@ func executeSingleToolCall(ctx context.Context, call ParsedToolCall, ch Channel,
 		turnsSinceLastTaskTool = 0
 	}
 
+	// ── 追蹤有效工具調用（用於 exit guard 進展感知）──
+	// 排除純唯讀/連接檢查類工具，佢哋唔代表實質進展
+	if !isProgressTrackingExempt(call.Name) {
+		meaningfulToolCallCount++
+	}
+
 	// 解析参数
 	var argsMap map[string]interface{}
 	if err := json.Unmarshal([]byte(call.ArgsJSON), &argsMap); err != nil {
