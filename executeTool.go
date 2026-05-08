@@ -1781,7 +1781,7 @@ func execBrowserFormFill(ec *ToolExecContext) (string, TaskStatus) {
 func execTodoWrite(ec *ToolExecContext) (string, TaskStatus) {
         rawTodos, ok := ec.ArgsMap["todos"].([]interface{})
         if !ok {
-                return "Error: todos 必須係 array。正確格式：{\"todos\": [{\"content\":\"...\",\"status\":\"Pending\",\"activeForm\":\"...\"}]}", TaskStatusFailed
+                return "Error: todos 必須係 array。正確格式：{\"todos\": [{\"content\":\"...\",\"status\":\"Pending\",\"activeForm\":\"...\"}]}\n\n💡 提示：如果格式仍不正確，可以用 TodoCreate 逐項新增任務。", TaskStatusFailed
         }
 
         var items []TodoItem
@@ -1793,7 +1793,7 @@ func execTodoWrite(ec *ToolExecContext) (string, TaskStatus) {
                 content, _ := itemMap["content"].(string)
                 status, _ := itemMap["status"].(string)
                 if content == "" || status == "" {
-                        return fmt.Sprintf("Error: todos[%d] 缺少 content 或 status（必填）", i), TaskStatusFailed
+                        return fmt.Sprintf("Error: todos[%d] 缺少 content 或 status（必填）。\n\n💡 提示：如果格式仍不正確，可以用 TodoCreate 逐項新增任務。", i), TaskStatusFailed
                 }
                 status = normalizeTodoStatus(status)
                 if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {

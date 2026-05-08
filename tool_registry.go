@@ -1386,7 +1386,7 @@ validate + 可选冒烟测试。
         // 智能合併模式：新 items 會同現有列表合併（內容相似則更新，新項追加，未提及舊項保留）。
         // 全部 Completed 時可傳 [] 清空。
         reg("TodoWrite",
-                "批量更新任務列表。傳入待更新嘅 todos 陣列，會智能合併到現有列表（同名或內容相近嘅任務會更新而非重複）。未提及嘅舊任務會自動保留。全部完成後傳 [] 清空。每個任務需包含 content（任務內容）、status（Pending/InProgress/Completed/Waiting/Cancelled）、activeForm（進行中嘅動詞形式，如「啟動緊 garpress」）。",
+                "批量更新任務列表。傳入待更新嘅 todos 陣列，會智能合併到現有列表。未提及嘅舊任務會自動保留。全部完成後傳 [] 清空。\n\n正確格式示例：\n{\"todos\": [{\"content\": \"檢查日誌文件\", \"status\": \"InProgress\", \"activeForm\": \"檢查緊日誌文件\"}, {\"content\": \"清理臨時文件\", \"status\": \"Pending\", \"activeForm\": \"清理緊臨時文件\"}]}\n\n注意：todos 必須係 array，每個元素必須係包含 content/status/activeForm 三個字段的 object。",
                 "schedule", "core",
                 map[string]interface{}{
                         "type": "object",
