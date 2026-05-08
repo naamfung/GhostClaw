@@ -36,6 +36,7 @@ class WebSocketManager {
         private status: 'connecting' | 'connected' | 'disconnected' | 'error' = 'disconnected';
         private sessionId: string = '';
         private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        private persistentTodosCallback: ((todos: TodoItem[]) => void) | null = null;
         private messageCallbacks: Map<string, {
                 onChunk?: (chunk: string) => void;
                 onReasoningChunk?: (chunk: string) => void;
@@ -129,7 +130,11 @@ class WebSocketManager {
                 }
 
                 // Handle todo list updates from backend
+                // 使用持久回調（唔依賴 per-message callbacks，connect/reconnect 時都有效）
                 if (chunk.todos !== undefined) {
+                        if (this.persistentTodosCallback) {
+                                this.persistentTodosCallback(chunk.todos!);
+                        }
                         this.messageCallbacks.forEach(cb => cb.onTodosUpdate?.(chunk.todos!));
                 }
 
@@ -229,6 +234,10 @@ class WebSocketManager {
 
         setSessionId(id: string): void {
                 this.sessionId = id;
+        }
+
+        setTodosCallback(cb: (todos: TodoItem[]) => void): void {
+                this.persistentTodosCallback = cb;
         }
 }
 
@@ -496,6 +505,10 @@ export class ChatService {
 
         static setSessionId(id: string): void {
                 wsManager.setSessionId(id);
+        }
+
+        static setTodosCallback(cb: (todos: TodoItem[]) => void): void {
+                wsManager.setTodosCallback(cb);
         }
 
         static disconnect(): void {

@@ -10,6 +10,7 @@ import (
         "os"
         "os/exec"
         "path/filepath"
+        "sort"
         "strings"
         "sync"
         "text/template"
@@ -1033,6 +1034,29 @@ func generateFingerprint(toolName string, args map[string]interface{}) string {
         if strings.HasPrefix(toolName, "browser_") {
                 if url, ok := args["url"].(string); ok {
                         return toolName + ":" + url
+                }
+        }
+
+        // 对于 TodoWrite，用所有 item 的 content+status 組合做指紋
+        // 避免因活躍詞（activeForm）微調被誤判為死循環
+        if toolName == "TodoWrite" {
+                if todos, ok := args["todos"].([]interface{}); ok {
+                        var parts []string
+                        for _, t := range todos {
+                                if m, ok := t.(map[string]interface{}); ok {
+                                        content := ""
+                                        status := ""
+                                        if c, ok := m["content"].(string); ok {
+                                                content = c
+                                        }
+                                        if s, ok := m["status"].(string); ok {
+                                                status = s
+                                        }
+                                        parts = append(parts, content+"|"+status)
+                                }
+                        }
+                        sort.Strings(parts)
+                        return toolName + ":" + strings.Join(parts, ",")
                 }
         }
 

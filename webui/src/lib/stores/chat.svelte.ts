@@ -1681,6 +1681,12 @@ class ChatStore {
 
 export const chatStore = new ChatStore();
 
+// 註冊持久嘅 todos 回調：即使未有 sendMessage（connect/reconnect），
+// 後端推送嘅 Todo 狀態都會更新到面板
+ChatService.setTodosCallback((todos) => {
+        chatStore.currentTodos = todos;
+});
+
 export const activeProcessingState = () => chatStore.activeProcessingState;
 export const currentResponse = () => chatStore.currentResponse;
 export const errorDialog = () => chatStore.errorDialogState;
