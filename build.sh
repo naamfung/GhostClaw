@@ -210,14 +210,21 @@ if [ ! -d "node_modules" ]; then
     printf "安装依赖...\n"
     case "$PKG_MANAGER" in
         pnpm)
+            # pnpm v10+ 新安全模型：build scripts 需手動 approve
+            # 先用 onlyBuiltDependencies 做白名單
             pnpm install || {
-                printf "\033[0;31mpnpm 安装失败，尝试使用 npm...\033[0m\n"
-                if command -v npm > /dev/null 2>&1; then
-                    npm install
-                else
-                    printf "\033[0;31mnpm 不可用，请检查安装\033[0m\n"
-                    exit 1
-                fi
+                printf "\033[0;33mpnpm 安裝失敗，嘗試 approve-builds 後重試...\033[0m\n"
+                # 批准需要 native build 嘅 packages
+                pnpm approve-builds esbuild @parcel/watcher 2>/dev/null || true
+                pnpm install || {
+                    printf "\033[0;31mpnpm 安装失败，尝试使用 npm...\033[0m\n"
+                    if command -v npm > /dev/null 2>&1; then
+                        npm install
+                    else
+                        printf "\033[0;31mnpm 不可用，请检查安装\033[0m\n"
+                        exit 1
+                    fi
+                }
             }
             ;;
         npm)
