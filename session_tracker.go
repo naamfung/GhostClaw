@@ -140,6 +140,13 @@ func (st *SessionTracker) ShouldCheckTaskOnIdle(lastActivity time.Time) bool {
         return time.Now().After(idleDeadline)
 }
 
+// GetConfig 返回會話追蹤器配置（只讀副本）
+func (st *SessionTracker) GetConfig() SessionConfig {
+        st.mu.RLock()
+        defer st.mu.RUnlock()
+        return st.cfg
+}
+
 // FormatStatsForPrompt 將會話統計格式化為注入到 system prompt 的信息
 // 模型可見，幫助模型了解當前會話的 token 消耗狀況
 func (st *SessionTracker) FormatStatsForPrompt() string {

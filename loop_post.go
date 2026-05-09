@@ -43,6 +43,10 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 
 		if TODO.HasUnfinishedItems() {
 			log.Printf("[FeedbackCollector] Skipping: active todo items exist, programmatic exit guard takes precedence")
+			// 排程背景 idle 喚醒：卅分鐘後如果用戶冇交互，自動檢查係咪要繼續
+			if session := GetGlobalSession(); session != nil {
+				session.ScheduleIdleResumeCheck()
+			}
 		} else if IsWakeNotification(triggerUserMsg) {
 			log.Printf("[FeedbackCollector] Skipping task completion check: input is a wake notification")
 		} else if !globalFeedbackCollector.CanAskCompletion() {

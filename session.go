@@ -64,6 +64,10 @@ type GlobalSession struct {
         // 記錄上次持久化嘅 system prompt hash，避免每輪重複寫入相同 prompt
         lastPromptHash string
 
+        // idle 喚醒定時器（工作模式下模型停咗之後，定時檢查係咪要喚醒繼續）
+        idleTimerCancel context.CancelFunc
+        idleTimerMu     sync.Mutex
+
         mu sync.RWMutex
 }
 
@@ -448,6 +452,14 @@ func (s *GlobalSession) takeInterruptMsg() string {
 
 // ProcessUserInput 处理用户输入并触发模型调用
 func ProcessUserInput(session *GlobalSession, input string) {
+        // 取消背景 idle 定時器（用戶已主動交互）
+        session.idleTimerMu.Lock()
+        if session.idleTimerCancel != nil {
+                session.idleTimerCancel()
+                session.idleTimerCancel = nil
+        }
+        session.idleTimerMu.Unlock()
+
         // === Idle 任務接續檢查 ===
         idleResult := session.CheckTaskOnIdle()
         // 用戶主動發新消息 → 恢復 idle check（清除 /stop /pause 或 COMPLETE 設置嘅暫停）
@@ -812,6 +824,73 @@ func (s *GlobalSession) CheckTaskOnIdle() *IdleCheckResult {
                 r := IdleInjectResume
                 return &r
         }
+}
+
+// ScheduleIdleResumeCheck 排程背景 idle 喚醒檢查
+// 只喺工作模式 + 有用戶活動過 + idle check 未暫停時先排程。
+// 每次 AgentLoop 完成後調用，會先取消上一次嘅排程再重新計時。
+func (s *GlobalSession) ScheduleIdleResumeCheck() {
+        tracker := s.GetTracker()
+        if tracker == nil {
+                return
+        }
+
+        cfg := tracker.GetConfig()
+        if !cfg.IdleTaskCheckEnabled || cfg.IdleTaskCheckMins <= 0 {
+                return
+        }
+
+        // 非工作模式唔排程
+        if globalTaskTracker == nil || !globalTaskTracker.IsWorkMode() {
+                return
+        }
+
+        // 冇未完成任務唔排程
+        if !TODO.HasUnfinishedItems() {
+                return
+        }
+
+        // 取消上一次排程
+        s.idleTimerMu.Lock()
+        if s.idleTimerCancel != nil {
+                s.idleTimerCancel()
+                s.idleTimerCancel = nil
+        }
+        s.idleTimerMu.Unlock()
+
+        mins := cfg.IdleTaskCheckMins
+        log.Printf("[Session] Scheduling idle resume check in %d minutes", mins)
+
+        ctx, cancel := context.WithCancel(context.Background())
+        s.idleTimerMu.Lock()
+        s.idleTimerCancel = cancel
+        s.idleTimerMu.Unlock()
+
+        go func() {
+                select {
+                case <-ctx.Done():
+                        return
+                case <-time.After(time.Duration(mins) * time.Minute):
+                }
+
+                // 定時到，check idle status
+                result := s.CheckTaskOnIdle()
+                if result == nil {
+                        return
+                }
+
+                switch *result {
+                case IdleInjectResume:
+                        log.Printf("[Session] Idle resume triggered: injecting wake notification")
+                        s.inputMu.Lock()
+                        s.InputMessages = append(s.InputMessages, "[SYSTEM_WAKE] 之前的任務因閒置超時被中斷，請檢查未完成的任務狀態並繼續執行。")
+                        s.inputMu.Unlock()
+                        go processInputQueue(s)
+                case IdlePauseCheck:
+                        s.GetTracker().PauseIdleCheck()
+                        log.Printf("[Session] Idle check paused: task marked complete")
+                }
+        }()
 }
 
 // classifyTaskIdleStatus 使用強制模型做三元分類（COMPLETE / BLOCKED / CONTINUE）
