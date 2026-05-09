@@ -179,8 +179,17 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
                 }
         }
 
+        // 如果新 items 完全冇 match 任何舊項（ID 同內容都唔同），
+        // 視為模型想完全取代列表，唔保留舊項
+        anyMatched := false
+        for _, matched := range oldMatchNew {
+                _ = matched
+                anyMatched = true
+                break
+        }
+
         // Step 3: 構建最終列表
-        // 先按新 items 順序排放匹配項，然後追加未匹配的舊項
+        // 有匹配 → 合併；完全冇匹配 → 全量取代
         finalItems := []TodoItem{}
         usedFinalIDs := make(map[string]bool)
         hasInProgress := false
@@ -223,15 +232,18 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
         }
 
         // 追加未被提及的舊項（如有 InProgress 衝突則降級）
+        // 但如果新舊完全冇匹配 → 模型想全量取代，唔保留舊項
         preservedCount := 0
-        for oi, old := range oldItems {
-                if !matchedOld[oi] && !usedFinalIDs[old.ID] {
-                        item := old
-                        if item.Status == "InProgress" && hasInProgress {
-                                item.Status = "Pending"
+        if anyMatched {
+                for oi, old := range oldItems {
+                        if !matchedOld[oi] && !usedFinalIDs[old.ID] {
+                                item := old
+                                if item.Status == "InProgress" && hasInProgress {
+                                        item.Status = "Pending"
+                                }
+                                finalItems = append(finalItems, item)
+                                preservedCount++
                         }
-                        finalItems = append(finalItems, item)
-                        preservedCount++
                 }
         }
 
@@ -242,8 +254,8 @@ func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error
         tm.lists[id] = &TodoList{ID: id, Items: finalItems}
         result := tm.renderListLocked(id)
 
-        // Step 4: Guard — 如果新 items 數量明顯少過舊列表，加提醒
-        if len(items) > 0 && len(oldItems) > 0 {
+        // Step 4: Guard — 只有合併模式下先加提醒
+        if anyMatched && len(items) > 0 && len(oldItems) > 0 {
                 unmentioned := len(oldItems) - len(matchedOld)
                 if unmentioned > 2 {
                         result += fmt.Sprintf("\n\n⚠️  %d 項舊任務未被本次更新提及，已自動保留。如果其中部分已完成或不再需要，請用 TodoDelete 清理。", unmentioned)

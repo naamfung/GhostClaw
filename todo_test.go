@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -90,27 +91,28 @@ func TestTodoUpdate_ListIsolation(t *testing.T) {
 }
 
 func TestTodoUpdate_MergePreservesOld(t *testing.T) {
-	// BDD: TodoWrite 改為 merge 模式 — 唔再全量覆蓋，未提及嘅舊項自動保留
+	// BDD: TodoWrite merge 模式 — 有一定匹配時保留未提及舊項
 	tm := NewTodoManager()
 
 	tm.Update([]TodoItem{
 		{ID: "1", Text: "Old item", Status: "Pending"},
+		{ID: "2", Text: "Keep me", Status: "Pending"},
 	})
 
+	// 淨係 mention ID 1 → match ID 1，ID 2 保留
 	tm.Update([]TodoItem{
-		{ID: "2", Text: "New item", Status: "InProgress"},
+		{ID: "1", Text: "Updated old item", Status: "InProgress"},
 	})
 
 	items := tm.GetItems()
-	// Merge: New item appended, Old item preserved
 	if len(items) != 2 {
 		t.Fatalf("expected 2 items after merge, got %d", len(items))
 	}
-	if items[0].Text != "New item" || items[0].ID != "2" {
-		t.Errorf("expected first item 'New item' (ID 2), got '%s' (ID %s)", items[0].Text, items[0].ID)
+	if items[0].ID != "1" || items[0].Status != "InProgress" {
+		t.Errorf("expected item 1 updated InProgress, got ID=%s status=%s", items[0].ID, items[0].Status)
 	}
-	if items[1].Text != "Old item" || items[1].ID != "1" {
-		t.Errorf("expected second item 'Old item' (ID 1, preserved), got '%s' (ID %s)", items[1].Text, items[1].ID)
+	if items[1].ID != "2" || items[1].Text != "Keep me" {
+		t.Errorf("expected item 2 preserved, got ID=%s text=%s", items[1].ID, items[1].Text)
 	}
 }
 
@@ -1339,21 +1341,25 @@ func TestBDD_FullCRUD_AllDoneClear(t *testing.T) {
 
 func TestBDD_Merge_Exceeds20Items(t *testing.T) {
 	// Scenario: Merge 結果超過 20 項上限時應報錯
-	// Given: 現有 19 項
-	// When: TodoWrite 傳入 3 新項（無匹配）
-	// Then: error "merge result exceeds max 20 todos"
+	// Given: 現有 19 項（全部 unique text 避免 match）
+	// When: TodoWrite 傳入 3 新項（1 match + 2 unique）
+	// Then: 19 preserved + 2 new = 21 → error "max 20"
 	tm := NewTodoManager()
 
 	oldItems := make([]TodoItem, 19)
 	for i := 0; i < 19; i++ {
-		oldItems[i] = TodoItem{ID: string(rune('a' + i%26)), Text: "old", Status: "Pending"}
+		oldItems[i] = TodoItem{
+			ID:     fmt.Sprintf("old-%d", i),
+			Text:   fmt.Sprintf("old task %d", i),
+			Status: "Pending",
+		}
 	}
 	tm.Update(oldItems)
 
 	_, err := tm.Update([]TodoItem{
-		{ID: "x1", Text: "new 1", Status: "Pending"},
-		{ID: "x2", Text: "new 2", Status: "Pending"},
-		{ID: "x3", Text: "new 3", Status: "Pending"},
+		{ID: "old-0", Text: "old task 0", Status: "Completed"},
+		{ID: "x1", Text: "unique new task alpha", Status: "Pending"},
+		{ID: "x2", Text: "unique new task bravo", Status: "Pending"},
 	})
 
 	if err == nil {
@@ -1364,11 +1370,41 @@ func TestBDD_Merge_Exceeds20Items(t *testing.T) {
 	}
 }
 
+func TestBDD_Merge_NoMatchReplaces(t *testing.T) {
+	// Scenario: 新舊完全冇 match → 全量取代而非合併
+	// Given: 現有 3 items [A, B, C]
+	// When: TodoWrite 傳入 3 完全唔同嘅 items [D, E, F]
+	// Then: 只有 D/E/F，A/B/C 被取代（唔保留）
+	tm := NewTodoManager()
+
+	tm.Update([]TodoItem{
+		{ID: "1", Text: "Task A", Status: "Pending"},
+		{ID: "2", Text: "Task B", Status: "InProgress"},
+		{ID: "3", Text: "Task C", Status: "Pending"},
+	})
+
+	tm.Update([]TodoItem{
+		{ID: "4", Text: "Completely different D", Status: "Completed"},
+		{ID: "5", Text: "Completely different E", Status: "Completed"},
+		{ID: "6", Text: "Completely different F", Status: "Completed"},
+	})
+
+	items := tm.GetItems()
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items after full replace, got %d", len(items))
+	}
+	for _, item := range items {
+		if item.ID != "4" && item.ID != "5" && item.ID != "6" {
+			t.Errorf("unexpected old item preserved: ID=%s text=%s", item.ID, item.Text)
+		}
+	}
+}
+
 func TestBDD_Merge_NoMatchKeepsAll(t *testing.T) {
-	// Scenario: 兩組完全不同的項目，全部保留
+	// Scenario: 有一定匹配時保留未提及舊項，完全冇匹配就全量取代
 	// Given: [A, B]
-	// When: TodoWrite [C, D] (no IDs or content match)
-	// Then: [C, D, A, B]
+	// When: TodoWrite [A'(match A by ID), D(new)] — A matched, D new
+	// Then: [A'(updated), D(new), B(preserved)] = 3 items
 	tm := NewTodoManager()
 
 	tm.Update([]TodoItem{
@@ -1377,13 +1413,23 @@ func TestBDD_Merge_NoMatchKeepsAll(t *testing.T) {
 	})
 
 	tm.Update([]TodoItem{
-		{ID: "3", Text: "Brand new task", Status: "InProgress"},
-		{ID: "4", Text: "Second new", Status: "Pending"},
+		{ID: "1", Text: "Updated original", Status: "InProgress"},
+		{ID: "3", Text: "Brand new task", Status: "Pending"},
 	})
 
 	items := tm.GetItems()
-	if len(items) != 4 {
-		t.Fatalf("expected 4 items, got %d", len(items))
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+	// ID 2 should be preserved
+	found2 := false
+	for _, item := range items {
+		if item.ID == "2" {
+			found2 = true
+		}
+	}
+	if !found2 {
+		t.Error("item 2 should be preserved (matched 1, so merge mode)")
 	}
 }
 
