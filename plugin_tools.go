@@ -30,7 +30,7 @@ func handlePluginList(ctx context.Context, argsMap map[string]interface{}, ch Ch
 func handlePluginCreate(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_create(name=\"my_plugin\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginCreate({\"name\": \"my_plugin\"})", false
         }
         description, _ := argsMap["description"].(string)
 
@@ -73,14 +73,14 @@ end
                 return fmt.Sprintf("Error creating plugin: %v\nPlease check the plugin name and try again.", err), false
         }
 
-        return fmt.Sprintf("Plugin '%s' created successfully and loaded. You can now call its functions via PluginCall.\nFile location: %s\nExample: PluginCall(plugin=\"%s\", function=\"hello\", args=[\"World\"])",
+        return fmt.Sprintf("Plugin '%s' created successfully and loaded. You can now call its functions via PluginCall.\nFile location: %s\nExample: PluginCall({\"plugin\": \"%s\", \"function\": \"hello\", \"args\": [\"World\"]})",
                 name, filepath.Join(globalPluginManager.pluginsDir, name, name+".lua"), name), false
 }
 
 func handlePluginLoad(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_load(name=\"my_plugin\", code=\"...\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginLoad({\"name\": \"my_plugin\", \"code\": \"...\"})", false
         }
         code, ok := argsMap["code"].(string)
         if !ok || code == "" {
@@ -96,7 +96,7 @@ func handlePluginLoad(ctx context.Context, argsMap map[string]interface{}, ch Ch
 func handlePluginUnload(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_unload(name=\"my_plugin\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginUnload({\"name\": \"my_plugin\"})", false
         }
         if err := globalPluginManager.UnloadPlugin(name); err != nil {
                 return fmt.Sprintf("Error unloading plugin: %v\nMake sure the plugin is loaded.", err), false
@@ -108,7 +108,7 @@ func handlePluginUnload(ctx context.Context, argsMap map[string]interface{}, ch 
 func handlePluginDelete(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_delete(name=\"my_plugin\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginDelete({\"name\": \"my_plugin\"})", false
         }
         if err := globalPluginManager.DeletePlugin(name); err != nil {
                 return fmt.Sprintf("Error deleting plugin: %v", err), false
@@ -119,7 +119,7 @@ func handlePluginDelete(ctx context.Context, argsMap map[string]interface{}, ch 
 func handlePluginReload(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_reload(name=\"my_plugin\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginReload({\"name\": \"my_plugin\"})", false
         }
         if err := globalPluginManager.ReloadPlugin(name); err != nil {
                 return fmt.Sprintf("Error reloading plugin: %v\nMake sure the plugin exists and the file is readable.", err), false
@@ -133,7 +133,7 @@ func handlePluginCall(ctx context.Context, argsMap map[string]interface{}, ch Ch
         }
         name, ok := argsMap["plugin"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'plugin' parameter. Example: PluginCall(plugin=\"my_plugin\", function=\"hello\", args=[\"World\"])", false
+                return "Error: missing or invalid 'plugin' parameter. Example: PluginCall({\"plugin\": \"my_plugin\", \"function\": \"hello\", \"args\": [\"World\"]})", false
         }
         funcName, ok := argsMap["function"].(string)
         if !ok || funcName == "" {
@@ -177,7 +177,7 @@ func handlePluginCompile(ctx context.Context, argsMap map[string]interface{}, ch
         }
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_compile(name=\"my_plugin\")", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginCompile({\"name\": \"my_plugin\"})", false
         }
         code, hasCode := argsMap["code"].(string)
 
@@ -279,7 +279,7 @@ return {
 func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: plugin_detail(name=\"temp_uploader\")", false
+                return "Error: missing or invalid 'name' parameter. Example: {\"name\": \"temp_uploader\"}", false
         }
         includeSource, _ := argsMap["IncludeSource"].(bool)
 

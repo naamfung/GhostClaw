@@ -483,7 +483,7 @@ func getBlockedToolsForPlanPhase(phase string) map[string]bool {
         blocked["SSHExec"] = true
         blocked["SSHClose"] = true
 
-        // Cron 寫入工具（保留 CronList / cron_status）
+        // Cron 寫入工具（保留 CronList / CronStatus）
         blocked["CronAdd"] = true
         blocked["CronRemove"] = true
 

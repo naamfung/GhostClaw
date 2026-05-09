@@ -24,7 +24,7 @@ const cronAddUsage = `
     {"type": "log"}  或  {"type": "email", "recipients": ["a@b.com"]}
 
 調用示例：
-  CronAdd(name="每日AI論文速遞", schedule="0 0 17 * * *", content="去arXiv查看最新AI論文並匯總")
+  CronAdd({"name": "每日AI論文速遞", "schedule": "0 0 17 * * *", "content": "去arXiv查看最新AI論文並匯總"})
 === 格式結束 ===`
 
 // handleCronAdd 添加定时任务
@@ -107,11 +107,11 @@ func handleCronRemove(ctx context.Context, argsMap map[string]interface{}, ch Ch
 	name, ok := argsMap["name"].(string)
 	if !ok || name == "" {
 		return `Error: missing or invalid 'name'
-=== cron_remove 正確使用格式 ===
+=== CronRemove 正確使用格式 ===
 參數：
   name (string, 必填): 要刪除的任務名稱
 提示：先用 CronList 查看所有任務名稱
-示例：cron_remove(name="每日AI論文速遞")
+示例：CronRemove({"name": "每日AI論文速遞"})
 === 格式結束 ===`, false
 	}
 
@@ -156,7 +156,7 @@ func handleCronList(ctx context.Context, argsMap map[string]interface{}, ch Chan
 
 === 添加任務 ===
 使用 CronAdd 創建新任務：
-  CronAdd(name="任務名", schedule="0 0 9 * * *", content="要執行的指令")
+  CronAdd({"name": "任務名", "schedule": "0 0 9 * * *", "content": "要執行的指令"})
 === 提示結束 ===`, false
 	}
 	data, err := toon.Marshal(jobs)
@@ -175,10 +175,10 @@ func handleCronStatus(ctx context.Context, argsMap map[string]interface{}, ch Ch
 	name, ok := argsMap["name"].(string)
 	if !ok || name == "" {
 		return `Error: missing or invalid 'name'
-=== cron_status 正確使用格式 ===
+=== CronStatus 正確使用格式 ===
 參數：
   name (string, 必填): 要查詢的任務名稱
-示例：cron_status(name="每日AI論文速遞")
+示例：CronStatus({"name": "每日AI論文速遞"})
 === 格式結束 ===`, false
 	}
 	status, err := globalCronManager.GetJobStatus(name)

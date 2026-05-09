@@ -135,7 +135,7 @@ func GetConciseModeInstructions() string {
 - 简单直接优于过早抽象。
 - 输出保持简短直接。如果可以用一个工具完成，就不要用三个。
 - 遇到工具调用失败时，尝试最简单的替代方案，不要反复重试相同操作。
-- 当你需要的操作在当前工具列表中找不到对应工具时，使用 Menu 工具浏览更多可用工具：menu() 或 menu(action="root") 查看全部分类 → menu(action="show", target="<分类名>") 展开分类 → menu(action="load", target="<分类名>") 加载到会话。`
+- 当你需要的操作在当前工具列表中找不到对应工具时，使用 Menu 工具浏览更多可用工具：Menu() 或 Menu({"action": "root"}) 查看全部分类 → Menu({"action": "show", "target": "<分类名>"}) 展开分类 → Menu({"action": "load", "target": "<分类名>"}) 加载到会话。`
 }
 
 // GetToolUsageGuidance 返回任務管理與工具使用最佳實踐指引（仿 Claude Code）。

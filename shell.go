@@ -94,8 +94,8 @@ func detectBlockingCommand(command string) BlockingCommandInfo {
                         "1. 使用 SSHConnect 建立持久连接\n" +
                         "2. 使用 SSHExec 执行命令\n" +
                         "示例：\n" +
-                        "  SSHConnect(username=\"user\", host=\"host\", password=\"pass\") -> 得到 session_id\n" +
-                        "  SSHExec(session_id=\"...\", command=\"ls -la\")"
+                        "  SSHConnect({\"host\": \"host\", \"username\": \"user\", \"password\": \"pass\"}) -> 得到 session_id\n" +
+                        "  SSHExec({\"SessionId\": \"...\", \"command\": \"ls -la\"})"
 
                 if !strings.HasPrefix(strings.TrimSpace(command), "sshpass") {
                         hasPasswordAuth := strings.Contains(lowerCmd, "passwordauthentication=yes") ||

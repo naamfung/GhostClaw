@@ -85,10 +85,10 @@ func GetBootstrapPrompt() string {
 1. 自然地与雇主打招呼，说明你需要了解一些基本信息。
 2. 通过对话收集上述信息。不要一次列出所有问题，而系似自然对话一样逐个了解。
 3. 每获取到一个信息后，立即使用 ` + "`" + `MemorySave` + "`" + ` 工具保存到记忆中：
-   - ` + "`" + `MemorySave(key="user.name", value="张三", category="fact")` + "`" + `
-   - ` + "`" + `MemorySave(key="user.birth_year", value="1990", category="fact")` + "`" + `
-   - ` + "`" + `MemorySave(key="user.gender", value="男", category="fact")` + "`" + `
-   - ` + "`" + `MemorySave(key="assistant.name", value="小助", category="preference")` + "`" + `
+   - ` + "`" + `MemorySave({"key": "user.name", "value": "张三", "category": "fact"})` + "`" + `
+   - ` + "`" + `MemorySave({"key": "user.birth_year", "value": "1990", "category": "fact"})` + "`" + `
+   - ` + "`" + `MemorySave({"key": "user.gender", "value": "男", "category": "fact"})` + "`" + `
+   - ` + "`" + `MemorySave({"key": "assistant.name", "value": "小助", "category": "preference"})` + "`" + `
 4. 所有信息收集完毕后，确认已保存，并告知雇主初始化完成。
 
 **重要规则：**

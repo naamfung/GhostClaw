@@ -214,10 +214,10 @@ func GetMenuToolDefinition() map[string]interface{} {
 4. 使用 action="unload" target="<分类名或工具名>" 从会话中移除
 
 典型工作流：
-- menu() → 查看有哪些分类
-- menu(action="show", target="web") → 查看 web 分类下有哪些工具
-- menu(action="load", target="web") → 加载整个 web 分类
-- menu(action="load", target="BrowserSearch") → 仅加载单个工具`,
+- Menu() → 查看有哪些分类
+- Menu({"action": "show", "target": "web"}) → 查看 web 分类下有哪些工具
+- Menu({"action": "load", "target": "web"}) → 加载整个 web 分类
+- Menu({"action": "load", "target": "BrowserSearch"}) → 仅加载单个工具`,
                         "parameters": map[string]interface{}{
                                 "type": "object",
                                 "properties": map[string]interface{}{
@@ -251,10 +251,10 @@ func GetMenuToolDefinitionAnthropic() map[string]interface{} {
 4. 使用 action="unload" target="<分类名或工具名>" 从会话中移除
 
 典型工作流：
-- menu() → 查看有哪些分类
-- menu(action="show", target="web") → 查看 web 分类下有哪些工具
-- menu(action="load", target="web") → 加载整个 web 分类
-- menu(action="load", target="BrowserSearch") → 仅加载单个工具`,
+- Menu() → 查看有哪些分类
+- Menu({"action": "show", "target": "web"}) → 查看 web 分类下有哪些工具
+- Menu({"action": "load", "target": "web"}) → 加载整个 web 分类
+- Menu({"action": "load", "target": "BrowserSearch"}) → 仅加载单个工具`,
                 "input_schema": map[string]interface{}{
                         "type": "object",
                         "properties": map[string]interface{}{
@@ -304,7 +304,7 @@ func executeMenuTool(argsMap map[string]interface{}) string {
 func menuRoot() string {
         var sb strings.Builder
         sb.WriteString("=== 工具分类（根目录） ===\n\n")
-        sb.WriteString("以下是可用的工具大类，使用 menu(action=\"show\", target=\"<分类名>\") 展开查看具体工具。\n")
+        sb.WriteString("以下是可用的工具大类，使用 Menu({\"action\": \"show\", \"target\": \"<分类名>\"}) 展开查看具体工具。\n")
 
         loadedToolsMu.RLock()
         defer loadedToolsMu.RUnlock()
@@ -343,10 +343,10 @@ func menuRoot() string {
         }
 
         sb.WriteString("\n指令说明:\n")
-        sb.WriteString("  menu(action=\"show\", target=\"<分类名>\")  展开分类，查看其中包含的工具\n")
-        sb.WriteString("  menu(action=\"load\", target=\"<分类名>\")  加载整个分类到会话\n")
-        sb.WriteString("  menu(action=\"load\", target=\"<工具名>\")  加载单个工具\n")
-        sb.WriteString("  menu(action=\"unload\", target=\"<分类名>\") 卸载分类\n")
+        sb.WriteString("  Menu({\"action\": \"show\",   \"target\": \"<分类名>\"})  展开分类，查看其中包含的工具\n")
+        sb.WriteString("  Menu({\"action\": \"load\",   \"target\": \"<分类名>\"})  加载整个分类到会话\n")
+        sb.WriteString("  Menu({\"action\": \"load\",   \"target\": \"<工具名>\"})  加载单个工具\n")
+        sb.WriteString("  Menu({\"action\": \"unload\", \"target\": \"<分类名>\"}) 卸载分类\n")
         sb.WriteString("\n[L]=已加载  空白=未加载. 加载的工具在后续对话中常驻可用。\n")
 
         return sb.String()
@@ -355,7 +355,7 @@ func menuRoot() string {
 // menuShow 展示指定分类的所有工具及简短描述（展开子菜单）
 func menuShow(target string) string {
         if target == "" {
-                return "Error: 'target' parameter is required for 'show' action. Example: menu(action=\"show\", target=\"web\")."
+                return "Error: 'target' parameter is required for 'show' action. Example: Menu({\"action\": \"show\", \"target\": \"web\"})."
         }
 
         cat := findCategory(target)
@@ -400,8 +400,8 @@ func menuShow(target string) string {
         }
 
         sb.WriteString(fmt.Sprintf("\n已加载: %d/%d 个工具\n", loadedCount, len(cat.Tools)))
-        sb.WriteString(fmt.Sprintf("如需加载此分类的全部工具: menu(action=\"load\", target=\"%s\")\n", cat.Name))
-        sb.WriteString(fmt.Sprintf("或加载单个工具: menu(action=\"load\", target=\"<工具名>\")\n"))
+        sb.WriteString(fmt.Sprintf("如需加载此分类的全部工具: Menu({\"action\": \"load\", \"target\": \"%s\"})\n", cat.Name))
+        sb.WriteString(fmt.Sprintf("或加载单个工具: Menu({\"action\": \"load\", \"target\": \"<工具名>\"})\n"))
 
         return sb.String()
 }
@@ -409,7 +409,7 @@ func menuShow(target string) string {
 // menuLoad 加载指定分类或单个工具
 func menuLoad(target string) string {
         if target == "" {
-                return "Error: 'target' parameter is required for 'load' action. Example: menu(action=\"load\", target=\"web\")."
+                return "Error: 'target' parameter is required for 'load' action. Example: Menu({\"action\": \"load\", \"target\": \"web\"})."
         }
 
         // 优先匹配分类名
@@ -429,13 +429,13 @@ func menuLoad(target string) string {
                 return fmt.Sprintf("已加载工具「%s」。该工具将在后续对话中可用。", target)
         }
 
-        return fmt.Sprintf("Error: 未找到分类或工具「%s」。使用 menu(action=\"root\") 查看可用分类，或 menu(action=\"show\", target=\"<分类>\") 查看分类下的工具。", target)
+        return fmt.Sprintf("Error: 未找到分类或工具「%s」。使用 Menu({\"action\": \"root\"}) 查看可用分类，或 Menu({\"action\": \"show\", \"target\": \"<分类>\"}) 查看分类下的工具。", target)
 }
 
 // menuUnload 卸载指定分类或单个工具
 func menuUnload(target string) string {
         if target == "" {
-                return "Error: 'target' parameter is required for 'unload' action. Example: menu(action=\"unload\", target=\"web\")."
+                return "Error: 'target' parameter is required for 'unload' action. Example: Menu({\"action\": \"unload\", \"target\": \"web\"})."
         }
 
         // 优先匹配分类名
@@ -454,5 +454,5 @@ func menuUnload(target string) string {
                 return fmt.Sprintf("已卸载工具「%s」。", target)
         }
 
-        return fmt.Sprintf("Error: 工具「%s」当前未加载。使用 menu(action=\"root\") 查看状态。", target)
+        return fmt.Sprintf("Error: 工具「%s」当前未加载。使用 Menu({\"action\": \"root\"}) 查看状态。", target)
 }
