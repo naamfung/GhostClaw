@@ -281,14 +281,15 @@ func RunBranchNone(messages []Message, respContent interface{},
 	}
 
 	// 模型自己決定係咪終止：只有明確嘅 stop signal 先 exit
+	// "length" = token limit 截斷，應繼續而唔係停
 	// intent 分類（CHAT/TASK）只影響 system prompt 同 exit guard，
 	// **絕不控制循環輪次**
-	if stopReason == "stop" || stopReason == "length" || stopReason == "end_turn" {
+	if stopReason == "stop" || stopReason == "end_turn" {
 		*loopExitedNaturally = true
 		return BranchNoneResult{ShouldBreak: true, Messages: messages}
 	}
 
-	// 其他 stop reason → 繼續 loop，畀模型call tool 或繼續輸出
+	// 其他 stop reason → 繼續 loop，畀模型 call tool 或繼續輸出
 	return BranchNoneResult{ShouldContinue: true, Messages: messages}
 }
 
