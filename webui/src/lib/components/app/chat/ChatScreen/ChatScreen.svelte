@@ -402,8 +402,8 @@
                                 </div>
                         {/if}
 
+                        <TodoPanel />
                         <div class="conversation-chat-form pointer-events-auto rounded-t-3xl">
-                                <TodoPanel />
                                 <ChatScreenForm
                                         disabled={hasPropsError || isEditing()}
                                         {initialMessage}

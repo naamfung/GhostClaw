@@ -76,13 +76,14 @@
 
 <style>
         .todo-panel {
-                margin: 0 0.75rem 0.25rem 0.75rem;
+                margin: 0 auto 0.25rem auto;
+                max-width: 48rem;
+                width: 100%;
                 border: 1px solid hsl(var(--border));
                 border-radius: 0.5rem;
                 background: hsl(var(--muted) / 0.3);
                 overflow: hidden;
                 transition: border-color 0.2s;
-                max-width: 100%;
         }
         .todo-panel.has-active {
                 border-color: hsl(var(--accent) / 0.5);
