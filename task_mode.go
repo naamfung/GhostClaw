@@ -731,7 +731,7 @@ func explorePhasePrompt() string {
 1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
 2. 使用 ReadFileLine / ReadFileRange / ReadFileLines 閱讀相關文件
 3. 對於複雜任務，使用 Spawn 創建最多 3 個並行子代理探索不同方面
-4. 使用 Todos(list_id="explore") 管理探索子任務
+4. 使用 TodoWrite / TodoCreate 管理探索子任務
 
 探索要點：
 - 項目整體結構是什麼？
@@ -778,7 +778,7 @@ func executePhasePrompt() string {
 調用 Tasks(PlanPhase="execute") 完成退出。退出後：
 - 所有工具訪問權限恢復
 - Tasks 列表將注入會話歷史作為執行指引
-- 每個 Task 用 Todos(list_id="task_<id>") 管理子任務`
+- 每個 Task 用 TodoWrite / TodoCreate 管理子任務`
 }
 
 // ============================================================================
