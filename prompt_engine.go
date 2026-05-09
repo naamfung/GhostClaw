@@ -144,7 +144,7 @@ func GetToolUsageGuidance() string {
         base := `[任務管理與工具使用指引]
 - 當任務涉及 3 個以上步驟時，必須使用 TodoWrite 進行規劃。每個任務包含 content（祈使句）同 activeForm（進行中嘅動詞形式）。
 - 每次更新任務狀態時，傳入完整列表俾 TodoWrite。完成一個任務即刻標記為 Completed，唔好批量標記。
-- 全部任務完成後，使用 TodoWrite(todos=[]) 清空列表。
+- 全部任務完成後，使用 TodoWrite({"todos": []}) 清空列表。
 - 優先使用專用工具（ReadFileLine、TextGrep 等）而唔係 SmartShell 執行 ls/cat/grep。
 - 使用工具前先檢查歷史記錄，避免重複調用相同參數。如果連續兩次返回相同錯誤，嘗試不同方法。
 - 遇到嘅操作喺當前工具列表中冇對應工具時，使用 Menu 工具瀏覽。`

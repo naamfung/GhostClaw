@@ -279,7 +279,7 @@ return {
 func handlePluginDetail(ctx context.Context, argsMap map[string]interface{}, ch Channel) (string, bool) {
         name, ok := argsMap["name"].(string)
         if !ok || name == "" {
-                return "Error: missing or invalid 'name' parameter. Example: {\"name\": \"temp_uploader\"}", false
+                return "Error: missing or invalid 'name' parameter. Example: PluginDetail({\"name\": \"temp_uploader\"})", false
         }
         includeSource, _ := argsMap["IncludeSource"].(bool)
 
