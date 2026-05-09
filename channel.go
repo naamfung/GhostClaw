@@ -155,6 +155,7 @@ func (bc *BaseChannel) ProcessChunkWithReplacement(chunk StreamChunk) StreamChun
         ToolCalls:    chunk.ToolCalls,
         SessionID:    chunk.SessionID,
         TaskRunning:  chunk.TaskRunning,
+        Todos:        chunk.Todos,
     }
 
     // 处理 Content
