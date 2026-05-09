@@ -279,6 +279,14 @@ func RunBranchNone(messages []Message, respContent interface{},
 		return BranchNoneResult{ShouldContinue: true, Messages: messages}
 	}
 
+	// 非工作模式（CHAT）下：第一輪文字後唔應即刻 exit
+	// 等模型有機會判斷係咪要 call tool，避免 "ok let me start working" 後直接終止
+	if globalTaskTracker == nil || !globalTaskTracker.IsWorkMode() {
+		if iteration <= 1 {
+			return BranchNoneResult{ShouldContinue: true, Messages: messages}
+		}
+	}
+
 	*loopExitedNaturally = true
 	return BranchNoneResult{ShouldBreak: true, Messages: messages}
 }
