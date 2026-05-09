@@ -20,7 +20,7 @@ func RunPlanModeChecks(messages *[]Message, iteration int) {
 		log.Printf("[AgentLoop] Tasks Mode suggestion: iteration=%d, tasks mode inactive", iteration)
 		*messages = append([]Message{{
 			Role:    "system",
-			Content: "[系统提示] 当前任务已进行多轮工具调用。如果任务复杂、涉及多文件修改或需要仔细规划，建议使用 Tasks 工具进入结构化任务分解模式（Tasks(PlanPhase=\"explore\") 先探索 → Tasks(PlanPhase=\"design\") 再設計 → Tasks(PlanPhase=\"execute\") 退出執行）。",
+			Content: "[系统提示] 当前任务已进行多轮工具调用。如果任务复杂、涉及多文件修改或需要仔细规划，建议使用 Tasks 工具进入结构化任务分解模式（Tasks({\"PlanPhase\": \"explore\"}) 先探索 → Tasks({\"PlanPhase\": \"design\"}) 再設計 → Tasks({\"PlanPhase\": \"execute\"}) 退出執行）。",
 		}}, *messages...)
 	}
 

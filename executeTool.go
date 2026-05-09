@@ -47,7 +47,7 @@ func execNextPhase(ec *ToolExecContext) (string, TaskStatus) {
                 _ = phaseName
                 return msg, TaskStatusSuccess
         }
-        return "錯誤：Tasks Mode 未激活。使用 Tasks(PlanPhase=\"explore\") 進入。", TaskStatusFailed
+        return "錯誤：Tasks Mode 未激活。使用 Tasks({\"PlanPhase\": \"explore\"}) 進入。", TaskStatusFailed
 }
 
 func execPrevPhase(ec *ToolExecContext) (string, TaskStatus) {

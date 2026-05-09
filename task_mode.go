@@ -224,7 +224,7 @@ func enterTasksExplore() (string, bool) {
 	}(globalTasksMode.stopTimeout)
 
 	log.Printf("[TasksMode] Enter Explore phase, task: %.80s", taskDesc)
-	return "已進入 Tasks 模式 — 探索階段。\n\n使用只讀工具（TextSearch、ReadFileLines 等）探索代碼結構。完成後調用 Tasks(PlanPhase=\"design\", ...) 進入設計階段。", true
+	return "已進入 Tasks 模式 — 探索階段。\n\n使用只讀工具（TextSearch、ReadFileLines 等）探索代碼結構。完成後調用 Tasks({\"PlanPhase\": \"design\", ...}) 進入設計階段。", true
 }
 
 // autoInitTasksModeLocked 從 inactive 自動初始化 TasksMode（需已持鎖）。
@@ -321,11 +321,11 @@ func enterTasksDesign(planContent string, tasks []TaskItem) (string, bool) {
 		for _, t := range tasks {
 			sb.WriteString(fmt.Sprintf("  - [%s] %s\n", t.Status, t.Title))
 		}
-		sb.WriteString("\n完成設計後調用 Tasks(PlanPhase=\"execute\") 退出計劃階段開始執行。\n")
-		sb.WriteString("每個 Task 可用 Todos(list_id=\"task_<id>\") 管理子任務。")
+		sb.WriteString("\n完成設計後調用 Tasks({\"PlanPhase\": \"execute\"}) 退出計劃階段開始執行。\n")
+		sb.WriteString("每個 Task 可用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務。")
 	} else {
 		sb.WriteString("請定義具體 tasks 列表（每個 task 包含 id、title、status）。\n")
-		sb.WriteString("如需要更多探索，可用 Tasks(PlanPhase=\"explore\") 回溯。")
+		sb.WriteString("如需要更多探索，可用 Tasks({\"PlanPhase\": \"explore\"}) 回溯。")
 	}
 
 	return sb.String(), true
@@ -396,7 +396,7 @@ func enterTasksExecute() (string, bool) {
 	if content != "" {
 		sb.WriteString(fmt.Sprintf("## 計劃內容\n\n%s\n\n", content))
 	}
-	sb.WriteString("所有工具已恢復可用。按任務列表逐一執行，每個 task 用 Todos(list_id=\"task_<id>\") 管理子任務。")
+	sb.WriteString("所有工具已恢復可用。按任務列表逐一執行，每個 task 用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務。")
 
 	// 注入會話歷史
 	session := GetGlobalSession()
@@ -612,7 +612,7 @@ func GetTasksModeSystemPrompt() string {
 		sb.WriteString(executePhasePrompt())
 	}
 
-	sb.WriteString(fmt.Sprintf("\n完成當前階段後，調用 Tasks(PlanPhase=\"%s\") 推進。", nextPhaseName(phase)))
+	sb.WriteString(fmt.Sprintf("\n完成當前階段後，調用 Tasks({\"PlanPhase\": \"%s\"}) 推進。", nextPhaseName(phase)))
 
 	return sb.String()
 }
@@ -660,7 +660,7 @@ func tasksToolDef() map[string]interface{} {
 		"type": "function",
 		"function": map[string]interface{}{
 			"name":        "Tasks",
-			"description": "結構化任務分解工具。用 plan_phase 控制計劃階段（explore→design→execute），用 tasks 定義任務列表。每個 task 可用 Todos(list_id=\"task_<id>\") 管理子任務。",
+			"description": "結構化任務分解工具。用 PlanPhase 控制計劃階段（explore→design→execute），用 Tasks 定義任務列表。每個 task 可用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務。",
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -731,7 +731,7 @@ func explorePhasePrompt() string {
 1. 使用 TextSearch / TextGrep 搜索關鍵詞，定位相關文件
 2. 使用 ReadFileLine / ReadFileRange / ReadFileLines 閱讀相關文件
 3. 對於複雜任務，使用 Spawn 創建最多 3 個並行子代理探索不同方面
-4. 使用 TodoWrite / TodoCreate 管理探索子任務
+4. 使用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理探索子任務
 
 探索要點：
 - 項目整體結構是什麼？
@@ -739,7 +739,7 @@ func explorePhasePrompt() string {
 - 有哪些依賴和約束？
 - 是否有類似的現有實現可以參考？
 
-完成探索後，調用 Tasks(PlanPhase="design", ...) 進入設計階段。`
+完成探索後，調用 Tasks({"PlanPhase": "design", ...}) 進入設計階段。`
 }
 
 func designPhasePrompt() string {
@@ -749,7 +749,7 @@ func designPhasePrompt() string {
 
 操作指引：
 1. 綜合探索發現，設計實現方案
-2. 使用 Tasks(PlanPhase="design", PlanContent="...", Tasks=[...]) 寫入計劃 + 定義任務列表
+2. 使用 Tasks({"PlanPhase": "design", "PlanContent": "...", "Tasks": [...]}) 寫入計劃 + 定義任務列表
 3. 重新審查關鍵文件，驗證方案可行性
 4. 確認無誤後，更新 Tasks 為最終版本
 
@@ -768,17 +768,17 @@ Tasks 格式：
 
 如有遺漏信息，可使用 PrevPhase 回溯到探索階段。
 
-完成設計後，調用 Tasks(PlanPhase="execute") 退出並開始執行。`
+完成設計後，調用 Tasks({"PlanPhase": "execute"}) 退出並開始執行。`
 }
 
 func executePhasePrompt() string {
 	return `## 執行階段
 
 系統正在處理退出...
-調用 Tasks(PlanPhase="execute") 完成退出。退出後：
+調用 Tasks({"PlanPhase": "execute"}) 完成退出。退出後：
 - 所有工具訪問權限恢復
 - Tasks 列表將注入會話歷史作為執行指引
-- 每個 Task 用 TodoWrite / TodoCreate 管理子任務`
+- 每個 Task 用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務`
 }
 
 // ============================================================================
@@ -887,7 +887,7 @@ func advanceTasksPhase() (string, string, error) {
 func nextPhaseDesc(phase string) string {
 	switch phase {
 	case TasksPhaseDesign:
-		return "使用 Tasks(PlanPhase=\"design\", PlanContent=\"...\", Tasks=[...]) 定義計劃和任務列表。"
+		return "使用 Tasks({\"PlanPhase\": \"design\", \"PlanContent\": \"...\", \"Tasks\": [...]}) 定義計劃和任務列表。"
 	case TasksPhaseExecute:
 		return ""
 	}
