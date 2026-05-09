@@ -1,6 +1,9 @@
 <script lang="ts">
         import { chatStore } from '$lib/stores/chat.svelte';
         import type { TodoItem } from '$lib/services';
+        import { ChevronDown, ChevronRight, ListTodo } from '@lucide/svelte';
+
+        let collapsed = $state(false);
 
         const statusIcon = (status: string): string => {
                 switch (status) {
@@ -35,62 +38,97 @@
         const hasInProgress = $derived(
                 chatStore.currentTodos.some(t => t.status === 'InProgress')
         );
+
+        function toggleCollapse() {
+                collapsed = !collapsed;
+        }
 </script>
 
 {#if visibleTodos}
         <div class="todo-panel" class:has-active={hasInProgress}>
-                <div class="todo-header">
-                        <span class="todo-title">Tasks</span>
-                        <span class="todo-count">{doneCount}/{visibleTodos.length}</span>
-                </div>
-                <div class="todo-list">
-                        {#each visibleTodos as todo (todo.id)}
-                                <div class="todo-item {statusClass(todo.status)}">
-                                        <span class="todo-icon">{statusIcon(todo.status)}</span>
-                                        <span class="todo-text">{todo.text}</span>
-                                </div>
-                        {/each}
-                </div>
+                <!-- Header -->
+                <button class="todo-header" onclick={toggleCollapse} type="button">
+                        <div class="todo-header-left">
+                                {#if collapsed}
+                                        <ChevronRight class="h-3.5 w-3.5" />
+                                {:else}
+                                        <ChevronDown class="h-3.5 w-3.5" />
+                                {/if}
+                                <ListTodo class="h-3.5 w-3.5" />
+                                <span class="todo-title">Tasks</span>
+                                <span class="todo-badge">{doneCount}/{visibleTodos.length}</span>
+                        </div>
+                </button>
+
+                <!-- Body (collapsible) -->
+                {#if !collapsed}
+                        <div class="todo-list">
+                                {#each visibleTodos as todo (todo.id)}
+                                        <div class="todo-item {statusClass(todo.status)}">
+                                                <span class="todo-icon">{statusIcon(todo.status)}</span>
+                                                <span class="todo-text">{todo.text}</span>
+                                        </div>
+                                {/each}
+                        </div>
+                {/if}
         </div>
 {/if}
 
 <style>
         .todo-panel {
-                margin: 0 1rem 0.5rem 1rem;
-                border: 1px solid var(--color-border, #333);
-                border-radius: 8px;
-                background: var(--color-bg-secondary, #1a1a2e);
+                margin: 0 0.75rem 0.25rem 0.75rem;
+                border: 1px solid hsl(var(--border));
+                border-radius: 0.5rem;
+                background: hsl(var(--muted) / 0.3);
                 overflow: hidden;
-                transition: border-color 0.3s;
+                transition: border-color 0.2s;
+                max-width: 100%;
         }
         .todo-panel.has-active {
-                border-color: var(--color-accent, #4fc3f7);
+                border-color: hsl(var(--accent) / 0.5);
         }
 
         .todo-header {
                 display: flex;
-                justify-content: space-between;
                 align-items: center;
-                padding: 6px 12px;
-                background: var(--color-bg-tertiary, #16213e);
-                border-bottom: 1px solid var(--color-border, #333);
-                font-size: 12px;
+                width: 100%;
+                padding: 6px 10px;
+                background: hsl(var(--muted) / 0.5);
+                border: none;
+                cursor: pointer;
+                color: inherit;
+                font: inherit;
         }
+        .todo-header:hover {
+                background: hsl(var(--muted) / 0.7);
+        }
+        .todo-header-left {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+        }
+
         .todo-title {
+                font-size: 12px;
                 font-weight: 600;
-                color: var(--color-text-secondary, #aaa);
+                color: hsl(var(--muted-foreground));
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
+                letter-spacing: 0.3px;
         }
-        .todo-count {
+        .todo-badge {
+                font-size: 11px;
                 font-family: monospace;
-                color: var(--color-text-muted, #666);
+                color: hsl(var(--muted-foreground));
+                background: hsl(var(--muted) / 0.8);
+                padding: 1px 6px;
+                border-radius: 3px;
         }
 
         .todo-list {
                 max-height: 180px;
                 overflow-y: auto;
                 padding: 4px 0;
+                border-top: 1px solid hsl(var(--border));
         }
 
         .todo-item {
@@ -100,40 +138,40 @@
                 padding: 4px 12px;
                 font-size: 13px;
                 line-height: 1.4;
-                transition: background 0.15s;
+                transition: background 0.1s;
         }
         .todo-item:hover {
-                background: var(--color-bg-hover, rgba(255,255,255,0.03));
+                background: hsl(var(--muted) / 0.4);
         }
 
         .todo-icon {
                 flex-shrink: 0;
                 width: 16px;
                 text-align: center;
-                font-size: 12px;
+                font-size: 11px;
         }
 
         .todo-text {
                 flex: 1;
-                color: var(--color-text, #ddd);
+                color: hsl(var(--foreground));
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
         }
 
         /* Status styles */
-        .todo-pending .todo-icon { color: var(--color-text-muted, #666); }
-        .todo-pending .todo-text { color: var(--color-text-secondary, #aaa); }
+        .todo-pending .todo-icon { color: hsl(var(--muted-foreground)); }
+        .todo-pending .todo-text { color: hsl(var(--foreground) / 0.8); }
 
-        .todo-active .todo-icon { color: var(--color-accent, #4fc3f7); }
-        .todo-active .todo-text { color: var(--color-text, #eee); font-weight: 500; }
+        .todo-active .todo-icon { color: hsl(var(--accent)); }
+        .todo-active .todo-text { color: hsl(var(--foreground)); font-weight: 500; }
 
-        .todo-done .todo-icon { color: #4caf50; }
-        .todo-done .todo-text { color: var(--color-text-muted, #666); text-decoration: line-through; }
+        .todo-done .todo-icon { color: hsl(142, 71%, 45%); }
+        .todo-done .todo-text { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 
-        .todo-waiting .todo-icon { color: #ff9800; }
-        .todo-waiting .todo-text { color: var(--color-text-secondary, #aaa); font-style: italic; }
+        .todo-waiting .todo-icon { color: hsl(32, 95%, 44%); }
+        .todo-waiting .todo-text { color: hsl(var(--foreground) / 0.7); font-style: italic; }
 
-        .todo-cancelled .todo-icon { color: #f44336; }
-        .todo-cancelled .todo-text { color: var(--color-text-muted, #666); text-decoration: line-through; }
+        .todo-cancelled .todo-icon { color: hsl(var(--destructive)); }
+        .todo-cancelled .todo-text { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 </style>

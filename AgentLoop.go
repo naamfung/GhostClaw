@@ -206,6 +206,7 @@ func isExecutionTool(name string) bool {
 		"cronlist", "cronstatus",
 		"skilllist", "skillstats", "skillget", "skillsuggest", "skillevaluate",
 		"spawnlist", "sshlist", "shelldelayedlist", "shelldelayedcheck",
+		"sshconnect", "sshclose",
 		"profilecheck",
 		"opencli",
 	}
