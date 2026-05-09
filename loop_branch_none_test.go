@@ -237,7 +237,7 @@ func TestRunBranchNone_EmptyRespContent(t *testing.T) {
 
 	result := RunBranchNone(messages, "", "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if !result.ShouldBreak {
 		t.Error("Empty response should trigger natural exit (ShouldBreak)")
@@ -260,7 +260,7 @@ func TestRunBranchNone_XMLParseAndContinue(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if !result.ShouldContinue {
 		t.Error("XML detection should parse+execute and continue (ShouldContinue)")
@@ -287,7 +287,7 @@ func TestRunBranchNone_XMLLimitExceeded(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if result.ShouldContinue {
 		t.Error("XML parse should not trigger when limit exceeded")
@@ -398,7 +398,7 @@ func TestRunBranchNone_NormalExit(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if !result.ShouldBreak {
 		t.Error("Normal text response should trigger natural exit (ShouldBreak)")
@@ -458,7 +458,7 @@ func TestRunBranchNone_StaleReminderInjected(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if !result.ShouldContinue {
 		t.Error("stale reminder should trigger ShouldContinue (not break)")
@@ -492,7 +492,7 @@ func TestRunBranchNone_StaleReminderNotWhenRecent(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	// reminder 唔應該觸發（turns too recent）
 	if result.ShouldContinue {
@@ -527,7 +527,7 @@ func TestRunBranchNone_WorkModeExitGuardResume(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if resume != 1 {
 		t.Errorf("expected resume count=1 (progress detected, reset + increment), got %d", resume)
@@ -557,7 +557,7 @@ func TestRunBranchNone_ExitGuardMaxRounds(t *testing.T) {
 
 	result := RunBranchNone(messages, messages[2].Content, "", "",
 		&xmlCount, &resume, &subResume, &todoReminder, &exited,
-		dc, 1, 4096)
+		dc, 1, 4096, "stop")
 
 	if !result.ShouldBreak {
 		t.Error("max rounds reached with no progress, should break")

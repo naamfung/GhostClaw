@@ -474,11 +474,12 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 		// ---- 分支：無工具調用 vs 有工具調用 ----
 		if !isToolUseStopReason(callResult.StopReason) {
 			// Branch A: 無工具調用
+			stopReason := callResult.StopReason
 			branchResult := RunBranchNone(messages, callResult.RespContent,
 				callResult.ReasoningContent, callResult.ThinkingSignature,
 				&xmlRePromptCount, &resumeCount, &subagentResumeCount,
 				&todoReminderCount, &loopExitedNaturally,
-				ch, iteration, config.EffectiveMaxTokens)
+				ch, iteration, config.EffectiveMaxTokens, stopReason)
 
 			messages = branchResult.Messages
 			if branchResult.ShouldContinue {

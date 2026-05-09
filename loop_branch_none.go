@@ -81,7 +81,8 @@ func RunBranchNone(messages []Message, respContent interface{},
 	reasoningContent, thinkingSignature string,
 	xmlRePromptCount *int, resumeCount *int, subagentResumeCount *int,
 	todoReminderCount *int, loopExitedNaturally *bool,
-	ch Channel, iteration int, effectiveMaxTokens int) BranchNoneResult {
+	ch Channel, iteration int, effectiveMaxTokens int,
+	stopReason string) BranchNoneResult {
 
 	contentStr, _ := respContent.(string)
 
@@ -279,16 +280,16 @@ func RunBranchNone(messages []Message, respContent interface{},
 		return BranchNoneResult{ShouldContinue: true, Messages: messages}
 	}
 
-	// 非工作模式（CHAT）下：第一輪文字後唔應即刻 exit
-	// 等模型有機會判斷係咪要 call tool，避免 "ok let me start working" 後直接終止
-	if globalTaskTracker == nil || !globalTaskTracker.IsWorkMode() {
-		if iteration <= 1 {
-			return BranchNoneResult{ShouldContinue: true, Messages: messages}
-		}
+	// 模型自己決定係咪終止：只有明確嘅 stop signal 先 exit
+	// intent 分類（CHAT/TASK）只影響 system prompt 同 exit guard，
+	// **絕不控制循環輪次**
+	if stopReason == "stop" || stopReason == "length" || stopReason == "end_turn" {
+		*loopExitedNaturally = true
+		return BranchNoneResult{ShouldBreak: true, Messages: messages}
 	}
 
-	*loopExitedNaturally = true
-	return BranchNoneResult{ShouldBreak: true, Messages: messages}
+	// 其他 stop reason → 繼續 loop，畀模型call tool 或繼續輸出
+	return BranchNoneResult{ShouldContinue: true, Messages: messages}
 }
 
 // parseInlineXMLToolCalls 從文字內容中提取 XML/DSML 格式嘅工具調用，
