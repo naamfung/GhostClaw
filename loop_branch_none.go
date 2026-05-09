@@ -185,7 +185,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 			currentTasks,
 		)
 		messages = append(messages, Message{
-			Role:      "user",
+			Role:      "system",
 			Content:   reminderMsg,
 			Timestamp: time.Now().Unix(),
 		})
@@ -220,7 +220,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 					unfinished,
 				)
 				messages = append(messages, Message{
-					Role:      "user",
+					Role:      "system",
 					Content:   resumePrompt,
 					Timestamp: time.Now().Unix(),
 				})
@@ -251,7 +251,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 					"不要回覆文字給用戶，繼續執行工具調用。",
 				len(runningSubagentIDs), strings.Join(runningSubagentIDs, ", "))
 			messages = append(messages, Message{
-				Role:      "user",
+				Role:      "system",
 				Content:   resumePrompt,
 				Timestamp: time.Now().Unix(),
 			})
@@ -272,7 +272,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 			"你可以繼續使用讀取/搜索類工具蒐集資訊，但必須使用 Todos 或 EnterPlanMode 進行規劃。\n" +
 			"系統已攔截寫入/執行類工具，完成規劃後先會放行。"
 		messages = append(messages, Message{
-			Role:      "user",
+			Role:      "system",
 			Content:   reminderHint,
 			Timestamp: time.Now().Unix(),
 		})

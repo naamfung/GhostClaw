@@ -512,7 +512,7 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 				}
 				if blocked {
 					reminderMsg := Message{
-						Role:      "user",
+						Role:      "system",
 						Content:   "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 Todos 或 Tasks 規劃任務。請使用讀取/搜索類工具蒐集所需資訊，然後用 Todos 將任務分解為可追蹤的子步驟，或使用 Tasks(PlanPhase=\"explore\") 進行結構化規劃。在完成規劃之前，不可調用寫入或執行類工具。",
 						Timestamp: time.Now().Unix(),
 					}
