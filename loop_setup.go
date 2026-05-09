@@ -153,6 +153,12 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 				log.Printf("[AgentLoop] LLM classification failed: %v, defaulting to TASK", err)
 				intent = IntentTask
 			}
+			// 升級 CHAT → TASK：如有未完成 todo，說明用戶可能係延續之前嘅工作
+			// 短句如「繼續」、「搞掂？」會被 LLM 判為 CHAT，但應該以工作模式處理
+			if intent == IntentChat && !TODO.IsEmpty() && TODO.HasUnfinishedItems() {
+				log.Printf("[AgentLoop] Intent upgraded CHAT→TASK: unfinished todos exist")
+				intent = IntentTask
+			}
 			globalTaskTracker.StartNewTask(latestQuery, intent)
 			log.Printf("[AgentLoop] Intent classified as: %d (0=CHAT, 1=TASK), query: %.100s", intent, latestQuery)
 		}
