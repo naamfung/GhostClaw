@@ -340,6 +340,16 @@
         $effect(() => {
                 autoScroll.updateInterval(isCurrentConversationLoading);
         });
+
+        // 切換對話時清空任務列表，防止串台（新對話會由後端重新推送）
+        let lastConvId = $state<string | null>(null);
+        $effect(() => {
+                const convId = activeConversation()?.id ?? null;
+                if (convId !== lastConvId) {
+                        lastConvId = convId;
+                        chatStore.currentTodos = [];
+                }
+        });
 </script>
 
 {#if isDragOver}
