@@ -74,10 +74,9 @@ func RunCallModel(ctx context.Context, messages *[]Message, ch Channel,
 		}
 
 		if chunk.Error != "" {
-			if writeErr := ch.WriteChunk(chunk); writeErr != nil {
-				log.Printf("Failed to write error chunk: %v", writeErr)
-				return nil, fmt.Errorf("%s", chunk.Error)
-			}
+			// 唔直接發送 error 到前端：AgentLoop 會做錯誤分類同 retry，
+			// 網絡中斷等 non-fatal error 會自動恢復
+			log.Printf("[AgentLoop] Stream error chunk received (will be handled by AgentLoop): %s", chunk.Error)
 			return nil, fmt.Errorf("%s", chunk.Error)
 		}
 
