@@ -47,12 +47,13 @@ func RunCallModel(ctx context.Context, messages *[]Message, ch Channel,
 
 	chunkChan, err := CallModel(ctx, *messages, effectiveAPIType, effectiveBaseURL, effectiveAPIKey, effectiveModelID, effectiveTemperature, effectiveMaxTokens, stream, thinking, currentRole)
 	if err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			if writeErr := ch.WriteChunk(StreamChunk{Error: err.Error()}); writeErr != nil {
-				log.Printf("Failed to write error chunk: %v", writeErr)
-			}
-		} else {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			log.Printf("[AgentLoop] CallModel cancelled/timeout, skipping error chunk")
+		} else {
+			// 唔直接發送 error 到前端：AgentLoop 會做錯誤分類同 retry，
+			// 如果係 non-fatal error（網絡中斷、parse error 等）會自動恢復，
+			// 只有 fatal error 先應由 AgentLoop 通知用戶
+			log.Printf("[AgentLoop] CallModel error (will be handled by AgentLoop): %v", err)
 		}
 		return nil, err
 	}
