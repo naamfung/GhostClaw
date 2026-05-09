@@ -153,11 +153,17 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 				log.Printf("[AgentLoop] LLM classification failed: %v, defaulting to TASK", err)
 				intent = IntentTask
 			}
-			// 升級 CHAT → TASK：如有未完成 todo，說明用戶可能係延續之前嘅工作
-			// 短句如「繼續」、「搞掂？」會被 LLM 判為 CHAT，但應該以工作模式處理
-			if intent == IntentChat && !TODO.IsEmpty() && TODO.HasUnfinishedItems() {
-				log.Printf("[AgentLoop] Intent upgraded CHAT→TASK: unfinished todos exist")
-				intent = IntentTask
+			// 升級 CHAT → TASK：
+			// 1) 有未完成 todo（內存中）→ 用戶延續工作
+			// 2) 歷史中有近期工具調用（重啟後 TODO 為空，但對話記錄證明係工作模式）
+			if intent == IntentChat {
+				if !TODO.IsEmpty() && TODO.HasUnfinishedItems() {
+					log.Printf("[AgentLoop] Intent upgraded CHAT→TASK: unfinished todos exist")
+					intent = IntentTask
+				} else if hasRecentWorkToolCalls(messages) {
+					log.Printf("[AgentLoop] Intent upgraded CHAT→TASK: recent tool calls found in history (session restart)")
+					intent = IntentTask
+				}
 			}
 			globalTaskTracker.StartNewTask(latestQuery, intent)
 			log.Printf("[AgentLoop] Intent classified as: %d (0=CHAT, 1=TASK), query: %.100s", intent, latestQuery)
@@ -273,4 +279,20 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 	}
 
 	return messages, config
+}
+
+// hasRecentWorkToolCalls 檢查對話歷史中是否有近期工作工具調用
+// 用於重啟後偵測工作模式（TODO 狀態為內存，重啟後消失）
+func hasRecentWorkToolCalls(messages []Message) bool {
+	// 只檢查最後 20 條消息，夠判斷最近狀態
+	start := len(messages) - 20
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i < len(messages); i++ {
+		if messages[i].Role == "tool" {
+			return true
+		}
+	}
+	return false
 }
