@@ -2300,7 +2300,7 @@ validate + 可选冒烟测试。
 
         // ========== Tasks 模式工具（v2：統一取代 EnterPlanMode/ExitPlanMode） ==========
         reg("Tasks",
-                "結構化任務分解工具。PlanPhase 控制階段：explore(探索)→design(設計+定義Tasks)→execute(退出執行)。Tasks 定義任務列表（無依賴），每個 task 用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務。\n\nTasks 正確格式示例：\n{\"Tasks\": [{\"id\": \"1\", \"title\": \"SSH連接\", \"status\": \"InProgress\"}]}\n\n注意：Tasks 必須係 array of objects，每個 object 含 id（字串）、title（字串）、status（Pending/InProgress/Completed/Waiting）。",
+                "結構化任務分解工具。PlanPhase 控制階段：explore(探索)→design(設計+定義Tasks)→execute(退出執行)。Tasks 定義任務列表（無依賴），每個 task 用 TodoWrite / TodoCreate / TodoUpdate / TodoDelete / TodoList 管理子任務。\n\nTasks 正確格式示例：\n{\"Tasks\": [{\"id\": \"1\", \"title\": \"SSH連接\", \"status\": \"InProgress\"}]}\n\n注意：Tasks 必須係 array of objects，每個 object 含 id（字串）、title（字串）、status（Pending/InProgress/Completed/Waiting/Cancelled）。",
                 "plan", "core",
                 map[string]interface{}{
                         "type": "object",
@@ -2322,7 +2322,7 @@ validate + 可选冒烟测试。
                                                 "properties": map[string]interface{}{
                                                         "id":     map[string]interface{}{"type": "string", "description": "任務唯一標識"},
                                                         "title":  map[string]interface{}{"type": "string", "description": "任務標題"},
-                                                        "status": map[string]interface{}{"type": "string", "enum": []string{"Pending", "InProgress", "Completed", "Waiting"}, "description": "任務狀態"},
+                                                        "status": map[string]interface{}{"type": "string", "enum": []string{"Pending", "InProgress", "Completed", "Waiting", "Cancelled"}, "description": "任務狀態"},
                                                 },
                                                 "required": []string{"id", "title", "status"},
                                         },

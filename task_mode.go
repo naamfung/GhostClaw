@@ -127,8 +127,8 @@ func handleTasks(args map[string]interface{}) (string, bool) {
 			if id == "" || id == "<nil>" || title == "" || title == "<nil>" {
 				return fmt.Sprintf("Error: tasks[%d] 缺少 id 或 title（必填）。\n\n💡 正確格式：{\"tasks\": [{\"id\": \"1\", \"title\": \"任務標題\", \"status\": \"Pending\"}]}", i), false
 			}
-			if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" {
-				return fmt.Sprintf("Error: tasks[%d] status 無效：%s（可選：Pending/InProgress/Completed/Waiting）", i, status), false
+			if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
+				return fmt.Sprintf("Error: tasks[%d] status 無效：%s（可選：Pending/InProgress/Completed/Waiting/Cancelled）", i, status), false
 			}
 			tasks = append(tasks, TaskItem{
 				ID:     id,
@@ -688,7 +688,7 @@ func tasksToolDef() map[string]interface{} {
 								},
 								"status": map[string]interface{}{
 									"type":        "string",
-									"enum":        []string{"Pending", "InProgress", "Completed", "Waiting"},
+									"enum":        []string{"Pending", "InProgress", "Completed", "Waiting", "Cancelled"},
 									"description": "任務狀態",
 								},
 							},
