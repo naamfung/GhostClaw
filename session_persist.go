@@ -508,19 +508,22 @@ func (m *SessionPersistManager) DeleteSession(sessionID string) error {
 
 // AppendMessage 追加單條消息到 session_messages
 // 使用 mutex + 事務確保 SELECT MAX(seq) + INSERT 原子性
+// 使用 retryOnBusy 處理 SQLITE_BUSY 競爭情況
 func (m *SessionPersistManager) AppendMessage(sessionID string, msg Message) error {
         m.appendMu.Lock()
         defer m.appendMu.Unlock()
 
-        return globalDB.Transaction(func(tx *gorm.DB) error {
-                var maxSeq int
-                tx.Model(&SessionMessage{}).
-                        Where("session_id = ?", sessionID).
-                        Select("COALESCE(MAX(seq), -1)").
-                        Scan(&maxSeq)
+        return retryOnBusy(func() error {
+                return globalDB.Transaction(func(tx *gorm.DB) error {
+                        var maxSeq int
+                        tx.Model(&SessionMessage{}).
+                                Where("session_id = ?", sessionID).
+                                Select("COALESCE(MAX(seq), -1)").
+                                Scan(&maxSeq)
 
-                row := messageToRow(msg, sessionID, maxSeq+1)
-                return tx.Create(&row).Error
+                        row := messageToRow(msg, sessionID, maxSeq+1)
+                        return tx.Create(&row).Error
+                })
         })
 }
 
