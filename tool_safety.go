@@ -554,21 +554,21 @@ func (e *RepeatedErrorEscalator) buildEscalationMessage(t *escalationTracker) st
 
 	switch t.category {
 	case EscalateWriteWithoutRead:
-		sb.WriteString("以下是你連續多次無視安全檢查錯誤的記錄：\n\n")
+		sb.WriteString("[SYSTEM_ESCALATE] 以下是你連續多次無視安全檢查錯誤的記錄：\n\n")
 		for i, msg := range t.messages {
 			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
 		}
 		sb.WriteString("你必須使用 ReadFileLines 完整讀取目標文件後才能進行寫入操作。請立即讀取相關文件。")
 
 	case EscalateRepeatedFailure:
-		sb.WriteString("以下是你連續多次重複相同失敗操作的記錄：\n\n")
+		sb.WriteString("[SYSTEM_ESCALATE] 以下是你連續多次重複相同失敗操作的記錄：\n\n")
 		for i, msg := range t.messages {
 			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
 		}
 		sb.WriteString("請停止重複此操作。分析錯誤原因後嘗試不同的方法，或向用戶說明遇到的問題並請求指導。")
 
 	default:
-		sb.WriteString("以下是你連續多次錯誤的記錄：\n\n")
+		sb.WriteString("[SYSTEM_ESCALATE] 以下是你連續多次錯誤的記錄：\n\n")
 		for i, msg := range t.messages {
 			sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, msg))
 		}
