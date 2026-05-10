@@ -245,6 +245,14 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
         openCmdLog()
         defer closeCmdLog() // 確保任何退出路徑都會關閉檔案
 
+        // 將 os.Stdout 重定向到日誌檔案，防止 fmt.Println 等直接輸出洩漏到終端
+        // 保存原始 stdout 畀 CmdChannel 用（佢需要輸出到真正嘅終端）
+        origStdout := os.Stdout
+        if cmdLogFile != nil {
+                os.Stdout = cmdLogFile
+        }
+        defer func() { os.Stdout = origStdout }()
+
         fmt.Print("\n\n")
         fmt.Println("╔══════════════════════════════════════╗")
         fmt.Println("  GhostClaw REPL 模式")
@@ -260,7 +268,7 @@ func runCMDMode(ctx context.Context, session *GlobalSession) {
                 return
         }
 
-        cmdChan := NewCmdChannel()
+        cmdChan := NewCmdChannelWithWriter(origStdout)
 
         for {
                 line, err := rl.Readline()

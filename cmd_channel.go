@@ -20,11 +20,20 @@ const (
 	phaseContent  = 2
 )
 
-// NewCmdChannel 创建命令行频道
+// NewCmdChannel 创建命令行频道（输出到 os.Stdout）
 func NewCmdChannel() *CmdChannel {
 	return &CmdChannel{
 		BaseChannel: NewBaseChannel("cmd"),
 		writer:      os.Stdout,
+	}
+}
+
+// NewCmdChannelWithWriter 创建命令行频道，使用指定的 writer
+// 用於 REPL 模式下 os.Stdout 已被重定向到日誌檔案時，仍能輸出到終端
+func NewCmdChannelWithWriter(w io.Writer) *CmdChannel {
+	return &CmdChannel{
+		BaseChannel: NewBaseChannel("cmd"),
+		writer:      w,
 	}
 }
 
