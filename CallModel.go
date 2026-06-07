@@ -1275,6 +1275,74 @@ func mergeConsecutiveSameRole(messages []Message) []Message {
 	return result
 }
 
+// ensureNoConsecutiveAssistantMessages 确保消息列表末尾不会有多个连续的 assistant 消息
+// 这是最后一道防线，在发送给 API 前必须调用！
+func ensureNoConsecutiveAssistantMessages(messages []Message) []Message {
+	if len(messages) <= 1 {
+		return messages
+	}
+
+	// 首先打印消息序列，方便调试
+	if IsDebug {
+		log.Printf("[Debug] Message sequence before ensureNoConsecutiveAssistantMessages:")
+		for i, msg := range messages {
+			log.Printf("[Debug]   [%d] role=%s, thinkingSig=%s, hasReasoning=%v",
+				i, msg.Role, msg.ThinkingSignature, msg.ReasoningContent != nil)
+		}
+	}
+
+	// 从末尾向前找最后一个非 assistant 消息的位置
+	end := len(messages)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "assistant" {
+			break
+		}
+		end = i
+	}
+
+	// 如果有多个连续的 assistant 消息（从 end 到末尾）
+	if end <= len(messages)-2 {
+		log.Printf("[Warning] Found %d consecutive assistant messages at end of list, fixing...", len(messages)-end)
+
+		// 策略：优先保留带有 thinking block 的 assistant 消息
+		keepIndex := len(messages) - 1 // 默认保留最后一个
+		hasThinkingMsg := false
+
+		// 从后往前找第一个带有 thinking 的 assistant 消息
+		for i := len(messages) - 1; i >= end; i-- {
+			msg := messages[i]
+			if msg.ThinkingSignature != "" || msg.ReasoningContent != nil {
+				keepIndex = i
+				hasThinkingMsg = true
+				break
+			}
+		}
+
+		if IsDebug {
+			if hasThinkingMsg {
+				log.Printf("[Debug] Keeping assistant message with thinking block at index %d", keepIndex)
+			} else {
+				log.Printf("[Debug] Keeping last assistant message at index %d (no thinking blocks found)", keepIndex)
+			}
+		}
+
+		// 构建新的消息列表
+		newMessages := make([]Message, 0, len(messages))
+		newMessages = append(newMessages, messages[:end]...)
+		newMessages = append(newMessages, messages[keepIndex])
+		messages = newMessages
+
+		if IsDebug {
+			log.Printf("[Debug] Message sequence after ensureNoConsecutiveAssistantMessages:")
+			for i, msg := range messages {
+				log.Printf("[Debug]   [%d] role=%s", i, msg.Role)
+			}
+		}
+	}
+
+	return messages
+}
+
 // 准备请求数据
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 // 系统提示词从 messages 中的 system 消息提取，根据 API 类型正确处理
@@ -1326,6 +1394,9 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 			filteredMessages = append([]Message{planMsg}, filteredMessages...)
 		}
 	}
+
+	// 最后一道防线：确保不会有多个连续的 assistant 消息！
+	filteredMessages = ensureNoConsecutiveAssistantMessages(filteredMessages)
 
 	switch apiType {
 	case "anthropic":
