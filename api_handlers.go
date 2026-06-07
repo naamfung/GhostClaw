@@ -305,7 +305,7 @@ func (s *HTTPServer) updateConfig(w http.ResponseWriter, r *http.Request) {
                 }
         }
 
-        // 更新 Prompt 快取配置
+        // 更新 提示词缓存配置
         if _, exists := rawMap["PromptCache"]; exists && newConfig.PromptCache != nil {
                 if err := globalConfigManager.UpdatePromptCacheConfig(*newConfig.PromptCache); err != nil {
                         log.Printf("Warning: failed to update prompt cache config: %v", err)

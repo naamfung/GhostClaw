@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "min_memory_age": 1,
+  "max_memory_age": 30,
+  "min_access_count": 1,
+  "max_memory_size": 100,
+  "refactor_interval": 24,
+  "min_improvement_score": 0.5
+}

@@ -1171,7 +1171,7 @@ func testPluginSystem() {
         for _, p := range plugins {
                 log.Printf("  - %s (%s)", p["name"], p["file"])
         }
-        
+
         // 测试调用temp_uploader插件的upload_file函数
         ctx := context.Background()
         result, err := pm.CallPluginFunction(ctx, "temp_uploader", "upload_file", "testing.txt", nil)
@@ -1179,7 +1179,7 @@ func testPluginSystem() {
                 log.Printf("Error calling plugin function: %v", err)
                 return
         }
-        
+
         log.Printf("Plugin call result: %s", result)
         if result == "" {
                 log.Println("Note: Result is empty. This may be because the file 'testing.txt' does not exist.")

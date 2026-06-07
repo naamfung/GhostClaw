@@ -8,7 +8,7 @@ import {
 /**
  * BDD: Prompt Cache 設定嘅前端 → 後端適配驗證。
  *
- * Scenario: 用戶喺 ChatSettings 入面 toggle Prompt 快取選項 → save → backend 收到正確格式。
+ * Scenario: 用戶喺 ChatSettings 入面 toggle 提示词缓存選項 → save → backend 收到正確格式。
  * 呢度測試 config key mapping 同 defaults 一致性，確保前端唔會 send 錯格式俾 backend。
  */
 
@@ -93,13 +93,13 @@ describe('Prompt Cache Settings — Backend Config Object Shape', () => {
 
 describe('Prompt Cache — Section Title', () => {
 	it('has correct section title', () => {
-		expect(SETTINGS_SECTION_TITLES.PROMPT_CACHE).toBe('Prompt 快取');
+		expect(SETTINGS_SECTION_TITLES.PROMPT_CACHE).toBe('提示词缓存');
 	});
 });
 
 describe('Prompt Cache — Frontend/Backend Roundtrip Simulation', () => {
 	/**
-	 * BDD Scenario: 用戶 toggle Prompt 快取 → 前端 build backend config → PUT /api/config →
+	 * BDD Scenario: 用戶 toggle 提示词缓存 → 前端 build backend config → PUT /api/config →
 	 *   backend 解析並儲存 → GET /api/config → 前端收到正確值 → UI toggle 反映正確狀態。
 	 *
 	 * 呢個 test 驗證中間嘅 data mapping 環節。

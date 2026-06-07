@@ -353,7 +353,7 @@
                         fields: [
                                 {
                                         key: SETTINGS_KEYS.PROMPT_CACHE_ENABLED,
-                                        label: '啟用 Prompt 快取',
+label: '启用提示词缓存',
                                         type: SettingsFieldType.CHECKBOX
                                 },
                                 {
