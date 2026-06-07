@@ -211,12 +211,33 @@ func runDividerFallback(fullMessages, currentMessages []Message, adaptiveMaxHist
 					break
 				}
 			}
-			newTruncated := make([]Message, 0, len(truncatedMsgs)+1)
-			newTruncated = append(newTruncated, truncatedMsgs[:insertPos]...)
-			newTruncated = append(newTruncated, lastThinkingMsg)
-			newTruncated = append(newTruncated, truncatedMsgs[insertPos:]...)
-			truncatedMsgs = newTruncated
-			log.Printf("[AgentLoop] 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
+			// 先构建临时结果检查是否会产生连续的 assistant 消息
+			tempResult := make([]Message, 0, len(truncatedMsgs)+1)
+			tempResult = append(tempResult, truncatedMsgs[:insertPos]...)
+			tempResult = append(tempResult, lastThinkingMsg)
+			tempResult = append(tempResult, truncatedMsgs[insertPos:]...)
+
+			// 检查插入位置前后是否会导致连续两个 assistant 消息
+			hasConsecutiveAssistant := false
+			// 检查前一个位置（如果有）
+			if insertPos > 0 && tempResult[insertPos-1].Role == "assistant" {
+				hasConsecutiveAssistant = true
+			}
+			// 检查后一个位置（如果有）
+			if insertPos < len(tempResult)-1 && tempResult[insertPos+1].Role == "assistant" {
+				hasConsecutiveAssistant = true
+			}
+
+			if !hasConsecutiveAssistant {
+				newTruncated := make([]Message, 0, len(truncatedMsgs)+1)
+				newTruncated = append(newTruncated, truncatedMsgs[:insertPos]...)
+				newTruncated = append(newTruncated, lastThinkingMsg)
+				newTruncated = append(newTruncated, truncatedMsgs[insertPos:]...)
+				truncatedMsgs = newTruncated
+				log.Printf("[AgentLoop] 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
+			} else {
+				log.Printf("[AgentLoop] 跳過插入含 thinking block 的 assistant 訊息，避免連續兩個 assistant 訊息")
+			}
 		}
 	}
 
