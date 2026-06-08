@@ -265,8 +265,13 @@ func RunBranchNone(messages []Message, respContent interface{},
 	// ========== todos 使用提醒守衛 ==========
 	// 工作模式 + 未規劃 → 死循環，強制模型使用 Todos 或 EnterPlanMode
 	// plan mode active 時唔觸發 — 模型已選擇 EnterPlanMode 路徑
+	// TasksMode 從未激活過時唔觸發 — 模型可以直接使用工具完成簡單任務（如列出文件、查詢資訊）
+	// 只有曾經激活過 TasksMode（即模型曾選擇使用 Tasks/Todos 規劃流程）但後來退出，
+	// 且當前冇 todo 且未處於 plan mode 時，先需要提醒模型重新規劃
 	planModeActive := globalTasksMode != nil && globalTasksMode.IsActive()
-	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() && !planModeActive {
+	hasEverActivatedTasksMode := globalTasksMode != nil && globalTasksMode.HasEverActivated()
+	if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() &&
+		!planModeActive && hasEverActivatedTasksMode {
 		*todoReminderCount++
 		reminderHint := "[SYSTEM_REMINDER] 你正處於工作模式但尚未規劃任務。\n" +
 			"你可以繼續使用讀取/搜索類工具蒐集資訊，但必須使用 Todos 或 EnterPlanMode 進行規劃。\n" +
@@ -276,7 +281,7 @@ func RunBranchNone(messages []Message, respContent interface{},
 			Content:   reminderHint,
 			Timestamp: time.Now().Unix(),
 		})
-		log.Printf("[AgentLoop] Todos reminder #%d injected (indefinite guard)", *todoReminderCount)
+		log.Printf("[AgentLoop] Todos reminder #%d injected (indefinite guard, tasksMode was active before)", *todoReminderCount)
 		return BranchNoneResult{ShouldContinue: true, Messages: messages}
 	}
 

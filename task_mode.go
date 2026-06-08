@@ -36,8 +36,9 @@ type TaskItem struct {
 
 // TasksMode Tasks 模式管理器
 type TasksMode struct {
-	PlanPhase      string `json:"PlanPhase"`   // inactive / explore / design / execute
-	PlanContent    string `json:"PlanContent"` // 計劃文件內容
+	PlanPhase         string `json:"PlanPhase"`         // inactive / explore / design / execute
+	PlanContent       string `json:"PlanContent"`       // 計劃文件內容
+	HasEverBeenActive bool   `json:"HasEverBeenActive"` // 是否曾經激活過（用於判斷是否需要攔截工具）
 
 	PlanFilePath string
 	StartTime    time.Time
@@ -61,8 +62,8 @@ const (
 )
 
 const (
-	tasksPhaseTimeout = 5 * time.Minute
-	tasksTotalTimeout = 20 * time.Minute
+	tasksPhaseTimeout  = 5 * time.Minute
+	tasksTotalTimeout  = 20 * time.Minute
 	tasksMaxDowngrades = 2
 )
 
@@ -78,6 +79,23 @@ func (tm *TasksMode) IsActive() bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	return tm.PlanPhase != TasksPhaseInactive
+}
+
+// IsTimedOut 是否已超時（強制退出後返回 true）
+// 用於 Work mode guard：超時後視為規劃階段結束，放行所有工具
+func (tm *TasksMode) IsTimedOut() bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.TimedOut
+}
+
+// HasEverActivated 是否曾經激活過
+// 用於 Work mode guard：只有曾經激活過才需要攔截工具
+// 從未激活過的話，模型可以直接使用工具來完成簡單任務
+func (tm *TasksMode) HasEverActivated() bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.HasEverBeenActive
 }
 
 func (tm *TasksMode) Phase() string {
@@ -190,6 +208,7 @@ func enterTasksExplore() (string, bool) {
 	globalTasksMode.PhaseStart = time.Now()
 	globalTasksMode.TaskDesc = taskDesc
 	globalTasksMode.DowngradeCount = 0
+	globalTasksMode.HasEverBeenActive = true // 標記曾經激活過（用於後續 guard 判斷）
 
 	dataDir := globalDataDir
 	globalTasksMode.PlanFilePath = filepath.Join(dataDir, "plan.md")
@@ -256,6 +275,7 @@ func autoInitTasksModeLocked() {
 		globalTasksMode.PlanFilePath = filepath.Join(globalDataDir, "plan.md")
 	}
 	globalTasksMode.PlanPhase = TasksPhaseExplore
+	globalTasksMode.HasEverBeenActive = true // 標記曾經激活過（用於後續 guard 判斷）
 
 	// 啟動 timeout
 	if globalTasksMode.stopTimeout != nil {
@@ -294,6 +314,7 @@ func enterTasksDesign(planContent string, tasks []TaskItem) (string, bool) {
 	globalTasksMode.PhaseStart = time.Now()
 	globalTasksMode.PlanContent = planContent
 	globalTasksMode.tasks = tasks
+	globalTasksMode.HasEverBeenActive = true // 標記曾經激活過（用於後續 guard 判斷）
 
 	// 寫入計劃文件
 	if globalTasksMode.PlanFilePath != "" && planContent != "" {
@@ -950,6 +971,7 @@ func ResetTasksMode() {
 	globalTasksMode.tasks = nil
 	globalTasksMode.DowngradeCount = 0
 	globalTasksMode.TimedOut = false
+	globalTasksMode.HasEverBeenActive = false
 }
 
 // resetGlobalTasksMode 測試用 helper
@@ -964,9 +986,9 @@ func GetTasksStatusJSON() string {
 
 	data := map[string]interface{}{
 		"PlanPhase": globalTasksMode.PlanPhase,
-		"task_desc":  globalTasksMode.TaskDesc,
-		"tasks":      globalTasksMode.tasks,
-		"timed_out":  globalTasksMode.TimedOut,
+		"task_desc": globalTasksMode.TaskDesc,
+		"tasks":     globalTasksMode.tasks,
+		"timed_out": globalTasksMode.TimedOut,
 	}
 	if globalTasksMode.PlanPhase != TasksPhaseInactive {
 		data["elapsed"] = time.Since(globalTasksMode.StartTime).Round(time.Second).String()
@@ -1008,4 +1030,3 @@ func tryRestoreTasksModeFromPlan() {
 
 	log.Printf("[TasksMode] Restored from plan.md (%d bytes), entering design phase", len(data))
 }
-

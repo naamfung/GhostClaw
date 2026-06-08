@@ -48,6 +48,7 @@ vendor/
 
 # IDE and editor directories and files
 .vscode/
+.claude/
 .trae/
 .idea/
 *.swp

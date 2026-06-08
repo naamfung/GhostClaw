@@ -494,9 +494,18 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 			// ====== 工作模式協議守衛 ======
 			// 任務未結構化時：放行規劃/讀取類工具，攔截寫入/執行類工具
 			// 模型可以先讀代碼蒐集資訊，再用 Todos/Tasks 做計畫
+			//
+			// 關鍵修復：
+			// 1) 只有曾經激活過 TasksMode 才攔截（HasEverActivated() == true）
+			//    新任务从未使用過 TasksMode → 模型可以直接使用工具完成任务
+			// 2) TasksMode 激活中（IsActive() == true）→ 不拦截，由 TasksMode 自身控制
+			// 3) TasksMode 超时后（IsTimedOut() == true）→ 不拦截，视为规划结束
+			// 4) 拦截工具调用时回滚 assistant 消息，防止连续 assistant 消息
 			if globalTaskTracker != nil && globalTaskTracker.IsWorkMode() && TODO.IsEmpty() &&
-				(globalTasksMode == nil || !globalTasksMode.IsActive()) {
+				(globalTasksMode != nil && globalTasksMode.HasEverActivated() &&
+					!globalTasksMode.IsActive() && !globalTasksMode.IsTimedOut()) {
 				blocked := false
+				blockedToolName := ""
 				for _, tc := range callResult.ToolCalls {
 					var toolName string
 					if tc["type"] == "function" {
@@ -506,18 +515,33 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 					}
 					if toolName != "" && isExecutionTool(toolName) {
 						blocked = true
+						blockedToolName = toolName
 						log.Printf("[AgentLoop] Work mode guard: blocked '%s' — task not yet structured, injecting reminder", toolName)
 						break
 					}
 				}
 				if blocked {
-					reminderMsg := Message{
-						Role:      "system",
-						Content:   "[SYSTEM_REMINDER] 你正處於工作模式但尚未使用 TodoWrite / TodoCreate 或 Tasks 規劃任務。請使用讀取/搜索類工具蒐集所需資訊，然後用 TodoWrite 將任務分解為可追蹤的子步驟，或使用 Tasks({\"PlanPhase\": \"explore\"}) 進行結構化規劃。在完成規劃之前，不可調用寫入或執行類工具。",
-						Timestamp: time.Now().Unix(),
+					// 關鍵修復：回滾剛剛由 RunCallModel 添加的 assistant 消息
+					// 因為工具調用被攔截了，這條含 tool_calls 的 assistant 消息不應該保留在歷史中
+					// 否則會導致連續多個 assistant 消息出現在列表中，造成 API 調用失敗
+					if len(messages) > 0 && messages[len(messages)-1].Role == "assistant" {
+						messages = messages[:len(messages)-1]
+						log.Printf("[AgentLoop] Work mode guard: rolled back assistant message (tool call blocked)")
 					}
-					messages = append(messages, reminderMsg)
-					continue
+
+					// 防範無限循環：連續攔截超過閾值後自動放行
+					turnsSinceLastReminder++
+					if turnsSinceLastReminder > 5 {
+						log.Printf("[AgentLoop] Work mode guard: too many blocks (%d), allowing execution to proceed", turnsSinceLastReminder)
+					} else {
+						reminderMsg := Message{
+							Role:      "user",
+							Content:   "（系統提示：在使用寫入/執行類工具如 " + blockedToolName + " 之前，請先用 TodoWrite 或 Tasks 將任務分解為可追蹤的子步驟。你可以先使用讀取/搜索類工具蒐集所需資訊。如果已完成必要的規劃，可直接調用 TodoWrite 創建子任務。）",
+							Timestamp: time.Now().Unix(),
+						}
+						messages = append(messages, reminderMsg)
+						continue
+					}
 				}
 			}
 
