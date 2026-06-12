@@ -184,6 +184,7 @@ var httpClient = &http.Client{
 		}).DialContext,
 		TLSHandshakeTimeout:   30 * time.Second,
 		ResponseHeaderTimeout: 60 * time.Second,
+		IdleConnTimeout:       30 * time.Second, // 縮短 idle connection lifetime，避免 stale connection
 	},
 }
 
@@ -1672,6 +1673,13 @@ func isContextLengthError(errorBody string) bool {
 func sendRequest(ctx context.Context, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
 	t0 := time.Now()
 	log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(reqBody), apiType)
+
+	// 重置 connection pool，確保每次 request 用 fresh connection
+	// 解決 stale connection 導致 404 問題
+	if transport, ok := httpClient.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+		log.Printf("[CallModel] Connection pool reset (CloseIdleConnections)")
+	}
 
 	// Debug 模式：寫出完整請求體以便檢查
 	if IsDebug {
