@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "ExecuteExtraTool",
-      "Bash(git checkout:*)"
-    ]
-  }
-}
