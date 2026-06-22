@@ -109,12 +109,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	checkDependencies(osName)
-
-	pkgManager, err := getPackageManager(osName)
-	if err != nil {
-		printError(fmt.Sprintf("错误: %v\n", err))
-		fmt.Printf("请安装 Node.js 和 npm: https://nodejs.org/\n")
+	pkgManager := checkDependencies(osName)
+	pkgManager = resolvePackageManager(pkgManager)
+	if pkgManager == "" {
+		printError("错误: 未找到可用的包管理器（bun/pnpm/npm 均未安装）\n")
+		fmt.Printf("请安装 bun (https://bun.sh/) 或 Node.js + pnpm (https://nodejs.org/)\n")
 		fmt.Printf("或运行: ./%s --check-deps 查看详细安装指南\n", progName)
 		os.Exit(1)
 	}
@@ -197,6 +196,9 @@ func printHelp(progName string) {
   ENABLE_XMPP=1       启用 XMPP 渠道
   ENABLE_MATRIX=1     启用 Matrix 渠道
   ENABLE_ALL_CHANNELS=1 启用所有扩展渠道
+
+环境变量（包管理器）:
+  GHOSTCLAW_PKG_MANAGER=bun|pnpm|npm  指定包管理器（默认自动检测，优先 bun）
 `,
 		progName, progName, progName, progName, // 用法部分4个
 		progName, progName, progName, progName, progName, progName) // 示例部分6个，共10个
@@ -206,7 +208,7 @@ func printHelp(progName string) {
 func clean() {
 	printInfo("=== GhostClaw 清理脚本 ===\n\n")
 	removeGlob("ghostclaw", "ghostclaw.exe", "ghostclaw_*")
-	removeAll("webui/node_modules", "webui/.svelte-kit", "webui/build", "webui/dist")
+	removeAll("webui/node_modules", "webui/.svelte-kit", "webui/.vite", "webui/build", "webui/dist")
 	os.Remove("webui/tsconfig.env.json")
 	removeAll("dist")
 	fmt.Println("清理完成！")
@@ -239,15 +241,14 @@ func crossBuild(args []string) {
 		}
 	}
 
-	// 检查依赖（前端构建需要 Node.js/npm）
+	// 检查依赖（前端构建需要 bun/pnpm/npm 之一）
 	osInfo := detectOS()
 	osName := osInfo.name
-	checkDependencies(osName)
-
-	pkgManager, err := getPackageManager(osName)
-	if err != nil {
-		printError(fmt.Sprintf("错误: %v\n", err))
-		fmt.Printf("请安装 Node.js 和 npm: https://nodejs.org/\n")
+	pkgManager := checkDependencies(osName)
+	pkgManager = resolvePackageManager(pkgManager)
+	if pkgManager == "" {
+		printError("错误: 未找到可用的包管理器（bun/pnpm/npm 均未安装）\n")
+		fmt.Printf("请安装 bun (https://bun.sh/) 或 Node.js + pnpm (https://nodejs.org/)\n")
 		os.Exit(1)
 	}
 	fmt.Printf("使用包管理器: ")
@@ -434,11 +435,20 @@ func detectOS() osInfo {
 	return osInfo{name: "unknown", isWindows: false}
 }
 
-func checkDependencies(osName string) {
+// checkDependencies 检查构建所需的所有依赖项，返回检测到的包管理器名称。
+//
+// 包管理器优先级：bun > pnpm > npm
+//   - bun: 新版本已兼容 SvelteKit/Vite，且速度最快，自带 Node.js 运行时
+//   - pnpm: 成熟稳定，需要 Node.js
+//   - npm: 随 Node.js 安装，兼容性最好
+//
+// Node.js 检测：
+//   - 有 Node.js：bun/pnpm/npm 任一即可
+//   - 无 Node.js：仅 bun 可用（bun 自带 Node.js 兼容层）
+func checkDependencies(osName string) string {
 	printInfo("检查依赖...\n\n")
-	missing := []string{}
-	hasNpm := false
 
+	// Go 是必需依赖
 	if _, err := exec.LookPath("go"); err == nil {
 		version, _ := exec.Command("go", "version").Output()
 		versionStr := strings.TrimSpace(string(version))
@@ -448,9 +458,12 @@ func checkDependencies(osName string) {
 		fmt.Printf("  \033[0;32m✓\033[0m Go: %s\n", versionStr)
 	} else {
 		fmt.Printf("  \033[0;31m✗\033[0m Go: 未安装\n")
-		missing = append(missing, "go")
+		printInstallGuide(osName)
+		os.Exit(1)
 	}
 
+	// Node.js（可选，bun 可替代）
+	hasNode := false
 	if _, err := exec.LookPath("node"); err == nil {
 		version, _ := exec.Command("node", "--version").Output()
 		versionStr := strings.TrimSpace(string(version))
@@ -458,114 +471,128 @@ func checkDependencies(osName string) {
 			versionStr = "installed"
 		}
 		fmt.Printf("  \033[0;32m✓\033[0m Node.js: %s\n", versionStr)
+		hasNode = true
 	} else {
 		fmt.Printf("  \033[0;31m✗\033[0m Node.js: 未安装\n")
-		missing = append(missing, "node")
 	}
 
-	if _, err := exec.LookPath("npm"); err == nil {
-		hasNpm = true
-		version, _ := exec.Command("npm", "--version").Output()
-		versionStr := strings.TrimSpace(string(version))
-		if versionStr == "" {
-			versionStr = "installed"
+	// 检测包管理器（优先级：bun > pnpm > npm）
+	pkgManager := ""
+	for _, pm := range []string{"bun", "pnpm", "npm"} {
+		if _, err := exec.LookPath(pm); err == nil {
+			version, _ := exec.Command(pm, "--version").Output()
+			versionStr := strings.TrimSpace(string(version))
+			if versionStr == "" {
+				versionStr = "installed"
+			}
+			fmt.Printf("  \033[0;32m✓\033[0m %s: %s\n", pm, versionStr)
+			if pkgManager == "" {
+				pkgManager = pm
+			}
+		} else {
+			fmt.Printf("  - %s: 未安装\n", pm)
 		}
-		fmt.Printf("  \033[0;32m✓\033[0m npm: %s\n", versionStr)
-	} else {
-		fmt.Printf("  \033[0;31m✗\033[0m npm: 未安装\n")
-		if osName == "ghostbsd" || osName == "freebsd" {
-			fmt.Printf("    提示: 在 %s 上，需要单独安装 npm: pkg install npm-node24\n", osName)
-		}
-		missing = append(missing, "npm")
 	}
 
-	// pnpm 状态
-	if _, err := exec.LookPath("pnpm"); err == nil {
-		version, _ := exec.Command("pnpm", "--version").Output()
-		versionStr := strings.TrimSpace(string(version))
-		if versionStr == "" {
-			versionStr = "installed"
+	// 如果 pnpm 未安装但 npm 可用，尝试自动安装 pnpm（保持向后兼容）
+	if pkgManager == "npm" && hasNode {
+		if _, err := exec.LookPath("pnpm"); err != nil {
+			printInfo("\n尝试自动安装 pnpm...\n")
+			installCmd := exec.Command("npm", "install", "-g", "pnpm")
+			installCmd.Stdout = os.Stdout
+			installCmd.Stderr = os.Stderr
+			if installCmd.Run() == nil {
+				if _, err := exec.LookPath("pnpm"); err == nil {
+					printSuccess("pnpm 安装成功，将使用 pnpm 进行构建。\n")
+					pkgManager = "pnpm"
+				}
+			} else {
+				printWarning("pnpm 自动安装失败，继续使用 npm。\n")
+			}
 		}
-		fmt.Printf("  \033[0;32m✓\033[0m pnpm: %s\n", versionStr)
-	} else {
-		fmt.Printf("  - pnpm: 未安装（将尝试自动安装）\n")
-	}
-
-	// bun 状态（兼容性问题，不使用）
-	if _, err := exec.LookPath("bun"); err == nil {
-		fmt.Printf("  \033[0;33m⚠\033[0m bun: 存在兼容问题，将不使用\n")
-	} else {
-		fmt.Printf("  - bun: 未安装\n")
 	}
 
 	fmt.Println()
 
-	if len(missing) > 0 {
-		printError("错误: 缺少必需依赖\n\n")
-		fmt.Println("请安装缺少的依赖：\n")
-		switch osName {
-		case "ghostbsd", "freebsd":
-			fmt.Println("  # 安装 Go")
-			fmt.Println("  sudo pkg install go\n")
-			fmt.Println("  # 安装 Node.js 和 npm")
-			fmt.Println("  sudo pkg install node npm-node24\n")
-			fmt.Println("  # 可选：安装 pnpm（推荐）")
-			fmt.Println("  sudo npm install -g pnpm")
-		case "macos":
-			fmt.Println("  # 使用 Homebrew")
-			fmt.Println("  brew install go node")
-			fmt.Println("  npm install -g pnpm  # 可选，推荐")
-		default:
-			fmt.Println("  # Debian/Ubuntu")
-			fmt.Println("  sudo apt install golang-go nodejs npm\n")
-			fmt.Println("  # Fedora/RHEL")
-			fmt.Println("  sudo dnf install golang nodejs npm\n")
-			fmt.Println("  # Arch Linux")
-			fmt.Println("  sudo pacman -S go nodejs npm\n")
-			fmt.Println("  # 安装 pnpm（推荐）")
-			fmt.Println("  npm install -g pnpm")
-		}
-		fmt.Println()
+	// 无包管理器 → 报错
+	if pkgManager == "" {
+		printError("错误: 未找到包管理器（bun/pnpm/npm 均未安装）\n\n")
+		printInstallGuide(osName)
 		os.Exit(1)
 	}
 
-	if !hasNpm {
-		printError("错误: npm 未安装，无法继续\n")
+	// 无 Node.js 且非 bun → 报错（pnpm/npm 需要 Node.js 运行时）
+	if !hasNode && pkgManager != "bun" {
+		printError("错误: Node.js 未安装，pnpm/npm 需要 Node.js 运行时\n")
+		fmt.Printf("请安装 Node.js (https://nodejs.org/) 或 bun (https://bun.sh/)\n")
 		os.Exit(1)
 	}
+
+	// 无 Node.js 但使用 bun → 仅警告
+	if !hasNode && pkgManager == "bun" {
+		fmt.Printf("  \033[0;33m⚠\033[0m Node.js 未安装，使用 bun 替代（bun 自带 Node.js 兼容层）\n\n")
+	}
+
+	return pkgManager
 }
 
-// 获取实际使用的包管理器
-// 优先级: pnpm（自动安装） -> npm
-func getPackageManager(osName string) (string, error) {
-	// 检查 pnpm 是否已存在
-	if _, err := exec.LookPath("pnpm"); err == nil {
-		return "pnpm", nil
-	}
-
-	// pnpm 不存在，尝试安装
-	printInfo("pnpm 未安装，正在尝试自动安装 pnpm...\n")
-	installCmd := exec.Command("npm", "install", "-g", "pnpm")
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
-	err := installCmd.Run()
-	if err == nil {
-		// 验证安装是否成功
-		if _, err := exec.LookPath("pnpm"); err == nil {
-			printSuccess("pnpm 安装成功，将使用 pnpm 进行构建。\n\n")
-			return "pnpm", nil
+// resolvePackageManager 确定最终使用的包管理器。
+// 优先级：环境变量 GHOSTCLAW_PKG_MANAGER > 传入参数（checkDependencies 检测结果）
+func resolvePackageManager(detected string) string {
+	// 环境变量优先
+	if env := os.Getenv("GHOSTCLAW_PKG_MANAGER"); env != "" {
+		env = strings.ToLower(strings.TrimSpace(env))
+		if _, err := exec.LookPath(env); err == nil {
+			return env
 		}
-		printWarning("pnpm 安装后仍不可用，回退到 npm。\n")
-	} else {
-		printWarning("pnpm 自动安装失败，回退到 npm。\n")
+		printWarning(fmt.Sprintf("警告: 环境变量 GHOSTCLAW_PKG_MANAGER=%s 不可用，将使用自动检测结果\n", env))
 	}
+	return detected
+}
 
-	// 最后回退到 npm
-	if _, err := exec.LookPath("npm"); err == nil {
-		return "npm", nil
+// printInstallGuide 打印依赖安装指南
+func printInstallGuide(osName string) {
+	fmt.Println("请安装缺少的依赖：")
+	fmt.Println()
+	switch osName {
+	case "ghostbsd", "freebsd":
+		fmt.Println("  # 安装 Go")
+		fmt.Println("  sudo pkg install go")
+		fmt.Println()
+		fmt.Println("  # 安装 Node.js 和 npm")
+		fmt.Println("  sudo pkg install node npm-node24")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 pnpm")
+		fmt.Println("  sudo npm install -g pnpm")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 bun（推荐，最快）")
+		fmt.Println("  curl -fsSL https://bun.sh/install | bash")
+	case "macos":
+		fmt.Println("  # 使用 Homebrew")
+		fmt.Println("  brew install go node")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 pnpm")
+		fmt.Println("  npm install -g pnpm")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 bun（推荐，最快）")
+		fmt.Println("  brew install bun")
+	default:
+		fmt.Println("  # Debian/Ubuntu")
+		fmt.Println("  sudo apt install golang-go nodejs npm")
+		fmt.Println()
+		fmt.Println("  # Fedora/RHEL")
+		fmt.Println("  sudo dnf install golang nodejs npm")
+		fmt.Println()
+		fmt.Println("  # Arch Linux")
+		fmt.Println("  sudo pacman -S go nodejs npm")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 pnpm")
+		fmt.Println("  npm install -g pnpm")
+		fmt.Println()
+		fmt.Println("  # 可选：安装 bun（推荐，最快）")
+		fmt.Println("  curl -fsSL https://bun.sh/install | bash")
 	}
-
-	return "", fmt.Errorf("没有可用的包管理器（pnpm 安装失败且找不到 npm）")
+	fmt.Println()
 }
 
 func checkPackageJSON() {
@@ -575,7 +602,7 @@ func checkPackageJSON() {
 	}
 	if bytes.Contains(data, []byte("sass-embedded")) {
 		printWarning("警告: package.json 中仍使用 sass-embedded\n")
-		fmt.Println("建议将 sass-embedded 替换为 sass 以提高兼容性\n")
+		fmt.Println("建议将 sass-embedded 替换为 sass 以提高兼容性")
 	}
 }
 
@@ -585,6 +612,9 @@ func buildFrontend(pkgManager string) error {
 	}
 	defer os.Chdir("..")
 
+	// 清理前端编译缓存，确保干净构建
+	cleanWebUICache()
+
 	if _, err := os.Stat("node_modules"); os.IsNotExist(err) {
 		fmt.Println("安装依赖...")
 		if err := installDeps(pkgManager); err != nil {
@@ -592,16 +622,52 @@ func buildFrontend(pkgManager string) error {
 		}
 	}
 
+	// 同步 SvelteKit 配置（生成 .svelte-kit/tsconfig.json 等）
+	// bun 使用 bunx 替代 npx
+	fmt.Println("同步 SvelteKit 配置...")
+	syncTool := "npx"
+	if pkgManager == "bun" {
+		syncTool = "bunx"
+	}
+	syncCmd := exec.Command(syncTool, "svelte-kit", "sync")
+	syncCmd.Stdout = os.Stdout
+	syncCmd.Stderr = os.Stderr
+	if err := syncCmd.Run(); err != nil {
+		printWarning(fmt.Sprintf("svelte-kit sync 失败: %v，继续构建...\n", err))
+	}
+
 	fmt.Println("构建中...")
-	if err := runWithFallback(pkgManager, "run build", "run build"); err != nil {
+	if err := runBuildScript(pkgManager); err != nil {
 		return err
 	}
 	return nil
 }
 
-// installDeps 安装前端依赖（pnpm v10+ 新安全模型兼容）
+// cleanWebUICache 删除前端构建缓存目录，确保干净构建
+func cleanWebUICache() {
+	cacheDirs := []struct {
+		path string
+		desc string
+	}{
+		{".svelte-kit", ".svelte-kit/ 编译缓存"},
+		{".vite", ".vite/ Vite 缓存"},
+	}
+	for _, d := range cacheDirs {
+		if _, err := os.Stat(d.path); err == nil {
+			os.RemoveAll(d.path)
+			printSuccess(fmt.Sprintf("  ✓ 已清理 %s (%s)\n", d.path, d.desc))
+		}
+	}
+}
+
+// installDeps 安装前端依赖，处理各包管理器的特性差异。
+//
+// pnpm v10+ 新安全模型兼容：先試正常 install，失败则 approve-builds + 清旧 node_modules 重試。
+// bun 使用 bun install（自带 lockfile 处理）。
+// npm 使用 npm install。
 func installDeps(pkgManager string) error {
-	if pkgManager == "pnpm" {
+	switch pkgManager {
+	case "pnpm":
 		// 1) 先試正常 install
 		cmd := exec.Command("pnpm", "install")
 		cmd.Stdout = os.Stdout
@@ -620,39 +686,38 @@ func installDeps(pkgManager string) error {
 		cmd2 := exec.Command("pnpm", "install")
 		cmd2.Stdout = os.Stdout
 		cmd2.Stderr = os.Stderr
-		if err := cmd2.Run(); err == nil {
-			return nil
-		}
+		return cmd2.Run()
+
+	case "bun":
+		cmd := exec.Command("bun", "install")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+
+	case "npm":
+		cmd := exec.Command("npm", "install")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
 	}
-	// 3) pnpm 失敗或非 pnpm → fallback 到 npm
-	printWarning(fmt.Sprintf("%s 失败，尝试使用 npm...\n", pkgManager))
-	os.RemoveAll("node_modules")
-	cmd := exec.Command("npm", "install")
+	return fmt.Errorf("unknown package manager: %s", pkgManager)
+}
+
+// runBuildScript 执行前端构建脚本，处理各包管理器的命令差异。
+//
+// 命令差异：
+//   - pnpm: `pnpm build`（pnpm 支持 script 简写，也支持 `pnpm run build`）
+//   - npm:  `npm run build`
+//   - bun:  `bun run build`
+func runBuildScript(pkgManager string) error {
+	args := []string{"run", "build"}
+	if pkgManager == "pnpm" {
+		args = []string{"build"}
+	}
+	cmd := exec.Command(pkgManager, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
-}
-
-func runWithFallback(primary, primaryArgs, fallbackArgs string) error {
-	args := strings.Fields(primaryArgs)
-	cmd := exec.Command(primary, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err == nil {
-		return nil
-	}
-	if primary != "npm" {
-		printWarning(fmt.Sprintf("%s 失败，尝试使用 npm...\n", primary))
-		if _, errNpm := exec.LookPath("npm"); errNpm == nil {
-			fallback := strings.Fields(fallbackArgs)
-			cmd2 := exec.Command("npm", fallback...)
-			cmd2.Stdout = os.Stdout
-			cmd2.Stderr = os.Stderr
-			return cmd2.Run()
-		}
-	}
-	return err
 }
 
 func buildBackend(isWindows bool) error {
