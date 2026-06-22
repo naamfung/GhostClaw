@@ -1,3 +1,4 @@
+//go:build !xmpp
 // +build !xmpp
 
 // XMPP 渠道存根

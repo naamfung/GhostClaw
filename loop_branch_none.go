@@ -71,8 +71,8 @@ func getMaxWorkModeResumeRounds() int {
 
 // BranchNoneResult holds the result of the no-tool-calls branch logic.
 type BranchNoneResult struct {
-	ShouldContinue bool     // continue the main loop
-	ShouldBreak    bool     // break out of the main loop
+	ShouldContinue bool      // continue the main loop
+	ShouldBreak    bool      // break out of the main loop
 	Messages       []Message // (possibly) modified messages
 }
 
@@ -300,8 +300,9 @@ func RunBranchNone(messages []Message, respContent interface{},
 // parseInlineXMLToolCalls 從文字內容中提取 XML/DSML 格式嘅工具調用，
 // 轉換為 ParsedToolCall 格式，兼容現有工具執行路徑。
 // 支援格式：
-//   <invoke name="ToolName"><parameter name="k">v</parameter></invoke>
-//   <DSML_invoke name="ToolName"><DSML_parameter name="k">v</DSML_parameter></DSML_invoke>
+//
+//	<invoke name="ToolName"><parameter name="k">v</parameter></invoke>
+//	<DSML_invoke name="ToolName"><DSML_parameter name="k">v</DSML_parameter></DSML_invoke>
 func parseInlineXMLToolCalls(content string) []ParsedToolCall {
 	var calls []ParsedToolCall
 

@@ -16,15 +16,15 @@ type RewardFunction interface {
 
 // RewardBreakdown provides a per-component breakdown of how a reward was computed.
 type RewardBreakdown struct {
-	SuccessWeight     float64 `json:"success_weight"`
-	SuccessScore      float64 `json:"success_score"`
-	FeedbackWeight    float64 `json:"feedback_weight"`
-	FeedbackScore     float64 `json:"feedback_score"`
-	ToolRateWeight    float64 `json:"tool_rate_weight"`
-	ToolRateScore     float64 `json:"tool_rate_score"`
-	EfficiencyWeight  float64 `json:"efficiency_weight"`
-	EfficiencyScore   float64 `json:"efficiency_score"`
-	Total             float64 `json:"total"`
+	SuccessWeight    float64 `json:"success_weight"`
+	SuccessScore     float64 `json:"success_score"`
+	FeedbackWeight   float64 `json:"feedback_weight"`
+	FeedbackScore    float64 `json:"feedback_score"`
+	ToolRateWeight   float64 `json:"tool_rate_weight"`
+	ToolRateScore    float64 `json:"tool_rate_score"`
+	EfficiencyWeight float64 `json:"efficiency_weight"`
+	EfficiencyScore  float64 `json:"efficiency_score"`
+	Total            float64 `json:"total"`
 }
 
 // DefaultRewardFunction computes a composite reward from multiple trajectory signals.
@@ -108,9 +108,9 @@ func (rf *DefaultRewardFunction) ComputeRewardBreakdown(traj Trajectory) (float6
 
 // ScoredTrajectory pairs a trajectory with its computed reward.
 type ScoredTrajectory struct {
-	Trajectory       Trajectory       `json:"trajectory"`
-	Score            float64          `json:"score"`
-	RewardBreakdown  RewardBreakdown  `json:"reward_breakdown"`
+	Trajectory      Trajectory      `json:"trajectory"`
+	Score           float64         `json:"score"`
+	RewardBreakdown RewardBreakdown `json:"reward_breakdown"`
 }
 
 // ScoreTrajectories scores all trajectories managed by tm using the provided
@@ -227,9 +227,9 @@ func ExportTrajectoryStatsToFile(tm *TrajectoryManager, filepath string) error {
 	trajStats := tm.GetTrajectoryStats()
 
 	combined := map[string]interface{}{
-		"turn_stats":       turnStats,
+		"turn_stats":      turnStats,
 		"TrajectoryStats": trajStats,
-		"generated_at":     fmt.Sprintf("%s", tm.lastSaveTime),
+		"generated_at":    fmt.Sprintf("%s", tm.lastSaveTime),
 	}
 
 	// Ensure directory exists.

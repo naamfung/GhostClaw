@@ -260,26 +260,26 @@ func TestParseTextReplaceOptions_Defaults(t *testing.T) {
 
 func TestParseTextReplaceOptions_AllFields(t *testing.T) {
 	args := map[string]interface{}{
-		"text":            "hello world",
-		"FilePath":       "/tmp/test.txt",
-		"pattern":         "world",
-		"replacement":     "earth",
-		"output_to_file":  "/tmp/out.txt",
-		"UseRegex":       true,
-		"IgnoreCase":     true,
-		"global":          false,
-		"multiline":       false,
-		"StartLine":      float64(5),
-		"EndLine":        float64(10),
-		"LinePattern":    "^func",
-		"ExcludePattern": "^//",
-		"operation":       "delete",
+		"text":              "hello world",
+		"FilePath":          "/tmp/test.txt",
+		"pattern":           "world",
+		"replacement":       "earth",
+		"output_to_file":    "/tmp/out.txt",
+		"UseRegex":          true,
+		"IgnoreCase":        true,
+		"global":            false,
+		"multiline":         false,
+		"StartLine":         float64(5),
+		"EndLine":           float64(10),
+		"LinePattern":       "^func",
+		"ExcludePattern":    "^//",
+		"operation":         "delete",
 		"show_line_numbers": true,
 		"show_changes_only": true,
-		"InPlace":        true,
-		"backup":          true,
-		"MaxReplacements": float64(3),
-		"DryRun":         true,
+		"InPlace":           true,
+		"backup":            true,
+		"MaxReplacements":   float64(3),
+		"DryRun":            true,
 	}
 	opts := parseTextReplaceOptions(args)
 
@@ -397,11 +397,11 @@ func TestExecuteTextReplace_PrintAll(t *testing.T) {
 
 func TestExecuteTextReplace_StartLine(t *testing.T) {
 	opts := TextReplaceOptions{
-		Text:      "line1\nline2\nline3\nline4",
-		Pattern:   "line",
+		Text:        "line1\nline2\nline3\nline4",
+		Pattern:     "line",
 		Replacement: "LINE",
-		Global:    true,
-		StartLine: 2,
+		Global:      true,
+		StartLine:   2,
 	}
 	result := executeTextReplace(opts)
 	if !result.Success {
@@ -414,11 +414,11 @@ func TestExecuteTextReplace_StartLine(t *testing.T) {
 
 func TestExecuteTextReplace_EndLine(t *testing.T) {
 	opts := TextReplaceOptions{
-		Text:      "line1\nline2\nline3\nline4",
-		Pattern:   "line",
+		Text:        "line1\nline2\nline3\nline4",
+		Pattern:     "line",
 		Replacement: "LINE",
-		Global:    true,
-		EndLine:   2,
+		Global:      true,
+		EndLine:     2,
 	}
 	result := executeTextReplace(opts)
 	if !result.Success {
@@ -432,11 +432,11 @@ func TestExecuteTextReplace_EndLine(t *testing.T) {
 // 審計修復：endLine == len(lines) 應該允許
 func TestExecuteTextReplace_EndLineEqualsLength(t *testing.T) {
 	opts := TextReplaceOptions{
-		Text:      "line1\nline2\nline3",
-		Pattern:   "line",
+		Text:        "line1\nline2\nline3",
+		Pattern:     "line",
 		Replacement: "LINE",
-		Global:    true,
-		EndLine:   3, // 應該等於 len(lines)，之前 off-by-one bug 會忽略
+		Global:      true,
+		EndLine:     3, // 應該等於 len(lines)，之前 off-by-one bug 會忽略
 	}
 	result := executeTextReplace(opts)
 	if !result.Success {

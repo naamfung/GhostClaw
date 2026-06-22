@@ -12,14 +12,14 @@ import (
 
 // 私有 IP 地址段
 var privateIPBlocks = []string{
-	"10.0.0.0/8",      // RFC 1918
-	"172.16.0.0/12",   // RFC 1918
-	"192.168.0.0/16",  // RFC 1918
-	"127.0.0.0/8",     // Loopback
-	"169.254.0.0/16",  // Link-local
-	"::1/128",         // IPv6 Loopback
-	"fe80::/10",       // IPv6 Link-local
-	"fc00::/7",        // IPv6 Unique Local
+	"10.0.0.0/8",     // RFC 1918
+	"172.16.0.0/12",  // RFC 1918
+	"192.168.0.0/16", // RFC 1918
+	"127.0.0.0/8",    // Loopback
+	"169.254.0.0/16", // Link-local
+	"::1/128",        // IPv6 Loopback
+	"fe80::/10",      // IPv6 Link-local
+	"fc00::/7",       // IPv6 Unique Local
 }
 
 // 特殊域名黑名单
@@ -28,11 +28,11 @@ var blockedHosts = []string{
 	"localhost.localdomain",
 	"ip6-localhost",
 	"ip6-loopback",
-	"metadata.google.internal",  // GCP metadata
-	"instance-data",              // AWS metadata
-	"kubernetes",                 // K8s internal
-	"kubernetes.default",         // K8s internal
-	"kubernetes.default.svc",     // K8s internal
+	"metadata.google.internal", // GCP metadata
+	"instance-data",            // AWS metadata
+	"kubernetes",               // K8s internal
+	"kubernetes.default",       // K8s internal
+	"kubernetes.default.svc",   // K8s internal
 }
 
 // 特殊 IP 黑名单（云服务元数据端点）

@@ -25,21 +25,21 @@ var snakeCaseRE = regexp.MustCompile(`^[a-z][a-z0-9]*_[a-z0-9]`)
 
 // allowedSnakeCase 是內部 API/協議 key — 不能改
 var allowedSnakeCase = map[string]bool{
-	"tool_use":       true,
-	"tool_calls":     true,
-	"tool_result":    true,
-	"function_call":  true,
-	"max_tokens":     true,
-	"response_format": true,
-	"top_p":          true,
-	"stop_reason":    true,
-	"reasoning_content":    true,
-	"thinking_signature":   true,
-	"ghostclaw_token":      true,
-	"content_type":   true,
-	"authorization":  true,
-	"input_schema":   true, // Anthropic API 協議 key
-	"opencli":        true, // OpenCLI 工具小寫對照（用於只讀工具模式匹配，非正式工具名）
+	"tool_use":           true,
+	"tool_calls":         true,
+	"tool_result":        true,
+	"function_call":      true,
+	"max_tokens":         true,
+	"response_format":    true,
+	"top_p":              true,
+	"stop_reason":        true,
+	"reasoning_content":  true,
+	"thinking_signature": true,
+	"ghostclaw_token":    true,
+	"content_type":       true,
+	"authorization":      true,
+	"input_schema":       true, // Anthropic API 協議 key
+	"opencli":            true, // OpenCLI 工具小寫對照（用於只讀工具模式匹配，非正式工具名）
 }
 
 // isSnakeCase checks if a string looks like snake_case

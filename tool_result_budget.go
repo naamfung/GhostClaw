@@ -53,11 +53,12 @@ var toolCategoryPrefixes = []struct {
 
 // NewToolResultBudget creates a new ToolResultBudget with sensible defaults.
 // cacheDir is the base directory for storing oversized tool results.
-// If cacheDir is empty it defaults to "tool_results_cache" relative to the
-// current working directory.
+// If cacheDir is empty it defaults to a system temp directory resolved by
+// resolveTempDir("tool_results_cache") — i.e. os.TempDir()/ghostclaw-tool_results_cache
+// when writable, falling back to <dataDir>/temp/tool_results_cache otherwise.
 func NewToolResultBudget(cacheDir string) *ToolResultBudget {
 	if cacheDir == "" {
-		cacheDir = "tool_results_cache"
+		cacheDir = defaultToolResultCacheDir()
 	}
 	b := &ToolResultBudget{
 		thresholds:   make(map[string]int),
@@ -66,6 +67,14 @@ func NewToolResultBudget(cacheDir string) *ToolResultBudget {
 	}
 	b.applyDefaultCategoryThresholds()
 	return b
+}
+
+// defaultToolResultCacheDir 返回 tool_results_cache 的统一存放位置。
+//
+// 策略：优先使用系统临时目录；若不可写则回退到 <dataDir>/temp/tool_results_cache。
+// 调用方拿到路径后，会在 persistResult 中通过 os.MkdirAll 自动创建。
+func defaultToolResultCacheDir() string {
+	return resolveTempDir("tool_results_cache")
 }
 
 // applyDefaultCategoryThresholds pre-populates thresholds for well-known tool
@@ -266,10 +275,10 @@ func GetCachedResult(filePath string) (string, error) {
 }
 
 // CleanOldCache removes cached tool result files older than maxAge from the
-// default cache directory ("tool_results_cache").
+// default cache directory (resolved by defaultToolResultCacheDir()).
 // It returns the number of files removed and any error encountered.
 func CleanOldCache(maxAge time.Duration) (int, error) {
-	return CleanOldCacheDir("tool_results_cache", maxAge)
+	return CleanOldCacheDir(defaultToolResultCacheDir(), maxAge)
 }
 
 // CleanOldCacheDir removes cached tool result files older than maxAge from the
@@ -341,7 +350,10 @@ var (
 // GetGlobalToolResultBudget returns the global ToolResultBudget singleton.
 func GetGlobalToolResultBudget() *ToolResultBudget {
 	globalToolResultBudgetOnce.Do(func() {
-		globalToolResultBudget = NewToolResultBudget("tool_results_cache")
+		// 通过 defaultToolResultCacheDir() 统一解析路径：
+		//   1. 优先 os.TempDir()/ghostclaw-tool_results_cache（系统临时目录）
+		//   2. 不可写则回退到 <dataDir>/temp/tool_results_cache
+		globalToolResultBudget = NewToolResultBudget(defaultToolResultCacheDir())
 	})
 	return globalToolResultBudget
 }
@@ -350,11 +362,11 @@ func GetGlobalToolResultBudget() *ToolResultBudget {
 
 // CacheDirInfo holds statistics about the tool result cache directory.
 type CacheDirInfo struct {
-	TotalFiles   int
-	TotalBytes   int64
-	OldestFile   time.Time
-	NewestFile   time.Time
-	TopFiles     []FileCacheEntry // largest files first
+	TotalFiles int
+	TotalBytes int64
+	OldestFile time.Time
+	NewestFile time.Time
+	TopFiles   []FileCacheEntry // largest files first
 }
 
 // FileCacheEntry describes a single cached file.

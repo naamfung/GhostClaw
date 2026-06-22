@@ -13,30 +13,30 @@ import (
 
 // SkillQualityReport 技能质量报告
 type SkillQualityReport struct {
-	SkillName         string    `json:"skill_name"`
-	UsageFrequency    float64   `json:"usage_frequency"`    // 使用频率（每天）
-	SuccessRate       float64   `json:"success_rate"`       // 成功率
-	UserSatisfaction  float64   `json:"user_satisfaction"`  // 用户满意度
-	ContextRelevance  float64   `json:"context_relevance"`  // 上下文相关性
-	RedundancyScore   float64   `json:"redundancy_score"`   // 冗余度（与其他技能相似度）
-	OverallScore      float64   `json:"overall_score"`      // 综合评分 0-1
-	Recommendations   []string  `json:"recommendations"`    // 改进建议
+	SkillName        string   `json:"skill_name"`
+	UsageFrequency   float64  `json:"usage_frequency"`   // 使用频率（每天）
+	SuccessRate      float64  `json:"success_rate"`      // 成功率
+	UserSatisfaction float64  `json:"user_satisfaction"` // 用户满意度
+	ContextRelevance float64  `json:"context_relevance"` // 上下文相关性
+	RedundancyScore  float64  `json:"redundancy_score"`  // 冗余度（与其他技能相似度）
+	OverallScore     float64  `json:"overall_score"`     // 综合评分 0-1
+	Recommendations  []string `json:"recommendations"`   // 改进建议
 }
 
 // SkillSuggestion 技能建议
 type SkillSuggestion struct {
-	SkillName     string  `json:"skill_name"`
-	Reason        string  `json:"reason"`
-	Confidence    float64 `json:"confidence"`
-	ContextMatch  float64 `json:"context_match"`
+	SkillName    string  `json:"skill_name"`
+	Reason       string  `json:"reason"`
+	Confidence   float64 `json:"confidence"`
+	ContextMatch float64 `json:"context_match"`
 }
 
 // CleanupSuggestion 清理建议
 type CleanupSuggestion struct {
-	SkillName    string  `json:"skill_name"`
-	Reason       string  `json:"reason"`
-	Action       string  `json:"action"` // "delete", "merge", "improve"
-	TargetSkill  string  `json:"target_skill,omitempty"` // 合并目标
+	SkillName   string `json:"skill_name"`
+	Reason      string `json:"reason"`
+	Action      string `json:"action"`                 // "delete", "merge", "improve"
+	TargetSkill string `json:"target_skill,omitempty"` // 合并目标
 }
 
 // SkillEvolutionOptimizer 技能进化优化器
@@ -85,10 +85,10 @@ func (seo *SkillEvolutionOptimizer) EvaluateSkillQuality(skillName string) (*Ski
 
 	// 获取使用事件统计（最近一个月）
 	var stats struct {
-		AvgContextMatch  float64
-		AvgSuccessRate   float64
-		AvgUserFeedback  float64
-		EventCount       int64
+		AvgContextMatch float64
+		AvgSuccessRate  float64
+		AvgUserFeedback float64
+		EventCount      int64
 	}
 
 	oneMonthAgo := time.Now().AddDate(0, -1, 0).Unix()
@@ -115,11 +115,11 @@ func (seo *SkillEvolutionOptimizer) EvaluateSkillQuality(skillName string) (*Ski
 
 	// 计算综合评分
 	// 权重：使用频率 30%，成功率 25%，用户满意度 25%，上下文相关性 20%
-	overallScore := 
+	overallScore :=
 		usageFrequency*0.30 +
-		stats.AvgSuccessRate*0.25 +
-		avgUserFeedback*0.25 +
-		stats.AvgContextMatch*0.20
+			stats.AvgSuccessRate*0.25 +
+			avgUserFeedback*0.25 +
+			stats.AvgContextMatch*0.20
 
 	// 如果事件太少，降低置信度
 	if stats.EventCount < 5 {
@@ -404,7 +404,7 @@ func (seo *SkillEvolutionOptimizer) AutoTagSkill(skillName string) ([]string, er
 func extractKeywords(text string) []string {
 	// 简单的关键词提取规则
 	keywords := make(map[string]bool)
-	
+
 	// 常见技术关键词
 	techKeywords := []string{
 		"api", "web", "database", "sql", "http", "json", "xml",

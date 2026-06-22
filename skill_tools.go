@@ -355,7 +355,7 @@ func handleSkillActivate(args []string, sm *SkillManager) (bool, string) {
 // used in SKILL.md files.
 var sectionAliases = map[string]string{
 	"description":   "描述",
-	"SystemPrompt": "系统提示",
+	"SystemPrompt":  "系统提示",
 	"output_format": "输出格式",
 	"triggers":      "触发关键词",
 	"tags":          "标签",

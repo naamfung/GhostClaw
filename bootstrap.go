@@ -1,77 +1,77 @@
 package main
 
 import (
-        "strings"
+	"strings"
 )
 
 // Required bootstrap memory keys that must exist for the agent to be fully operational.
 var requiredBootstrapKeys = []string{
-        "user.name",
-        "user.birth_year",
-        "user.gender",
-        "assistant.name",
+	"user.name",
+	"user.birth_year",
+	"user.gender",
+	"assistant.name",
 }
 
 // bootstrapCategories 是引導檢查需要覆蓋的記憶類別
 var bootstrapCategories = []MemoryCategory{
-        MemoryCategoryFact,
-        MemoryCategoryPreference,
-        MemoryCategoryContext,
+	MemoryCategoryFact,
+	MemoryCategoryPreference,
+	MemoryCategoryContext,
 }
 
 // batchCheckBootstrapKeys 一次查詢所有需要的 keys × categories，
 // 返回一個 set[string] 包含已存在的 key（不區分 category）。
 // 將 12~15 次 SELECT 減少為 1 次，消除 GORM "record not found" 日誌刷屏。
 func batchCheckBootstrapKeys(um *UnifiedMemory) map[string]bool {
-        found := make(map[string]bool)
-        if um == nil {
-                return found
-        }
-        gdb := um.getDB()
-        if gdb == nil {
-                return found
-        }
-        var results []Memories
-        gdb.Where("key IN ? AND category IN ?", requiredBootstrapKeys, bootstrapCategories).
-                Select("DISTINCT key").
-                Find(&results)
-        for _, r := range results {
-                found[r.Key] = true
-        }
-        return found
+	found := make(map[string]bool)
+	if um == nil {
+		return found
+	}
+	gdb := um.getDB()
+	if gdb == nil {
+		return found
+	}
+	var results []Memories
+	gdb.Where("key IN ? AND category IN ?", requiredBootstrapKeys, bootstrapCategories).
+		Select("DISTINCT key").
+		Find(&results)
+	for _, r := range results {
+		found[r.Key] = true
+	}
+	return found
 }
 
 // IsBootstrapNeeded checks if any required bootstrap keys are missing from memory.
 func IsBootstrapNeeded(um *UnifiedMemory) bool {
-        found := batchCheckBootstrapKeys(um)
-        for _, key := range requiredBootstrapKeys {
-                if !found[key] {
-                        return true
-                }
-        }
-        return false
+	found := batchCheckBootstrapKeys(um)
+	for _, key := range requiredBootstrapKeys {
+		if !found[key] {
+			return true
+		}
+	}
+	return false
 }
 
 // GetMissingBootstrapKeys returns the list of required keys that are missing.
 func GetMissingBootstrapKeys(um *UnifiedMemory) []string {
-        var missing []string
-        if um == nil {
-                return requiredBootstrapKeys
-        }
-        found := batchCheckBootstrapKeys(um)
-        for _, key := range requiredBootstrapKeys {
-                if !found[key] {
-                        missing = append(missing, key)
-                }
-        }
-        return missing
+	var missing []string
+	if um == nil {
+		return requiredBootstrapKeys
+	}
+	found := batchCheckBootstrapKeys(um)
+	for _, key := range requiredBootstrapKeys {
+		if !found[key] {
+			missing = append(missing, key)
+		}
+	}
+	return missing
 }
 
 // GetBootstrapPrompt returns the hardcoded bootstrap prompt in Chinese.
 // This prompt instructs the model to query the user for missing information
 // and save it using MemorySave.
 func GetBootstrapPrompt() string {
-        return `# 初始化引导
+	return `# 初始化引导
 
 这是你与雇主的第一次对话。你需要收集以下基本信息以完成初始化：
 
@@ -100,11 +100,11 @@ func GetBootstrapPrompt() string {
 
 // GetBootstrapMissingKeysPrompt returns a prompt listing which keys are missing.
 func GetBootstrapMissingKeysPrompt(um *UnifiedMemory) string {
-        missing := GetMissingBootstrapKeys(um)
-        if len(missing) == 0 {
-                return ""
-        }
-        return `# 初始化引导
+	missing := GetMissingBootstrapKeys(um)
+	if len(missing) == 0 {
+		return ""
+	}
+	return `# 初始化引导
 
 以下信息尚未收集，请在对话中自然地了解并保存：
 
@@ -115,20 +115,20 @@ func GetBootstrapMissingKeysPrompt(um *UnifiedMemory) string {
 
 // formatKeyList formats a list of keys into a readable bullet list.
 func formatKeyList(keys []string) string {
-        var sb strings.Builder
-        for _, key := range keys {
-                switch key {
-                case "user.name":
-                        sb.WriteString("- **user.name**：雇主的姓名/称呼\n")
-                case "user.birth_year":
-                        sb.WriteString("- **user.birth_year**：雇主的出生年份\n")
-                case "user.gender":
-                        sb.WriteString("- **user.gender**：雇主的性别\n")
-                case "assistant.name":
-                        sb.WriteString("- **assistant.name**：雇主希望怎么称呼你\n")
-                default:
-                        sb.WriteString("- **" + key + "**\n")
-                }
-        }
-        return sb.String()
+	var sb strings.Builder
+	for _, key := range keys {
+		switch key {
+		case "user.name":
+			sb.WriteString("- **user.name**：雇主的姓名/称呼\n")
+		case "user.birth_year":
+			sb.WriteString("- **user.birth_year**：雇主的出生年份\n")
+		case "user.gender":
+			sb.WriteString("- **user.gender**：雇主的性别\n")
+		case "assistant.name":
+			sb.WriteString("- **assistant.name**：雇主希望怎么称呼你\n")
+		default:
+			sb.WriteString("- **" + key + "**\n")
+		}
+	}
+	return sb.String()
 }

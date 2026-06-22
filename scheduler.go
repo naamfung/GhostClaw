@@ -23,7 +23,7 @@ const (
 type TCBState int
 
 const (
-	TCBReady   TCBState = iota
+	TCBReady TCBState = iota
 	TCBRunning
 	TCBBlocked
 	TCBDone

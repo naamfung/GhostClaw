@@ -1,3 +1,4 @@
+//go:build !webhook
 // +build !webhook
 
 // Webhook 渠道存根

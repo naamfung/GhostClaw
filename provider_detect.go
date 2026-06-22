@@ -13,12 +13,12 @@ import (
 
 // ProviderInfo 提供商信息
 type ProviderInfo struct {
-	Name       string // 提供商名称
-	APIType    string // API 类型 (openai, anthropic, gemini 等)
-	BaseURL    string // 默认 Base URL
-	ModelHint  string // 模型名前缀提示
-	KeyPrefix  string // API Key 前缀
-	DocURL     string // 文档链接
+	Name      string // 提供商名称
+	APIType   string // API 类型 (openai, anthropic, gemini 等)
+	BaseURL   string // 默认 Base URL
+	ModelHint string // 模型名前缀提示
+	KeyPrefix string // API Key 前缀
+	DocURL    string // 文档链接
 }
 
 // 已知提供商配置
@@ -278,23 +278,23 @@ func detectByBaseURL(baseURL string) *ProviderInfo {
 			// 本地服务
 			if strings.Contains(baseURL, "11434") {
 				return &ProviderInfo{
-					Name:      "Ollama",
-					APIType:   "ollama",
-					BaseURL:   "http://localhost:11434/api",
+					Name:    "Ollama",
+					APIType: "ollama",
+					BaseURL: "http://localhost:11434/api",
 				}
 			}
 			if strings.Contains(baseURL, "1234") {
 				return &ProviderInfo{
-					Name:      "LM Studio",
-					APIType:   "openai",
-					BaseURL:   "http://localhost:1234/v1",
+					Name:    "LM Studio",
+					APIType: "openai",
+					BaseURL: "http://localhost:1234/v1",
 				}
 			}
 			if strings.Contains(baseURL, "8000") {
 				return &ProviderInfo{
-					Name:      "vLLM",
-					APIType:   "openai",
-					BaseURL:   "http://localhost:8000/v1",
+					Name:    "vLLM",
+					APIType: "openai",
+					BaseURL: "http://localhost:8000/v1",
 				}
 			}
 		}

@@ -637,10 +637,10 @@ func TestGenerateCleanupSuggestions_NegativeTime_SkipsSkill(t *testing.T) {
 		TriggerWords: `["test"]`,
 		FilePath:     "/tmp/test/future/SKILL.md",
 		UseCount:     1,
-		LastUsed:     now + 86400,     // tomorrow (clock skew)
+		LastUsed:     now + 86400, // tomorrow (clock skew)
 		QualityScore: 0.1,
 		Protected:    false,
-		CreatedAt:    now + 86400,     // tomorrow (clock skew)
+		CreatedAt:    now + 86400, // tomorrow (clock skew)
 	})
 
 	suggestions, err := opt.GenerateCleanupSuggestions()

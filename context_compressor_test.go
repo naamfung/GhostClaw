@@ -835,8 +835,8 @@ func TestEstimateMessagesTokenCount_WithToolCalls(t *testing.T) {
 func TestEstimateMessagesTokenCount_WithReasoningContent(t *testing.T) {
 	cc := NewContextCompressor()
 	msg := Message{
-		Role:            "assistant",
-		Content:         "response",
+		Role:             "assistant",
+		Content:          "response",
 		ReasoningContent: "Let me think about this carefully for a while",
 	}
 	result := cc.estimateMessagesTokenCount([]Message{msg})

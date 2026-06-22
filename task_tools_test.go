@@ -31,7 +31,6 @@ func TestGetMaxDirectOutput_MinThreshold(t *testing.T) {
 	}
 }
 
-
 // ============================================================================
 // saveOutputToFile
 // ============================================================================
@@ -96,10 +95,10 @@ func TestSaveOutputToFile_PrefixInFilename(t *testing.T) {
 }
 
 func TestSaveOutputToFile_OutputDirCreated(t *testing.T) {
-	oldExecDir := globalExecDir
-	defer func() { globalExecDir = oldExecDir }()
+	oldDataDir := globalDataDir
+	defer func() { globalDataDir = oldDataDir }()
 
-	globalExecDir = t.TempDir()
+	globalDataDir = t.TempDir()
 
 	// output 目錄唔存在，函數應該自動創建
 	content := strings.Repeat("f", 15000)
@@ -108,8 +107,8 @@ func TestSaveOutputToFile_OutputDirCreated(t *testing.T) {
 		t.Fatalf("saveOutputToFile() error: %v", err)
 	}
 
-	// 確保輸出目錄被創建
-	outputDir := filepath.Join(globalExecDir, "output")
+	// 確保輸出目錄被創建（output 統一放在 <dataDir>/output 下）
+	outputDir := filepath.Join(globalDataDir, "output")
 	if info, err := os.Stat(outputDir); err != nil || !info.IsDir() {
 		t.Error("output directory should be created")
 	}

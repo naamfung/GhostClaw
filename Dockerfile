@@ -109,7 +109,9 @@ COPY plugins/ ./plugins/
 COPY public/ ./public/
 
 # 创建必要目录
-RUN mkdir -p uploads embed
+# 注意：uploads/download/output 等运行时目录现在统一放在 data/ 下，
+# 程序会在启动时自动创建，Dockerfile 只需预建 data 目录以便挂载卷。
+RUN mkdir -p data embed
 
 # 暴露端口
 EXPOSE 10086

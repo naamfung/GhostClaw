@@ -47,4 +47,3 @@ func LoadToolsAliases(path string) (map[string]string, error) {
 	log.Printf("Loaded %d tool alias(es) from %s", len(aliases), path)
 	return aliases, nil
 }
-

@@ -482,4 +482,3 @@ func TestWriteFileRange_InsertMode_SingleLine(t *testing.T) {
 		t.Errorf("got %v, want [header, new_section, body, footer]", lines)
 	}
 }
-

@@ -387,7 +387,7 @@ func TestParseToolCallsFromAnthropic(t *testing.T) {
 				"text": "hello",
 			},
 			map[string]interface{}{
-				"type": "thinking",
+				"type":     "thinking",
 				"thinking": "I think...",
 			},
 			map[string]interface{}{

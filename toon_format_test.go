@@ -17,8 +17,8 @@ import (
 
 // toonFieldCompliance 定義一個待檢查的 TOON 輸出源
 type toonFieldCompliance struct {
-	name    string // 人類可讀的輸出名稱
-	output  string // TOON 格式字串
+	name   string // 人類可讀的輸出名稱
+	output string // TOON 格式字串
 }
 
 // checkTOONPascalCase 解析 TOON 字串，檢查所有頂層字段名是否為 PascalCase。
@@ -270,8 +270,8 @@ func TestTOONFormat_SmartShellConfirm(t *testing.T) {
 
 func TestTOONFormat_SmartShellTimeout(t *testing.T) {
 	result := map[string]interface{}{
-		"Mode":          "timeout",
-		"Command":       "sleep 999",
+		"Mode":           "timeout",
+		"Command":        "sleep 999",
 		"TimeoutSeconds": 60,
 		"IsUnknownCmd":   true,
 		"Message":        "⏱️ 命令执行超时（60秒）",

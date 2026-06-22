@@ -9,30 +9,30 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/golang-lru/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/hashicorp/golang-lru/v2"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 // SkillMeta 技能元数据（不含完整内容）
 type SkillMeta struct {
-	ID           uint      `gorm:"primaryKey" json:"-"`
-	Name         string    `gorm:"uniqueIndex;not null" json:"name"`
-	DisplayName  string    `json:"DisplayName"`
-	Description  string    `json:"description"` // 摘要，非完整内容
-	Tags         string    `json:"tags"`        // JSON array as string
-	TriggerWords string    `json:"TriggerWords"` // JSON array as string
-	FilePath     string    `json:"-"`
-	FileSize     int64     `json:"FileSize"`
-	ModTime      int64     `json:"ModTime"`       // Unix timestamp
-	UseCount     int       `json:"UseCount"`
-	LastUsed     int64     `json:"last_used"`     // Unix timestamp
-	QualityScore float64   `json:"quality_score"`
-	Protected    bool      `json:"protected"`     // 受保護技能，自動清理會跳過
-	ContentHash  string    `json:"-"`
-	CreatedAt    int64     `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    int64     `gorm:"autoUpdateTime" json:"updated_at"`
+	ID           uint    `gorm:"primaryKey" json:"-"`
+	Name         string  `gorm:"uniqueIndex;not null" json:"name"`
+	DisplayName  string  `json:"DisplayName"`
+	Description  string  `json:"description"`  // 摘要，非完整内容
+	Tags         string  `json:"tags"`         // JSON array as string
+	TriggerWords string  `json:"TriggerWords"` // JSON array as string
+	FilePath     string  `json:"-"`
+	FileSize     int64   `json:"FileSize"`
+	ModTime      int64   `json:"ModTime"` // Unix timestamp
+	UseCount     int     `json:"UseCount"`
+	LastUsed     int64   `json:"last_used"` // Unix timestamp
+	QualityScore float64 `json:"quality_score"`
+	Protected    bool    `json:"protected"` // 受保護技能，自動清理會跳過
+	ContentHash  string  `json:"-"`
+	CreatedAt    int64   `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt    int64   `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // SkillUsageEvent 技能使用事件
@@ -50,12 +50,12 @@ type SkillUsageEvent struct {
 // SkillListRequest 技能列表查询请求
 type SkillListRequest struct {
 	Page        int      `json:"page"`        // 页码，从1开始
-	PageSize    int      `json:"PageSize"`   // 每页数量，默认20，最大100
+	PageSize    int      `json:"PageSize"`    // 每页数量，默认20，最大100
 	Tags        []string `json:"tags"`        // 标签过滤
 	Triggers    []string `json:"triggers"`    // 触发词过滤
 	Search      string   `json:"search"`      // 全文搜索
-	SortBy      string   `json:"SortBy"`     // 排序字段：name, usage, quality, last_used
-	SortOrder   string   `json:"SortOrder"`  // 排序方向：asc, desc
+	SortBy      string   `json:"SortBy"`      // 排序字段：name, usage, quality, last_used
+	SortOrder   string   `json:"SortOrder"`   // 排序方向：asc, desc
 	Context     string   `json:"context"`     // 当前上下文，用于智能排序
 	SuggestOnly bool     `json:"SuggestOnly"` // 只返回推荐技能
 }
@@ -286,7 +286,7 @@ func (sm *SkillManagerV2) ListSkills(req SkillListRequest) (*SkillListResponse, 
 	// 全文搜索
 	if req.Search != "" {
 		searchPattern := "%" + req.Search + "%"
-		query = query.Where("name LIKE ? OR display_name LIKE ? OR description LIKE ?", 
+		query = query.Where("name LIKE ? OR display_name LIKE ? OR description LIKE ?",
 			searchPattern, searchPattern, searchPattern)
 	}
 
@@ -304,7 +304,7 @@ func (sm *SkillManagerV2) ListSkills(req SkillListRequest) (*SkillListResponse, 
 	case "last_used":
 		orderColumn = "last_used"
 	}
-	
+
 	orderDirection := "ASC"
 	if strings.ToLower(req.SortOrder) == "desc" {
 		orderDirection = "DESC"
@@ -368,8 +368,8 @@ func (sm *SkillManagerV2) recordUsage(name string) {
 	sm.db.Model(&SkillMeta{}).
 		Where("name = ?", name).
 		Updates(map[string]interface{}{
-			"use_count":  gorm.Expr("use_count + 1"),
-			"last_used":  now,
+			"use_count": gorm.Expr("use_count + 1"),
+			"last_used": now,
 		})
 }
 
@@ -571,7 +571,7 @@ func (sm *SkillManagerV2) UpdateSkill(name string, updates map[string]interface{
 func (sm *SkillManagerV2) Reload() error {
 	// 清空缓存
 	sm.cache.Purge()
-	
+
 	// 重建索引
 	return sm.RebuildIndex()
 }
@@ -590,7 +590,7 @@ func buildSkillContent(skill *Skill) string {
 	var b strings.Builder
 
 	b.WriteString("# " + skill.DisplayName + "\n\n")
-	
+
 	if skill.Description != "" {
 		b.WriteString("## 描述\n" + skill.Description + "\n\n")
 	}

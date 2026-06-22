@@ -1,7 +1,7 @@
 package main
 
 import (
-        "strings"
+	"strings"
 )
 
 // ============================================================================
@@ -15,45 +15,45 @@ import (
 // - 数字/符号：约 1 token/3 字符
 // - JSON/markup 结构开销：+15%
 func ImprovedEstimateTokens(text string) int {
-        runes := []rune(text)
-        var cjkCount, latinCount, digitCount, otherCount int
-        for _, r := range runes {
-                switch {
-                case isCJK(r):
-                        cjkCount++
-                case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
-                        latinCount++
-                case r >= '0' && r <= '9':
-                        digitCount++
-                default:
-                        otherCount++
-                }
-        }
-        // 按字符类型加权估算
-        tokens := float64(cjkCount)*1.5 + float64(latinCount)/4.0 + float64(digitCount)/3.0 + float64(otherCount)/3.0
-        // JSON / 结构化文本额外开销（引号、花括号等标记符号增多）
-        if strings.Contains(text, "\"") || strings.Contains(text, "{") {
-                tokens *= 1.15
-        }
-        if tokens < 1 {
-                return 1
-        }
-        return int(tokens)
+	runes := []rune(text)
+	var cjkCount, latinCount, digitCount, otherCount int
+	for _, r := range runes {
+		switch {
+		case isCJK(r):
+			cjkCount++
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			latinCount++
+		case r >= '0' && r <= '9':
+			digitCount++
+		default:
+			otherCount++
+		}
+	}
+	// 按字符类型加权估算
+	tokens := float64(cjkCount)*1.5 + float64(latinCount)/4.0 + float64(digitCount)/3.0 + float64(otherCount)/3.0
+	// JSON / 结构化文本额外开销（引号、花括号等标记符号增多）
+	if strings.Contains(text, "\"") || strings.Contains(text, "{") {
+		tokens *= 1.15
+	}
+	if tokens < 1 {
+		return 1
+	}
+	return int(tokens)
 }
 
 // isCJK 判断字符是否属于中日韩统一表意文字范围
 func isCJK(r rune) bool {
-        return (r >= 0x4e00 && r <= 0x9fff) || // CJK Unified Ideographs
-                (r >= 0x3400 && r <= 0x4dbf) || // CJK Unified Ideographs Extension A
-                (r >= 0x20000 && r <= 0x2a6df) || // CJK Unified Ideographs Extension B
-                (r >= 0x2a700 && r <= 0x2b73f) || // CJK Unified Ideographs Extension C
-                (r >= 0x2b740 && r <= 0x2b81f) || // CJK Unified Ideographs Extension D
-                (r >= 0x2b820 && r <= 0x2ceaf) || // CJK Unified Ideographs Extension E
-                (r >= 0x30000 && r <= 0x3134f) || // CJK Unified Ideographs Extension F
-                (r >= 0x2e80 && r <= 0x2eff) || // CJK Radicals Supplement
-                (r >= 0x31c0 && r <= 0x31ef) || // CJK Strokes
-                (r >= 0xff00 && r <= 0xffef) || // Halfwidth and Fullwidth Forms
-                (r >= 0xf900 && r <= 0xfaff) // CJK Compatibility Ideographs
+	return (r >= 0x4e00 && r <= 0x9fff) || // CJK Unified Ideographs
+		(r >= 0x3400 && r <= 0x4dbf) || // CJK Unified Ideographs Extension A
+		(r >= 0x20000 && r <= 0x2a6df) || // CJK Unified Ideographs Extension B
+		(r >= 0x2a700 && r <= 0x2b73f) || // CJK Unified Ideographs Extension C
+		(r >= 0x2b740 && r <= 0x2b81f) || // CJK Unified Ideographs Extension D
+		(r >= 0x2b820 && r <= 0x2ceaf) || // CJK Unified Ideographs Extension E
+		(r >= 0x30000 && r <= 0x3134f) || // CJK Unified Ideographs Extension F
+		(r >= 0x2e80 && r <= 0x2eff) || // CJK Radicals Supplement
+		(r >= 0x31c0 && r <= 0x31ef) || // CJK Strokes
+		(r >= 0xff00 && r <= 0xffef) || // Halfwidth and Fullwidth Forms
+		(r >= 0xf900 && r <= 0xfaff) // CJK Compatibility Ideographs
 }
 
 // ============================================================================
@@ -107,26 +107,26 @@ func detectContextLengthFromSuffix(modelID string) int {
 // 同一名稱可能對接不同能力的模型（如 deepseek-chat 由 64K 升級到 1M）。
 // 用戶應通過 config.toon 的 ContextLength 或 MaxTokens 顯式指定上下文長度。
 func GetModelContextLengthSafe(modelID string) int {
-        if modelID == "" {
-                return 4096
-        }
+	if modelID == "" {
+		return 4096
+	}
 
-        lowerID := strings.ToLower(modelID)
+	lowerID := strings.ToLower(modelID)
 
-        // 1) 優先：用戶通過 config.toon ContextLength 或 MaxTokens 顯式指定的上下文長度
-        if userContextLengthOverrides != nil {
-                if limit, ok := userContextLengthOverrides[lowerID]; ok && limit > 0 {
-                        return limit
-                }
-        }
+	// 1) 優先：用戶通過 config.toon ContextLength 或 MaxTokens 顯式指定的上下文長度
+	if userContextLengthOverrides != nil {
+		if limit, ok := userContextLengthOverrides[lowerID]; ok && limit > 0 {
+			return limit
+		}
+	}
 
-        // 2) Model ID suffix 智能推斷（如 [1m]、[128k]、[200k]）
-        if limit := detectContextLengthFromSuffix(lowerID); limit > 0 {
-                return limit
-        }
+	// 2) Model ID suffix 智能推斷（如 [1m]、[128k]、[200k]）
+	if limit := detectContextLengthFromSuffix(lowerID); limit > 0 {
+		return limit
+	}
 
-        // 3) 安全默認值：4096
-        return 4096
+	// 3) 安全默認值：4096
+	return 4096
 }
 
 // ============================================================================
@@ -152,34 +152,34 @@ const MaxHistoryLowerBound = 3
 //   - toolTokens: 工具定义占用的 token 数
 //   - maxOutputTokens: 预留给输出的最大 token 数
 func CalculateAdaptiveMaxHistory(contextWindow int, systemPromptTokens int, toolTokens int, maxOutputTokens int) int {
-        // 從 context window 計算動態上限
-        // rawMax = contextWindow / HistoryTokenCoefficient，限制在 [LowerBound, UpperBound]
-        dynamicUpper := contextWindow / HistoryTokenCoefficient
-        if dynamicUpper < MaxHistoryLowerBound {
-                dynamicUpper = MaxHistoryLowerBound
-        }
-        if dynamicUpper > MaxHistoryUpperBound {
-                dynamicUpper = MaxHistoryUpperBound
-        }
+	// 從 context window 計算動態上限
+	// rawMax = contextWindow / HistoryTokenCoefficient，限制在 [LowerBound, UpperBound]
+	dynamicUpper := contextWindow / HistoryTokenCoefficient
+	if dynamicUpper < MaxHistoryLowerBound {
+		dynamicUpper = MaxHistoryLowerBound
+	}
+	if dynamicUpper > MaxHistoryUpperBound {
+		dynamicUpper = MaxHistoryUpperBound
+	}
 
-        // 先從總上下文窗口扣除輸出預留，剩餘的 60% 分配給歷史消息
-        effectiveContext := contextWindow - maxOutputTokens
-        if effectiveContext < 0 {
-                effectiveContext = contextWindow
-        }
-        availableForHistory := float64(effectiveContext)*0.6 - float64(systemPromptTokens) - float64(toolTokens)
-        if availableForHistory < 0 {
-                        availableForHistory = 500 // 绝对最小值，保证至少有少量上下文
-        }
-        // 假设平均每条消息约 200 token
-        avgMessageTokens := 200.0
-        maxHistory := int(availableForHistory / avgMessageTokens)
-        // 限制在 LowerBound 到 dynamicUpper 之間
-        if maxHistory < MaxHistoryLowerBound {
-                maxHistory = MaxHistoryLowerBound
-        }
-        if maxHistory > dynamicUpper {
-                maxHistory = dynamicUpper
-        }
-        return maxHistory
+	// 先從總上下文窗口扣除輸出預留，剩餘的 60% 分配給歷史消息
+	effectiveContext := contextWindow - maxOutputTokens
+	if effectiveContext < 0 {
+		effectiveContext = contextWindow
+	}
+	availableForHistory := float64(effectiveContext)*0.6 - float64(systemPromptTokens) - float64(toolTokens)
+	if availableForHistory < 0 {
+		availableForHistory = 500 // 绝对最小值，保证至少有少量上下文
+	}
+	// 假设平均每条消息约 200 token
+	avgMessageTokens := 200.0
+	maxHistory := int(availableForHistory / avgMessageTokens)
+	// 限制在 LowerBound 到 dynamicUpper 之間
+	if maxHistory < MaxHistoryLowerBound {
+		maxHistory = MaxHistoryLowerBound
+	}
+	if maxHistory > dynamicUpper {
+		maxHistory = dynamicUpper
+	}
+	return maxHistory
 }

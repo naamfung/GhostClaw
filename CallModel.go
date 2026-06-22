@@ -1,19 +1,19 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"crypto/tls"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"os"
-	"strings"
-	"sync"
-	"time"
+        "bytes"
+        "context"
+        "crypto/tls"
+        "encoding/json"
+        "fmt"
+        "io"
+        "log"
+        "net"
+        "net/http"
+        "os"
+        "strings"
+        "sync"
+        "time"
 )
 
 // ── API Request Structs (deterministic JSON order for prompt caching) ──
@@ -21,1478 +21,1451 @@ import (
 // anthropicRequest 構建 Anthropic API 請求體。
 // 字段順序固定（struct field order → JSON key order），確保 byte-for-byte prefix match。
 type anthropicRequest struct {
-	Model       string                  `json:"model"`
-	MaxTokens   int                     `json:"max_tokens"`
-	System      []anthropicContentBlock `json:"system"`
-	Messages    []interface{}           `json:"messages"`
-	Tools       []anthropicToolBlock    `json:"tools,omitempty"`
-	Temperature float64                 `json:"temperature"`
-	Stream      bool                    `json:"stream"`
-	Thinking    interface{}             `json:"thinking,omitempty"`
+        Model       string                  `json:"model"`
+        MaxTokens   int                     `json:"max_tokens"`
+        System      []anthropicContentBlock `json:"system"`
+        Messages    []interface{}           `json:"messages"`
+        Tools       []anthropicToolBlock    `json:"tools,omitempty"`
+        Temperature float64                 `json:"temperature"`
+        Stream      bool                    `json:"stream"`
+        Thinking    interface{}             `json:"thinking,omitempty"`
 }
 
 type anthropicContentBlock struct {
-	Type         string                 `json:"type"`
-	Text         string                 `json:"text"`
-	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+        Type         string                 `json:"type"`
+        Text         string                 `json:"text"`
+        CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type anthropicCacheControl struct {
-	Type string `json:"type"`
+        Type string `json:"type"`
 }
 
 type anthropicToolBlock struct {
-	Name         string                 `json:"name"`
-	Description  string                 `json:"description"`
-	InputSchema  interface{}            `json:"input_schema"`
-	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+        Name         string                 `json:"name"`
+        Description  string                 `json:"description"`
+        InputSchema  interface{}            `json:"input_schema"`
+        CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // openaiRequest 構建 OpenAI API 請求體。
 type openaiRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openaiMessage `json:"messages"`
-	Tools       []interface{}   `json:"tools,omitempty"`
-	Temperature float64         `json:"temperature"`
-	Stream      bool            `json:"stream"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Thinking    interface{}     `json:"thinking,omitempty"`
+        Model       string          `json:"model"`
+        Messages    []openaiMessage `json:"messages"`
+        Tools       []interface{}   `json:"tools,omitempty"`
+        Temperature float64         `json:"temperature"`
+        Stream      bool            `json:"stream"`
+        MaxTokens   int             `json:"max_tokens,omitempty"`
+        Thinking    interface{}     `json:"thinking,omitempty"`
 }
 
 // ollamaRequest 構建 Ollama API 請求體。
 type ollamaRequest struct {
-	Model       string        `json:"model"`
-	Messages    []interface{} `json:"messages"`
-	Tools       []interface{} `json:"tools,omitempty"`
-	Stream      bool          `json:"stream"`
-	System      string        `json:"system"`
-	Temperature float64       `json:"temperature"`
+        Model       string        `json:"model"`
+        Messages    []interface{} `json:"messages"`
+        Tools       []interface{} `json:"tools,omitempty"`
+        Stream      bool          `json:"stream"`
+        System      string        `json:"system"`
+        Temperature float64       `json:"temperature"`
 }
 
 // openaiMessage OpenAI/DeepSeek 格式嘅單條 message。
 // 用 struct 而唔係 map[string]interface{} 確保 JSON key order 確定（role → content），
 // 令 DeepSeek KV Cache 嘅 byte-level prefix 一致。
 type openaiMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
+        Role    string      `json:"role"`
+        Content interface{} `json:"content"`
 }
 
 // rateLimiter 基于令牌桶算法的速率限制器
 // 以 endpoint（BaseURL）为粒度，限制每分钟请求数
 type rateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*rateBucket
+        mu      sync.Mutex
+        buckets map[string]*rateBucket
 }
 
 type rateBucket struct {
-	tokens     float64   // 剩余令牌數（浮點避免低速率截斷）
-	maxTokens  float64   // 每分鐘最大令牌數（即每分鐘最大請求數）
-	lastRefill time.Time // 上次補充時間
+        tokens     float64   // 剩余令牌數（浮點避免低速率截斷）
+        maxTokens  float64   // 每分鐘最大令牌數（即每分鐘最大請求數）
+        lastRefill time.Time // 上次補充時間
 }
 
 var globalRateLimiter = &rateLimiter{
-	buckets: make(map[string]*rateBucket),
+        buckets: make(map[string]*rateBucket),
 }
 
 // waitIfNeeded 等待直到可以发送请求（如果需要限速）
 // endpoint 用于标识不同的 API 服务商
 // rateLimit 为每分钟请求数限制，0 表示不限制
 func (rl *rateLimiter) waitIfNeeded(ctx context.Context, endpoint string, rateLimit int) error {
-	if rateLimit <= 0 {
-		return nil
-	}
+        if rateLimit <= 0 {
+                return nil
+        }
 
-	rl.mu.Lock()
-	bucket, exists := rl.buckets[endpoint]
-	if !exists {
-		bucket = &rateBucket{
-			tokens:     float64(rateLimit),
-			maxTokens:  float64(rateLimit),
-			lastRefill: time.Now(),
-		}
-		rl.buckets[endpoint] = bucket
-	}
+        rl.mu.Lock()
+        bucket, exists := rl.buckets[endpoint]
+        if !exists {
+                bucket = &rateBucket{
+                        tokens:     float64(rateLimit),
+                        maxTokens:  float64(rateLimit),
+                        lastRefill: time.Now(),
+                }
+                rl.buckets[endpoint] = bucket
+        }
 
-	// 补充令牌：每分钟补充 maxTokens 个（浮點避免低速率截斷）
-	now := time.Now()
-	elapsed := now.Sub(bucket.lastRefill)
-	if elapsed >= time.Minute {
-		bucket.tokens = bucket.maxTokens
-		bucket.lastRefill = now
-	} else {
-		// 按比例補充（使用 float64 保留精度）
-		refillTokens := bucket.maxTokens * elapsed.Minutes()
-		if refillTokens > 0 {
-			bucket.tokens += refillTokens
-			if bucket.tokens > bucket.maxTokens {
-				bucket.tokens = bucket.maxTokens
-			}
-			bucket.lastRefill = now
-		}
-	}
+        // 补充令牌：每分钟补充 maxTokens 个（浮點避免低速率截斷）
+        now := time.Now()
+        elapsed := now.Sub(bucket.lastRefill)
+        if elapsed >= time.Minute {
+                bucket.tokens = bucket.maxTokens
+                bucket.lastRefill = now
+        } else {
+                // 按比例補充（使用 float64 保留精度）
+                refillTokens := bucket.maxTokens * elapsed.Minutes()
+                if refillTokens > 0 {
+                        bucket.tokens += refillTokens
+                        if bucket.tokens > bucket.maxTokens {
+                                bucket.tokens = bucket.maxTokens
+                        }
+                        bucket.lastRefill = now
+                }
+        }
 
-	if bucket.tokens >= 1.0 {
-		bucket.tokens--
-		rl.mu.Unlock()
-		return nil
-	}
+        if bucket.tokens >= 1.0 {
+                bucket.tokens--
+                rl.mu.Unlock()
+                return nil
+        }
 
-	// 沒有可用令牌：先預留一個 slot（將 tokens 減到負數），防止並發 goroutine 同時放行
-	// 其他 goroutine 看到負值就知道需要等更耐，唔會一齊衝閘
-	bucket.tokens--
-	waitDuration := time.Minute - elapsed
-	rl.mu.Unlock()
+        // 沒有可用令牌：先預留一個 slot（將 tokens 減到負數），防止並發 goroutine 同時放行
+        // 其他 goroutine 看到負值就知道需要等更耐，唔會一齊衝閘
+        bucket.tokens--
+        waitDuration := time.Minute - elapsed
+        rl.mu.Unlock()
 
-	if IsDebug {
-		log.Printf("[RateLimit] %s: 達到速率限制 (%d/min)，預留 slot，等待 %v", endpoint, rateLimit, waitDuration.Round(time.Second))
-	}
+        if IsDebug {
+                log.Printf("[RateLimit] %s: 達到速率限制 (%d/min)，預留 slot，等待 %v", endpoint, rateLimit, waitDuration.Round(time.Second))
+        }
 
-	select {
-	case <-time.After(waitDuration):
-		// slot 已預留，無須重新檢查，直接返回
-		return nil
-	case <-ctx.Done():
-		// 取消時歸還預留的 token（盡力而為，不持鎖避免死鎖）
-		rl.mu.Lock()
-		bucket, exists := rl.buckets[endpoint]
-		if exists {
-			bucket.tokens++
-			if bucket.tokens > bucket.maxTokens {
-				bucket.tokens = bucket.maxTokens
-			}
-		}
-		rl.mu.Unlock()
-		return ctx.Err()
-	}
+        select {
+        case <-time.After(waitDuration):
+                // slot 已預留，無須重新檢查，直接返回
+                return nil
+        case <-ctx.Done():
+                // 取消時歸還預留的 token（盡力而為，不持鎖避免死鎖）
+                rl.mu.Lock()
+                bucket, exists := rl.buckets[endpoint]
+                if exists {
+                        bucket.tokens++
+                        if bucket.tokens > bucket.maxTokens {
+                                bucket.tokens = bucket.maxTokens
+                        }
+                }
+                rl.mu.Unlock()
+                return ctx.Err()
+        }
 }
 
 // 全局 HTTP 客户端
 var httpClient = &http.Client{
-	Timeout: 0, // 取消默认超时，由 Context 控制
-	Transport: &http.Transport{
-		// 禁用 HTTP/2：SSE (Server-Sent Events) 基於 HTTP/1.1 長連接，
-		// 許多 API 代理對 HTTP/2 的 SSE 支持不佳，會導致
-		// "http2: response body closed" 錯誤。
-		// 設置空的 TLSNextProto map 可以阻止 Go 自動協商 HTTP/2。
-		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+        Timeout: 0, // 取消默认超时，由 Context 控制
+        Transport: &http.Transport{
+                // 禁用 HTTP/2：SSE (Server-Sent Events) 基於 HTTP/1.1 長連接，
+                // 許多 API 代理對 HTTP/2 的 SSE 支持不佳，會導致
+                // "http2: response body closed" 錯誤。
+                // 設置空的 TLSNextProto map 可以阻止 Go 自動協商 HTTP/2。
+                TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
 
-		// 連接層級超時：防止 DNS/TLS 握手在無響應時永久掛起
-		// Context 控制的是整體請求超時，此處提供更細粒度的網絡層保護
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout:   30 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		IdleConnTimeout:       30 * time.Second, // 縮短 idle connection lifetime，避免 stale connection
-	},
+                // 連接層級超時：防止 DNS/TLS 握手在無響應時永久掛起
+                // Context 控制的是整體請求超時，此處提供更細粒度的網絡層保護
+                DialContext: (&net.Dialer{
+                        Timeout:   30 * time.Second,
+                        KeepAlive: 30 * time.Second,
+                }).DialContext,
+                TLSHandshakeTimeout:   30 * time.Second,
+                ResponseHeaderTimeout: 60 * time.Second,
+                IdleConnTimeout:       30 * time.Second, // 縮短 idle connection lifetime，避免 stale connection
+        },
 }
 
 // StreamReplacer 用于流式文本替换（最长匹配）
 type StreamReplacer struct {
-	buffer             []rune
-	maxKeyLen          int
-	sortedReplacements []StringReplacement
-	out                func(r rune)
+        buffer             []rune
+        maxKeyLen          int
+        sortedReplacements []StringReplacement
+        out                func(r rune)
 }
 
 // NewStreamReplacer 创建流式替换器
 func NewStreamReplacer(out func(r rune)) *StreamReplacer {
-	sr := &StreamReplacer{
-		buffer:             make([]rune, 0),
-		sortedReplacements: sortedStringsReplacements.Replacements,
-		out:                out,
-	}
-	// 计算最长键的字符数
-	for _, rep := range sr.sortedReplacements {
-		if len([]rune(rep.Key)) > sr.maxKeyLen {
-			sr.maxKeyLen = len([]rune(rep.Key))
-		}
-	}
-	return sr
+        sr := &StreamReplacer{
+                buffer:             make([]rune, 0),
+                sortedReplacements: sortedStringsReplacements.Replacements,
+                out:                out,
+        }
+        // 计算最长键的字符数
+        for _, rep := range sr.sortedReplacements {
+                if len([]rune(rep.Key)) > sr.maxKeyLen {
+                        sr.maxKeyLen = len([]rune(rep.Key))
+                }
+        }
+        return sr
 }
 
 // Write 处理新文本
 func (sr *StreamReplacer) Write(text string) {
-	runes := []rune(text)
-	for _, r := range runes {
-		sr.buffer = append(sr.buffer, r)
-		sr.flushSafe()
-	}
+        runes := []rune(text)
+        for _, r := range runes {
+                sr.buffer = append(sr.buffer, r)
+                sr.flushSafe()
+        }
 }
 
 // Flush 输出缓冲区剩余内容
 func (sr *StreamReplacer) Flush() {
-	for _, r := range sr.buffer {
-		sr.out(r)
-	}
-	sr.buffer = sr.buffer[:0]
+        for _, r := range sr.buffer {
+                sr.out(r)
+        }
+        sr.buffer = sr.buffer[:0]
 }
 
 // flushSafe 处理缓冲区，输出安全字符
 func (sr *StreamReplacer) flushSafe() {
-	for {
-		if len(sr.buffer) == 0 {
-			break
-		}
-		// 尝试从起始位置匹配最长键
-		matched := false
-		for _, rep := range sr.sortedReplacements {
-			keyRunes := []rune(rep.Key)
-			if len(keyRunes) <= len(sr.buffer) {
-				eq := true
-				for i := 0; i < len(keyRunes); i++ {
-					if sr.buffer[i] != keyRunes[i] {
-						eq = false
-						break
-					}
-				}
-				if eq {
-					// 输出替换值
-					for _, r := range []rune(rep.Value) {
-						sr.out(r)
-					}
-					// 移除匹配部分
-					sr.buffer = sr.buffer[len(keyRunes):]
-					matched = true
-					break
-				}
-			}
-		}
-		if matched {
-			continue
-		}
+        for {
+                if len(sr.buffer) == 0 {
+                        break
+                }
+                // 尝试从起始位置匹配最长键
+                matched := false
+                for _, rep := range sr.sortedReplacements {
+                        keyRunes := []rune(rep.Key)
+                        if len(keyRunes) <= len(sr.buffer) {
+                                eq := true
+                                for i := 0; i < len(keyRunes); i++ {
+                                        if sr.buffer[i] != keyRunes[i] {
+                                                eq = false
+                                                break
+                                        }
+                                }
+                                if eq {
+                                        // 输出替换值
+                                        for _, r := range []rune(rep.Value) {
+                                                sr.out(r)
+                                        }
+                                        // 移除匹配部分
+                                        sr.buffer = sr.buffer[len(keyRunes):]
+                                        matched = true
+                                        break
+                                }
+                        }
+                }
+                if matched {
+                        continue
+                }
 
-		// 检查起始位置是否是某个键的前缀
-		isPrefix := false
-		for _, rep := range sr.sortedReplacements {
-			keyRunes := []rune(rep.Key)
-			if len(keyRunes) > 0 && len(sr.buffer) < len(keyRunes) {
-				eq := true
-				for i := 0; i < len(sr.buffer); i++ {
-					if sr.buffer[i] != keyRunes[i] {
-						eq = false
-						break
-					}
-				}
-				if eq {
-					isPrefix = true
-					break
-				}
-			}
-		}
-		if isPrefix {
-			// 是某个键的前缀，等待更多字符
-			break
-		}
+                // 检查起始位置是否是某个键的前缀
+                isPrefix := false
+                for _, rep := range sr.sortedReplacements {
+                        keyRunes := []rune(rep.Key)
+                        if len(keyRunes) > 0 && len(sr.buffer) < len(keyRunes) {
+                                eq := true
+                                for i := 0; i < len(sr.buffer); i++ {
+                                        if sr.buffer[i] != keyRunes[i] {
+                                                eq = false
+                                                break
+                                        }
+                                }
+                                if eq {
+                                        isPrefix = true
+                                        break
+                                }
+                        }
+                }
+                if isPrefix {
+                        // 是某个键的前缀，等待更多字符
+                        break
+                }
 
-		// 不是前缀，输出第一个字符
-		sr.out(sr.buffer[0])
-		sr.buffer = sr.buffer[1:]
-		// 继续循环
-	}
+                // 不是前缀，输出第一个字符
+                sr.out(sr.buffer[0])
+                sr.buffer = sr.buffer[1:]
+                // 继续循环
+        }
 }
 
 // applyReplacements 对字符串应用替换（最长匹配，非递归）
 func applyReplacements(text string) string {
-	runes := []rune(text)
-	result := make([]rune, 0, len(runes))
-	i := 0
-	for i < len(runes) {
-		matched := false
-		for _, rep := range sortedStringsReplacements.Replacements {
-			keyRunes := []rune(rep.Key)
-			if i+len(keyRunes) <= len(runes) {
-				eq := true
-				for j := 0; j < len(keyRunes); j++ {
-					if runes[i+j] != keyRunes[j] {
-						eq = false
-						break
-					}
-				}
-				if eq {
-					// 替换
-					result = append(result, []rune(rep.Value)...)
-					i += len(keyRunes)
-					matched = true
-					break
-				}
-			}
-		}
-		if !matched {
-			result = append(result, runes[i])
-			i++
-		}
-	}
-	return string(result)
+        runes := []rune(text)
+        result := make([]rune, 0, len(runes))
+        i := 0
+        for i < len(runes) {
+                matched := false
+                for _, rep := range sortedStringsReplacements.Replacements {
+                        keyRunes := []rune(rep.Key)
+                        if i+len(keyRunes) <= len(runes) {
+                                eq := true
+                                for j := 0; j < len(keyRunes); j++ {
+                                        if runes[i+j] != keyRunes[j] {
+                                                eq = false
+                                                break
+                                        }
+                                }
+                                if eq {
+                                        // 替换
+                                        result = append(result, []rune(rep.Value)...)
+                                        i += len(keyRunes)
+                                        matched = true
+                                        break
+                                }
+                        }
+                }
+                if !matched {
+                        result = append(result, runes[i])
+                        i++
+                }
+        }
+        return string(result)
 }
 
 // 生成系统提示（仅作为 fallback 使用，不包含时间以最大化缓存命中）
 func generateSystemPrompt(apiType string) string {
-	toolOrFunction := "tool"
-	if apiType == "openai" {
-		toolOrFunction = "function"
-	}
-	return strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
+        toolOrFunction := "tool"
+        if apiType == "openai" {
+                toolOrFunction = "function"
+        }
+        return strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
 }
 
 // extractSystemPrompt 从 messages 中提取系统提示词
 // 返回：系统提示词内容、过滤后的消息列表
 func extractSystemPrompt(messages []Message) (string, []Message) {
-	var systemPrompt string
-	var filteredMessages []Message
+        var systemPrompt string
+        var filteredMessages []Message
 
-	for _, msg := range messages {
-		if msg.Role == "system" {
-			// 提取系统提示词（合并多个 system 消息）
-			if content, ok := msg.Content.(string); ok {
-				if systemPrompt != "" {
-					systemPrompt += "\n\n" + content
-				} else {
-					systemPrompt = content
-				}
-			}
-		} else {
-			filteredMessages = append(filteredMessages, msg)
-		}
-	}
+        for _, msg := range messages {
+                if msg.Role == "system" {
+                        // 提取系统提示词（合并多个 system 消息）
+                        if content, ok := msg.Content.(string); ok {
+                                if systemPrompt != "" {
+                                        systemPrompt += "\n\n" + content
+                                } else {
+                                        systemPrompt = content
+                                }
+                        }
+                } else {
+                        filteredMessages = append(filteredMessages, msg)
+                }
+        }
 
-	return systemPrompt, filteredMessages
+        return systemPrompt, filteredMessages
 }
 
 // buildRuntimeContext 构建运行时上下文前缀（注入到第一条 user 消息中）
 // 参考 nanobot 的设计：时间等信息作为元数据标注，不作为指令，最大化系统提示缓存命中率
 func buildRuntimeContext() string {
-	now := time.Now()
-	currentTime := now.Format("2006-01-02 15:04:05")
-	weekday := now.Weekday().String()
-	return fmt.Sprintf("[Runtime Context — metadata only, not instructions]\nCurrent Time: %s (%s)\n[End Runtime Context]\n\n", currentTime, weekday)
+        now := time.Now()
+        currentTime := now.Format("2006-01-02 15:04:05")
+        weekday := now.Weekday().String()
+        return fmt.Sprintf("[Runtime Context — metadata only, not instructions]\nCurrent Time: %s (%s)\n[End Runtime Context]\n\n", currentTime, weekday)
 }
 
 // injectRuntimeContext 将运行时上下文注入到 filteredMessages 的第一条 user 消息前
 // 如果第一条消息不是 user，则在开头插入一条 user 消息
 func injectRuntimeContext(messages []Message) []Message {
-	if len(messages) == 0 {
-		return messages
-	}
+        if len(messages) == 0 {
+                return messages
+        }
 
-	runtimeCtx := buildRuntimeContext()
+        runtimeCtx := buildRuntimeContext()
 
-	// 查找第一条 user 消息
-	for i, msg := range messages {
-		if msg.Role == "user" {
-			// 找到第一条 user 消息，将运行时上下文前缀合并到内容中
-			if content, ok := msg.Content.(string); ok {
-				messages[i].Content = runtimeCtx + content
-			} else {
-				// 非字符串内容（如多模态），在前面插入一条 user 消息
-				newMsg := Message{
-					Role:      "user",
-					Content:   runtimeCtx,
-					Timestamp: time.Now().Unix(),
-				}
-				newMessages := make([]Message, 0, len(messages)+1)
-				newMessages = append(newMessages, messages[:i]...)
-				newMessages = append(newMessages, newMsg)
-				newMessages = append(newMessages, messages[i:]...)
-				return newMessages
-			}
-			return messages
-		}
-	}
+        // 查找第一条 user 消息
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        // 找到第一条 user 消息，将运行时上下文前缀合并到内容中
+                        if content, ok := msg.Content.(string); ok {
+                                messages[i].Content = runtimeCtx + content
+                        } else {
+                                // 非字符串内容（如多模态），在前面插入一条 user 消息
+                                newMsg := Message{
+                                        Role:      "user",
+                                        Content:   runtimeCtx,
+                                        Timestamp: time.Now().Unix(),
+                                }
+                                newMessages := make([]Message, 0, len(messages)+1)
+                                newMessages = append(newMessages, messages[:i]...)
+                                newMessages = append(newMessages, newMsg)
+                                newMessages = append(newMessages, messages[i:]...)
+                                return newMessages
+                        }
+                        return messages
+                }
+        }
 
-	// 没有 user 消息（极端情况），在开头插入
-	return append([]Message{{
-		Role:      "user",
-		Content:   runtimeCtx,
-		Timestamp: time.Now().Unix(),
-	}}, messages...)
+        // 没有 user 消息（极端情况），在开头插入
+        return append([]Message{{
+                Role:      "user",
+                Content:   runtimeCtx,
+                Timestamp: time.Now().Unix(),
+        }}, messages...)
 }
 
 // markHistoricalUserMessages 標記最新 user 消息之前的所有 user 消息為 [USR:HISTORICAL]，
 // 明確告知模型呢啲係歷史已處理請求，唔係當前指令。
 // 配合 markLatestUserRequest 使用：歷史消息標 [USR:HISTORICAL]，最新標 [USR:LATEST]。
 func markHistoricalUserMessages(messages []Message) []Message {
-	// 搵最後一條 user 消息
-	lastUserIdx := -1
-	for i, msg := range messages {
-		if msg.Role == "user" {
-			lastUserIdx = i
-		}
-	}
+        // 搵最後一條 user 消息
+        lastUserIdx := -1
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        lastUserIdx = i
+                }
+        }
 
-	if lastUserIdx < 0 {
-		return messages
-	}
+        if lastUserIdx < 0 {
+                return messages
+        }
 
-	// 標記最新 user 消息之前的所有 user 消息為歷史
-	for i := 0; i < lastUserIdx; i++ {
-		if messages[i].Role == "user" {
-			if content, ok := messages[i].Content.(string); ok {
-				if !strings.HasPrefix(content, HistoricalMarker) &&
-					!strings.HasPrefix(content, LatestRequestMarker) {
-					messages[i].Content = HistoricalMarker + " " + content
-				}
-			}
-		}
-	}
+        // 標記最新 user 消息之前的所有 user 消息為歷史
+        for i := 0; i < lastUserIdx; i++ {
+                if messages[i].Role == "user" {
+                        if content, ok := messages[i].Content.(string); ok {
+                                if !strings.HasPrefix(content, HistoricalMarker) &&
+                                        !strings.HasPrefix(content, LatestRequestMarker) {
+                                        messages[i].Content = HistoricalMarker + " " + content
+                                }
+                        }
+                }
+        }
 
-	return messages
+        return messages
 }
 
 // markLatestUserRequest 标记最后一条 user 消息为 [USR:LATEST]，引导模型优先处理
 // 在任何有歷史上下文嘅場景下都加上標記（包括壓縮後只有一條 user message 嘅情況），
 // 防止模型將壓縮摘要中提取嘅歷史目標誤認為當前指令。
 func markLatestUserRequest(messages []Message) []Message {
-	// 搵最後一條 user 消息
-	lastUserIdx := -1
-	for i, msg := range messages {
-		if msg.Role == "user" {
-			lastUserIdx = i
-		}
-	}
+        // 搵最後一條 user 消息
+        lastUserIdx := -1
+        for i, msg := range messages {
+                if msg.Role == "user" {
+                        lastUserIdx = i
+                }
+        }
 
-	if lastUserIdx < 0 {
-		return messages
-	}
+        if lastUserIdx < 0 {
+                return messages
+        }
 
-	// 冇其他消息（得一條 user message，冇 system/assistant/tool），唔需要標記
-	if len(messages) <= 1 {
-		return messages
-	}
+        // 冇其他消息（得一條 user message，冇 system/assistant/tool），唔需要標記
+        if len(messages) <= 1 {
+                return messages
+        }
 
-	// 加上最新請求標記
-	if content, ok := messages[lastUserIdx].Content.(string); ok {
-		// 避免重複標記
-		if !strings.HasPrefix(content, LatestRequestMarker) {
-			messages[lastUserIdx].Content = LatestRequestMarker + " " + content
-		}
-	}
+        // 加上最新請求標記
+        if content, ok := messages[lastUserIdx].Content.(string); ok {
+                // 避免重複標記
+                if !strings.HasPrefix(content, LatestRequestMarker) {
+                        messages[lastUserIdx].Content = LatestRequestMarker + " " + content
+                }
+        }
 
-	return messages
+        return messages
 }
 
 // convertToAnthropicFormat 將內部 Message 轉換為 Anthropic API 要求的格式
 // 注意：Anthropic API 使用单独的 system 参数，不将 system 消息放在 messages 中
 func convertToAnthropicFormat(messages []Message) []map[string]interface{} {
-	anthropicMessages := make([]map[string]interface{}, 0, len(messages))
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			// Anthropic 使用单独的 system 参数，跳过 messages 中的 system 消息
-			continue
-		case "user":
-			anthropicMessages = append(anthropicMessages, map[string]interface{}{
-				"role":    "user",
-				"content": msg.Content,
-			})
-		case "assistant":
-			if msg.ToolCalls != nil {
-				// 构建 content 数组，包含 text、thinking 和 tool_use
-				content := []map[string]interface{}{}
-				// 先添加思考内容（含 signature，Anthropic API 要求回傳）
-				// 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
-				if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
-					reasoning := ""
-					if msg.ReasoningContent != nil {
-						if r, ok := msg.ReasoningContent.(string); ok {
-							reasoning = r
-						}
-					}
-					thinkingBlock := map[string]interface{}{
-						"type":     "thinking",
-						"thinking": reasoning,
-					}
-					if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
-						thinkingBlock["signature"] = msg.ThinkingSignature
-					}
-					content = append(content, thinkingBlock)
-				}
-				// 再添加文本内容
-				if msg.Content != nil {
-					if txt, ok := msg.Content.(string); ok && txt != "" {
-						content = append(content, map[string]interface{}{
-							"type": "text",
-							"text": txt,
-						})
-					}
-				}
-				// 處理 []interface{} 和 []map[string]interface{} 兩種格式
-				var toolCallSlice []map[string]interface{}
-				switch v := msg.ToolCalls.(type) {
-				case []interface{}:
-					for _, tc := range v {
-						if tcMap, ok := tc.(map[string]interface{}); ok {
-							toolCallSlice = append(toolCallSlice, tcMap)
-						}
-					}
-				case []map[string]interface{}:
-					toolCallSlice = v
-				}
-				for _, tcMap := range toolCallSlice {
-					if function, ok := tcMap["function"].(map[string]interface{}); ok {
-						toolUse := map[string]interface{}{
-							"type": "tool_use",
-							"id":   tcMap["id"],
-							"name": function["name"],
-						}
-						// arguments 可能是字符串，尝试解析为对象
-						if argsStr, ok := function["arguments"].(string); ok {
-							var args map[string]interface{}
-							if err := json.Unmarshal([]byte(argsStr), &args); err == nil {
-								toolUse["input"] = args
-							} else {
-								toolUse["input"] = argsStr
-							}
-						}
-						content = append(content, toolUse)
-					}
-				}
-				anthropicMessages = append(anthropicMessages, map[string]interface{}{
-					"role":    "assistant",
-					"content": content,
-				})
-			} else {
-				// 构建 content 数组，包含 text 和 thinking（含 signature）
-				content := []map[string]interface{}{}
-				// 先添加思考内容（含 signature，Anthropic API 要求回傳）
-				// 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
-				if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
-					reasoning := ""
-					if msg.ReasoningContent != nil {
-						if r, ok := msg.ReasoningContent.(string); ok {
-							reasoning = r
-						}
-					}
-					thinkingBlock := map[string]interface{}{
-						"type":     "thinking",
-						"thinking": reasoning,
-					}
-					if msg.ThinkingSignature != "" {
-						thinkingBlock["signature"] = msg.ThinkingSignature
-					}
-					content = append(content, thinkingBlock)
-				}
-				// 再添加文本内容
-				if msg.Content != nil {
-					if txt, ok := msg.Content.(string); ok && txt != "" {
-						content = append(content, map[string]interface{}{
-							"type": "text",
-							"text": txt,
-						})
-					}
-				}
-				// 如果有内容，使用数组格式
-				if len(content) > 0 {
-					anthropicMessages = append(anthropicMessages, map[string]interface{}{
-						"role":    "assistant",
-						"content": content,
-					})
-				} else {
-					// 没有内容，fallback 使用空內容陣列（避免 nil 導致 API 400）
-					fallbackContent := msg.Content
-					if fallbackContent == nil {
-						fallbackContent = []map[string]interface{}{}
-					}
-					anthropicMessages = append(anthropicMessages, map[string]interface{}{
-						"role":    "assistant",
-						"content": fallbackContent,
-					})
-				}
-			}
-		case "tool":
-			// 确保 tool_use_id 不为空
-			toolUseID := msg.ToolCallID
-			if toolUseID == "" {
-				toolUseID = "unknown_tool_use"
-			}
-			// 确保 content 是字符串
-			var contentStr string
-			switch v := msg.Content.(type) {
-			case string:
-				contentStr = v
-			case nil:
-				contentStr = ""
-			default:
-				if jsonBytes, err := json.Marshal(v); err == nil {
-					contentStr = string(jsonBytes)
-				} else {
-					contentStr = fmt.Sprintf("%v", v)
-				}
-			}
-			toolResult := map[string]interface{}{
-				"type":        "tool_result",
-				"tool_use_id": toolUseID,
-				"content":     contentStr,
-			}
-			anthropicMessages = append(anthropicMessages, map[string]interface{}{
-				"role": "user",
-				"content": []map[string]interface{}{
-					toolResult,
-				},
-			})
-		}
-	}
-	return anthropicMessages
+        anthropicMessages := make([]map[string]interface{}, 0, len(messages))
+        for _, msg := range messages {
+                switch msg.Role {
+                case "system":
+                        // Anthropic 使用单独的 system 参数，跳过 messages 中的 system 消息
+                        continue
+                case "user":
+                        anthropicMessages = append(anthropicMessages, map[string]interface{}{
+                                "role":    "user",
+                                "content": msg.Content,
+                        })
+                case "assistant":
+                        if msg.ToolCalls != nil {
+                                // 构建 content 数组，包含 text、thinking 和 tool_use
+                                content := []map[string]interface{}{}
+                                // 先添加思考内容（含 signature，Anthropic API 要求回傳）
+                                // 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
+                                if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
+                                        reasoning := ""
+                                        if msg.ReasoningContent != nil {
+                                                if r, ok := msg.ReasoningContent.(string); ok {
+                                                        reasoning = r
+                                                }
+                                        }
+                                        thinkingBlock := map[string]interface{}{
+                                                "type":     "thinking",
+                                                "thinking": reasoning,
+                                        }
+                                        if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
+                                                thinkingBlock["signature"] = msg.ThinkingSignature
+                                        }
+                                        content = append(content, thinkingBlock)
+                                }
+                                // 再添加文本内容
+                                if msg.Content != nil {
+                                        if txt, ok := msg.Content.(string); ok && txt != "" {
+                                                content = append(content, map[string]interface{}{
+                                                        "type": "text",
+                                                        "text": txt,
+                                                })
+                                        }
+                                }
+                                // 處理 []interface{} 和 []map[string]interface{} 兩種格式
+                                var toolCallSlice []map[string]interface{}
+                                switch v := msg.ToolCalls.(type) {
+                                case []interface{}:
+                                        for _, tc := range v {
+                                                if tcMap, ok := tc.(map[string]interface{}); ok {
+                                                        toolCallSlice = append(toolCallSlice, tcMap)
+                                                }
+                                        }
+                                case []map[string]interface{}:
+                                        toolCallSlice = v
+                                }
+                                for _, tcMap := range toolCallSlice {
+                                        if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                                toolUse := map[string]interface{}{
+                                                        "type": "tool_use",
+                                                        "id":   tcMap["id"],
+                                                        "name": function["name"],
+                                                }
+                                                // arguments 可能是字符串，尝试解析为对象
+                                                if argsStr, ok := function["arguments"].(string); ok {
+                                                        var args map[string]interface{}
+                                                        if err := json.Unmarshal([]byte(argsStr), &args); err == nil {
+                                                                toolUse["input"] = args
+                                                        } else {
+                                                                toolUse["input"] = argsStr
+                                                        }
+                                                }
+                                                content = append(content, toolUse)
+                                        }
+                                }
+                                anthropicMessages = append(anthropicMessages, map[string]interface{}{
+                                        "role":    "assistant",
+                                        "content": content,
+                                })
+                        } else {
+                                // 构建 content 数组，包含 text 和 thinking（含 signature）
+                                content := []map[string]interface{}{}
+                                // 先添加思考内容（含 signature，Anthropic API 要求回傳）
+                                // 即使 reasoning 文字為空，只要 signature 存在就必須回傳 thinking block
+                                if msg.ReasoningContent != nil || msg.ThinkingSignature != "" {
+                                        reasoning := ""
+                                        if msg.ReasoningContent != nil {
+                                                if r, ok := msg.ReasoningContent.(string); ok {
+                                                        reasoning = r
+                                                }
+                                        }
+                                        thinkingBlock := map[string]interface{}{
+                                                "type":     "thinking",
+                                                "thinking": reasoning,
+                                        }
+                                        if msg.ThinkingSignature != "" {
+                                                thinkingBlock["signature"] = msg.ThinkingSignature
+                                        }
+                                        content = append(content, thinkingBlock)
+                                }
+                                // 再添加文本内容
+                                if msg.Content != nil {
+                                        if txt, ok := msg.Content.(string); ok && txt != "" {
+                                                content = append(content, map[string]interface{}{
+                                                        "type": "text",
+                                                        "text": txt,
+                                                })
+                                        }
+                                }
+                                // 如果有内容，使用数组格式
+                                if len(content) > 0 {
+                                        anthropicMessages = append(anthropicMessages, map[string]interface{}{
+                                                "role":    "assistant",
+                                                "content": content,
+                                        })
+                                } else {
+                                        // 没有内容，fallback 使用空內容陣列（避免 nil 導致 API 400）
+                                        fallbackContent := msg.Content
+                                        if fallbackContent == nil {
+                                                fallbackContent = []map[string]interface{}{}
+                                        }
+                                        anthropicMessages = append(anthropicMessages, map[string]interface{}{
+                                                "role":    "assistant",
+                                                "content": fallbackContent,
+                                        })
+                                }
+                        }
+                case "tool":
+                        // 确保 tool_use_id 不为空
+                        toolUseID := msg.ToolCallID
+                        if toolUseID == "" {
+                                toolUseID = "unknown_tool_use"
+                        }
+                        // 确保 content 是字符串
+                        var contentStr string
+                        switch v := msg.Content.(type) {
+                        case string:
+                                contentStr = v
+                        case nil:
+                                contentStr = ""
+                        default:
+                                if jsonBytes, err := json.Marshal(v); err == nil {
+                                        contentStr = string(jsonBytes)
+                                } else {
+                                        contentStr = fmt.Sprintf("%v", v)
+                                }
+                        }
+                        toolResult := map[string]interface{}{
+                                "type":        "tool_result",
+                                "tool_use_id": toolUseID,
+                                "content":     contentStr,
+                        }
+                        anthropicMessages = append(anthropicMessages, map[string]interface{}{
+                                "role": "user",
+                                "content": []map[string]interface{}{
+                                        toolResult,
+                                },
+                        })
+                }
+        }
+        return anthropicMessages
 }
 
 // 转换为Ollama格式（支持工具消息）
 // 注意：Ollama API 使用单独的 system 参数，不将 system 消息放在 messages 中
 func convertToOllamaFormat(messages []Message) []map[string]interface{} {
-	ollamaMessages := make([]map[string]interface{}, 0, len(messages))
-	for _, msg := range messages {
-		// 跳过 system 消息，Ollama 使用单独的 system 参数
-		if msg.Role == "system" {
-			continue
-		}
-		ollamaMsg := map[string]interface{}{
-			"role": msg.Role,
-		}
-		// 保留 thinking blocks（reasoning_content + thinking_signature），必須回傳 API
-		if msg.Role == "assistant" {
-			if msg.ReasoningContent != nil {
-				reasoning, _ := msg.ReasoningContent.(string)
-				ollamaMsg["reasoning_content"] = reasoning
-			}
-			if msg.ThinkingSignature != "" {
-				ollamaMsg["thinking_signature"] = msg.ThinkingSignature
-			}
-		}
-		if msg.Role == "assistant" && msg.ToolCalls != nil {
-			ollamaMsg["tool_calls"] = msg.ToolCalls
-			if msg.Content != nil {
-				ollamaMsg["content"] = msg.Content
-			}
-		} else if msg.Role == "tool" {
-			// tool 消息的 content 必须是字符串
-			switch v := msg.Content.(type) {
-			case string:
-				ollamaMsg["content"] = v
-			case nil:
-				ollamaMsg["content"] = ""
-			default:
-				if jsonBytes, err := json.Marshal(v); err == nil {
-					ollamaMsg["content"] = string(jsonBytes)
-				} else {
-					ollamaMsg["content"] = fmt.Sprintf("%v", v)
-				}
-			}
-		} else {
-			ollamaMsg["content"] = msg.Content
-		}
-		ollamaMessages = append(ollamaMessages, ollamaMsg)
-	}
-	return ollamaMessages
+        ollamaMessages := make([]map[string]interface{}, 0, len(messages))
+        for _, msg := range messages {
+                // 跳过 system 消息，Ollama 使用单独的 system 参数
+                if msg.Role == "system" {
+                        continue
+                }
+                ollamaMsg := map[string]interface{}{
+                        "role": msg.Role,
+                }
+                // 保留 thinking blocks（reasoning_content + thinking_signature），必須回傳 API
+                if msg.Role == "assistant" {
+                        if msg.ReasoningContent != nil {
+                                reasoning, _ := msg.ReasoningContent.(string)
+                                ollamaMsg["reasoning_content"] = reasoning
+                        }
+                        if msg.ThinkingSignature != "" {
+                                ollamaMsg["thinking_signature"] = msg.ThinkingSignature
+                        }
+                }
+                if msg.Role == "assistant" && msg.ToolCalls != nil {
+                        ollamaMsg["tool_calls"] = msg.ToolCalls
+                        if msg.Content != nil {
+                                ollamaMsg["content"] = msg.Content
+                        }
+                } else if msg.Role == "tool" {
+                        // tool 消息的 content 必须是字符串
+                        switch v := msg.Content.(type) {
+                        case string:
+                                ollamaMsg["content"] = v
+                        case nil:
+                                ollamaMsg["content"] = ""
+                        default:
+                                if jsonBytes, err := json.Marshal(v); err == nil {
+                                        ollamaMsg["content"] = string(jsonBytes)
+                                } else {
+                                        ollamaMsg["content"] = fmt.Sprintf("%v", v)
+                                }
+                        }
+                } else {
+                        ollamaMsg["content"] = msg.Content
+                }
+                ollamaMessages = append(ollamaMessages, ollamaMsg)
+        }
+        return ollamaMessages
 }
 
 // 转换为OpenAI格式
 func convertToOpenAIFormat(messages []Message) []map[string]interface{} {
-	openaiMessages := make([]map[string]interface{}, len(messages))
-	for i, msg := range messages {
-		openaiMsg := map[string]interface{}{
-			"role": msg.Role,
-		}
+        openaiMessages := make([]map[string]interface{}, len(messages))
+        for i, msg := range messages {
+                openaiMsg := map[string]interface{}{
+                        "role": msg.Role,
+                }
 
-		if msg.Role == "tool" {
-			// tool 消息必须有 tool_call_id 和 content
-			// 如果 tool_call_id 为空，生成一个占位符（避免 API 报错）
-			toolCallID := msg.ToolCallID
-			if toolCallID == "" {
-				toolCallID = "unknown_tool_call"
-			}
-			openaiMsg["tool_call_id"] = toolCallID
+                if msg.Role == "tool" {
+                        // tool 消息必须有 tool_call_id 和 content
+                        // 如果 tool_call_id 为空，生成一个占位符（避免 API 报错）
+                        toolCallID := msg.ToolCallID
+                        if toolCallID == "" {
+                                toolCallID = "unknown_tool_call"
+                        }
+                        openaiMsg["tool_call_id"] = toolCallID
 
-			// content 必须是字符串，不能是 nil
-			switch v := msg.Content.(type) {
-			case string:
-				openaiMsg["content"] = v
-			case nil:
-				openaiMsg["content"] = ""
-			default:
-				// 其他类型转换为 JSON 字符串
-				if jsonBytes, err := json.Marshal(v); err == nil {
-					openaiMsg["content"] = string(jsonBytes)
-				} else {
-					openaiMsg["content"] = fmt.Sprintf("%v", v)
-				}
-			}
-		} else if msg.Role == "assistant" && msg.ToolCalls != nil {
-			// 确保 tool_calls 中的 arguments 是字符串格式
-			var normalizedToolCalls []interface{}
+                        // content 必须是字符串，不能是 nil
+                        switch v := msg.Content.(type) {
+                        case string:
+                                openaiMsg["content"] = v
+                        case nil:
+                                openaiMsg["content"] = ""
+                        default:
+                                // 其他类型转换为 JSON 字符串
+                                if jsonBytes, err := json.Marshal(v); err == nil {
+                                        openaiMsg["content"] = string(jsonBytes)
+                                } else {
+                                        openaiMsg["content"] = fmt.Sprintf("%v", v)
+                                }
+                        }
+                } else if msg.Role == "assistant" && msg.ToolCalls != nil {
+                        // 确保 tool_calls 中的 arguments 是字符串格式
+                        var normalizedToolCalls []interface{}
 
-			// 处理不同类型的 ToolCalls
-			switch v := msg.ToolCalls.(type) {
-			case []interface{}:
-				for j, tc := range v {
-					normalizedToolCalls = append(normalizedToolCalls, normalizeToolCall(tc))
-					_ = j // unused
-				}
-			case []map[string]interface{}:
-				for _, tc := range v {
-					normalizedToolCalls = append(normalizedToolCalls, normalizeToolCall(tc))
-				}
-			default:
-				// 未知类型，直接使用原始值
-				normalizedToolCalls = nil
-				openaiMsg["tool_calls"] = msg.ToolCalls
-			}
+                        // 处理不同类型的 ToolCalls
+                        switch v := msg.ToolCalls.(type) {
+                        case []interface{}:
+                                for j, tc := range v {
+                                        normalizedToolCalls = append(normalizedToolCalls, normalizeToolCall(tc))
+                                        _ = j // unused
+                                }
+                        case []map[string]interface{}:
+                                for _, tc := range v {
+                                        normalizedToolCalls = append(normalizedToolCalls, normalizeToolCall(tc))
+                                }
+                        default:
+                                // 未知类型，直接使用原始值
+                                normalizedToolCalls = nil
+                                openaiMsg["tool_calls"] = msg.ToolCalls
+                        }
 
-			if len(normalizedToolCalls) > 0 {
-				openaiMsg["tool_calls"] = normalizedToolCalls
-			}
-			// 处理 content：当有 tool_calls 时，空字符串会导致某些 API（如 SiliconFlow）报错
-			// 必须是 null 或不设置该字段
-			if msg.Content != nil {
-				if contentStr, ok := msg.Content.(string); ok && contentStr == "" {
-					// 空字符串，不设置 content 字段（某些 API 不接受空字符串 + tool_calls）
-					// 不设置 content 字段
-				} else {
-					openaiMsg["content"] = msg.Content
-				}
-			}
-			// 如果 content 是 nil，不设置该字段
-		} else {
-			openaiMsg["content"] = msg.Content
-		}
+                        if len(normalizedToolCalls) > 0 {
+                                openaiMsg["tool_calls"] = normalizedToolCalls
+                        }
+                        // 处理 content：当有 tool_calls 时，空字符串会导致某些 API（如 SiliconFlow）报错
+                        // 必须是 null 或不设置该字段
+                        if msg.Content != nil {
+                                if contentStr, ok := msg.Content.(string); ok && contentStr == "" {
+                                        // 空字符串，不设置 content 字段（某些 API 不接受空字符串 + tool_calls）
+                                        // 不设置 content 字段
+                                } else {
+                                        openaiMsg["content"] = msg.Content
+                                }
+                        }
+                        // 如果 content 是 nil，不设置该字段
+                } else {
+                        openaiMsg["content"] = msg.Content
+                }
 
-		// 保留 thinking blocks 到 OpenAI 格式
-		// DeepSeek/GLM/Qwen 支援 reasoning_content 和 thinking_signature
-		if msg.Role == "assistant" {
-			if msg.ReasoningContent != nil {
-				reasoning, _ := msg.ReasoningContent.(string)
-				openaiMsg["reasoning_content"] = reasoning
-			}
-			if msg.ThinkingSignature != "" {
-				openaiMsg["thinking_signature"] = msg.ThinkingSignature
-			}
-		}
+                // 保留 thinking blocks 到 OpenAI 格式
+                // DeepSeek/GLM/Qwen 支援 reasoning_content 和 thinking_signature
+                if msg.Role == "assistant" {
+                        if msg.ReasoningContent != nil {
+                                reasoning, _ := msg.ReasoningContent.(string)
+                                openaiMsg["reasoning_content"] = reasoning
+                        }
+                        if msg.ThinkingSignature != "" {
+                                openaiMsg["thinking_signature"] = msg.ThinkingSignature
+                        }
+                }
 
-		openaiMessages[i] = openaiMsg
-	}
-	return openaiMessages
+                openaiMessages[i] = openaiMsg
+        }
+        return openaiMessages
 }
 
 // normalizeToolCall 确保单个 tool call 的 arguments 是字符串格式
 func normalizeToolCall(tc interface{}) interface{} {
-	tcMap, ok := tc.(map[string]interface{})
-	if !ok {
-		return tc
-	}
+        tcMap, ok := tc.(map[string]interface{})
+        if !ok {
+                return tc
+        }
 
-	normalizedTC := make(map[string]interface{})
-	for k, v := range tcMap {
-		normalizedTC[k] = v
-	}
+        normalizedTC := make(map[string]interface{})
+        for k, v := range tcMap {
+                normalizedTC[k] = v
+        }
 
-	// 深拷貝 function 子 map，防止修改原始消息的 ToolCalls
-	if function, ok := normalizedTC["function"].(map[string]interface{}); ok {
-		functionCopy := make(map[string]interface{}, len(function))
-		for k, v := range function {
-			functionCopy[k] = v
-		}
-		normalizedTC["function"] = functionCopy
-		function = functionCopy
+        // 深拷貝 function 子 map，防止修改原始消息的 ToolCalls
+        if function, ok := normalizedTC["function"].(map[string]interface{}); ok {
+                functionCopy := make(map[string]interface{}, len(function))
+                for k, v := range function {
+                        functionCopy[k] = v
+                }
+                normalizedTC["function"] = functionCopy
+                function = functionCopy
 
-		if args, exists := function["arguments"]; exists {
-			switch v := args.(type) {
-			case string:
-				// 已经是字符串，无需处理
-			case map[string]interface{}:
-				if argsJSON, err := json.Marshal(v); err == nil {
-					function["arguments"] = string(argsJSON)
-				}
-			default:
-				if argsJSON, err := json.Marshal(v); err == nil {
-					function["arguments"] = string(argsJSON)
-				}
-			}
-		}
-	}
+                if args, exists := function["arguments"]; exists {
+                        switch v := args.(type) {
+                        case string:
+                                // 已经是字符串，无需处理
+                        case map[string]interface{}:
+                                if argsJSON, err := json.Marshal(v); err == nil {
+                                        function["arguments"] = string(argsJSON)
+                                }
+                        default:
+                                if argsJSON, err := json.Marshal(v); err == nil {
+                                        function["arguments"] = string(argsJSON)
+                                }
+                        }
+                }
+        }
 
-	return normalizedTC
+        return normalizedTC
 }
 
 // validateAndCleanMessages 验证并清理消息，确保符合 API 要求
 func validateAndCleanMessages(messages []Message) []Message {
-	if len(messages) == 0 {
-		return messages
-	}
+        if len(messages) == 0 {
+                return messages
+        }
 
-	cleaned := make([]Message, 0, len(messages))
+        cleaned := make([]Message, 0, len(messages))
 
-	for i, msg := range messages {
-		// 跳过完全空的消息
-		if msg.Role == "" {
-			if IsDebug {
-				log.Printf("Warning: skipping message with empty role at index %d", i)
-			}
-			continue
-		}
+        for i, msg := range messages {
+                // 跳过完全空的消息
+                if msg.Role == "" {
+                        if IsDebug {
+                                log.Printf("Warning: skipping message with empty role at index %d", i)
+                        }
+                        continue
+                }
 
-		// 创建消息副本
-		cleanedMsg := msg
+                // 创建消息副本
+                cleanedMsg := msg
 
-		// 确保 content 不为 nil（对于需要 content 的消息类型）
-		if msg.Role == "user" || msg.Role == "assistant" {
-			if msg.Content == nil {
-				cleanedMsg.Content = ""
-			}
-			// 对于 assistant 且有 tool_calls 的情况，某些 API 要求 content 为 null 或空字符串
-			// 但为了安全，如果 content 是空字符串，我们设置为 nil
-			if msg.Role == "assistant" && msg.ToolCalls != nil {
-				if contentStr, ok := msg.Content.(string); ok && contentStr == "" {
-					cleanedMsg.Content = nil
-				}
-			}
-		}
+                // 确保 content 不为 nil（对于需要 content 的消息类型）
+                if msg.Role == "user" || msg.Role == "assistant" {
+                        if msg.Content == nil {
+                                cleanedMsg.Content = ""
+                        }
+                        // 对于 assistant 且有 tool_calls 的情况，某些 API 要求 content 为 null 或空字符串
+                        // 但为了安全，如果 content 是空字符串，我们设置为 nil
+                        if msg.Role == "assistant" && msg.ToolCalls != nil {
+                                if contentStr, ok := msg.Content.(string); ok && contentStr == "" {
+                                        cleanedMsg.Content = nil
+                                }
+                        }
+                }
 
-		// 对于 tool 消息，确保 tool_call_id 存在且 content 是字符串
-		if msg.Role == "tool" {
-			if msg.ToolCallID == "" {
-				cleanedMsg.ToolCallID = fmt.Sprintf("auto_id_%d", i)
-				if IsDebug {
-					log.Printf("Warning: tool message missing tool_call_id, assigned: %s", cleanedMsg.ToolCallID)
-				}
-			}
-			if msg.Content == nil {
-				cleanedMsg.Content = ""
-			} else if _, ok := msg.Content.(string); !ok {
-				// 如果不是字符串，尝试转换为 JSON 字符串
-				if jsonBytes, err := json.Marshal(msg.Content); err == nil {
-					cleanedMsg.Content = string(jsonBytes)
-				} else {
-					cleanedMsg.Content = fmt.Sprintf("%v", msg.Content)
-				}
-			}
-		}
+                // 对于 tool 消息，确保 tool_call_id 存在且 content 是字符串
+                if msg.Role == "tool" {
+                        if msg.ToolCallID == "" {
+                                cleanedMsg.ToolCallID = fmt.Sprintf("auto_id_%d", i)
+                                if IsDebug {
+                                        log.Printf("Warning: tool message missing tool_call_id, assigned: %s", cleanedMsg.ToolCallID)
+                                }
+                        }
+                        if msg.Content == nil {
+                                cleanedMsg.Content = ""
+                        } else if _, ok := msg.Content.(string); !ok {
+                                // 如果不是字符串，尝试转换为 JSON 字符串
+                                if jsonBytes, err := json.Marshal(msg.Content); err == nil {
+                                        cleanedMsg.Content = string(jsonBytes)
+                                } else {
+                                        cleanedMsg.Content = fmt.Sprintf("%v", msg.Content)
+                                }
+                        }
+                }
 
-		// 检查是否与上一条消息角色相同
-		if len(cleaned) > 0 {
-			lastMsg := cleaned[len(cleaned)-1]
-			if lastMsg.Role == msg.Role {
-				if IsDebug {
-					log.Printf("Warning: consecutive messages with same role: %s at index %d", msg.Role, i)
-				}
-				// 如果是连续两个 assistant 且都没有 tool_calls，可以合并 content
-				// 但如果有 thinking blocks（ReasoningContent/ThinkingSignature）則不合并
-				if msg.Role == "assistant" && lastMsg.ToolCalls == nil && msg.ToolCalls == nil {
-					// 保護 thinking blocks：有任一則不合并
-					if lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
-						lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "" {
-						cleaned = append(cleaned, cleanedMsg)
-						continue
-					}
-					lastContent, _ := lastMsg.Content.(string)
-					thisContent, _ := msg.Content.(string)
-					if lastContent != "" && thisContent != "" {
-						cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
-					} else if thisContent != "" {
-						cleaned[len(cleaned)-1].Content = thisContent
-					}
-					continue
-				}
-				// 如果是连续两个 user 消息，合并
-				if msg.Role == "user" {
-					lastContent, _ := lastMsg.Content.(string)
-					thisContent, _ := msg.Content.(string)
-					if lastContent != "" && thisContent != "" {
-						cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
-					} else if thisContent != "" {
-						cleaned[len(cleaned)-1].Content = thisContent
-					}
-					continue
-				}
-				// 连续的 tool 消息，合并内容
-				if msg.Role == "tool" {
-					lastContent, _ := lastMsg.Content.(string)
-					thisContent, _ := msg.Content.(string)
-					if lastContent != "" && thisContent != "" {
-						cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
-					} else if thisContent != "" {
-						cleaned[len(cleaned)-1].Content = thisContent
-					}
-					continue
-				}
-				// 其他情况保留，但记录警告
-			}
-		}
+                // 检查是否与上一条消息角色相同
+                if len(cleaned) > 0 {
+                        lastMsg := cleaned[len(cleaned)-1]
+                        if lastMsg.Role == msg.Role {
+                                if IsDebug {
+                                        log.Printf("Warning: consecutive messages with same role: %s at index %d", msg.Role, i)
+                                }
+                                // 如果是连续两个 assistant 且都没有 tool_calls，可以合并 content
+                                // 但如果有 thinking blocks（ReasoningContent/ThinkingSignature）則不合并
+                                if msg.Role == "assistant" && lastMsg.ToolCalls == nil && msg.ToolCalls == nil {
+                                        // 保護 thinking blocks：有任一則不合并
+                                        if lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
+                                                lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "" {
+                                                cleaned = append(cleaned, cleanedMsg)
+                                                continue
+                                        }
+                                        lastContent, _ := lastMsg.Content.(string)
+                                        thisContent, _ := msg.Content.(string)
+                                        if lastContent != "" && thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
+                                        } else if thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = thisContent
+                                        }
+                                        continue
+                                }
+                                // 如果是连续两个 user 消息，合并
+                                if msg.Role == "user" {
+                                        lastContent, _ := lastMsg.Content.(string)
+                                        thisContent, _ := msg.Content.(string)
+                                        if lastContent != "" && thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
+                                        } else if thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = thisContent
+                                        }
+                                        continue
+                                }
+                                // 连续的 tool 消息，合并内容
+                                if msg.Role == "tool" {
+                                        lastContent, _ := lastMsg.Content.(string)
+                                        thisContent, _ := msg.Content.(string)
+                                        if lastContent != "" && thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = lastContent + "\n" + thisContent
+                                        } else if thisContent != "" {
+                                                cleaned[len(cleaned)-1].Content = thisContent
+                                        }
+                                        continue
+                                }
+                                // 其他情况保留，但记录警告
+                        }
+                }
 
-		cleaned = append(cleaned, cleanedMsg)
-	}
+                cleaned = append(cleaned, cleanedMsg)
+        }
 
-	// ==================== 最终检查与修复 ====================
+        // ==================== 最终检查与修复 ====================
 
-	// 1. 移除孤立 tool 消息：tool result 没有前置的 assistant+tool_calls
-	cleaned = removeOrphanedToolMessages(cleaned)
+        // 1. 移除孤立 tool 消息：tool result 没有前置的 assistant+tool_calls
+        cleaned = removeOrphanedToolMessages(cleaned)
 
-	// 2. 移除孤立 tool_calls：assistant 有 tool_calls 但后续没有 tool result
-	cleaned = removeOrphanedToolCalls(cleaned)
+        // 2. 移除孤立 tool_calls：assistant 有 tool_calls 但后续没有 tool result
+        cleaned = removeOrphanedToolCalls(cleaned)
 
-	// 3. 合并连续同角色消息（compressMessages 可能产生）
-	cleaned = mergeConsecutiveSameRole(cleaned)
+        // 3. 合并连续同角色消息（compressMessages 可能产生）
+        cleaned = mergeConsecutiveSameRole(cleaned)
 
-	// 4. 确保消息序列以 user 开头（不能以 assistant/tool 开头）
-	if len(cleaned) > 0 && cleaned[0].Role != "user" && cleaned[0].Role != "system" {
-		log.Printf("[validateAndCleanMessages] Fixing: inserting synthetic user message before %s-first sequence", cleaned[0].Role)
-		cleaned = append([]Message{{
-			Role:    "user",
-			Content: "continue",
-		}}, cleaned...)
-	}
+        // 4. 确保消息序列以 user 开头（不能以 assistant/tool 开头）
+        if len(cleaned) > 0 && cleaned[0].Role != "user" && cleaned[0].Role != "system" {
+                log.Printf("[validateAndCleanMessages] Fixing: inserting synthetic user message before %s-first sequence", cleaned[0].Role)
+                cleaned = append([]Message{{
+                        Role:    "user",
+                        Content: "continue",
+                }}, cleaned...)
+        }
 
-	// 5. 移除空的 user/assistant 消息（content 为 nil 或空字符串且无 tool_calls 且无 reasoning 且无 thinking_signature）
-	finalCleaned := make([]Message, 0, len(cleaned))
-	for _, msg := range cleaned {
-		if msg.Role == "user" || msg.Role == "assistant" {
-			contentStr, _ := msg.Content.(string)
-			if contentStr == "" && msg.ToolCalls == nil && msg.ReasoningContent == nil && msg.ThinkingSignature == "" {
-				if IsDebug {
-					log.Printf("Warning: removing empty %s message (no content, no tool_calls, no reasoning, no thinking signature)", msg.Role)
-				}
-				continue
-			}
-		}
-		finalCleaned = append(finalCleaned, msg)
-	}
+        // 5. 移除空的 user/assistant 消息（content 为 nil 或空字符串且无 tool_calls 且无 reasoning 且无 thinking_signature）
+        finalCleaned := make([]Message, 0, len(cleaned))
+        for _, msg := range cleaned {
+                if msg.Role == "user" || msg.Role == "assistant" {
+                        contentStr, _ := msg.Content.(string)
+                        if contentStr == "" && msg.ToolCalls == nil && msg.ReasoningContent == nil && msg.ThinkingSignature == "" {
+                                if IsDebug {
+                                        log.Printf("Warning: removing empty %s message (no content, no tool_calls, no reasoning, no thinking signature)", msg.Role)
+                                }
+                                continue
+                        }
+                }
+                finalCleaned = append(finalCleaned, msg)
+        }
 
-	// 6. 关键检查：确保消息列表末尾不会有多个连续的 assistant 消息
-	if len(finalCleaned) >= 2 {
-		// 从列表末尾向前查找连续的 assistant 消息
-		end := len(finalCleaned)
-		for i := len(finalCleaned) - 1; i >= 0; i-- {
-			if finalCleaned[i].Role != "assistant" {
-				break
-			}
-			end = i
-		}
+        // 6. 关于末尾连续 assistant 消息的处理说明
+        //
+        // 历史上这里曾有一段「合并末尾连续 assistant 消息」的代码，目的是避免某些 API
+        // 拒绝末尾多个 assistant 消息。但这会与 step 1 主循环中「thinking block 不合并」
+        // 的保护逻辑冲突——主循环刻意保留 [assistant+thinking, assistant] 两条消息，
+        // 而 step 6 又把它们合并成一条，导致 TestValidateAndCleanMessages/
+        // 「连续 assistant 有 thinking block 不合并」「连续 assistant 有 thinking_signature 不合并」失败，
+        // 同时静默丢失 part2 的内容。
+        //
+        // 现在的策略：
+        //   - validateAndCleanMessages 不再做末尾连续 assistant 合并（保持主循环的语义完整）。
+        //   - 真正的 API 安全网由 ensureNoConsecutiveAssistantMessages 负责，它只在
+        //     prepareRequestData（实际发送 HTTP 请求前）调用，是真正的「最后防线」。
+        //   - 这样既能让 validateAndCleanMessages 在单元测试中保持可预测的语义，
+        //     又能避免实际 API 请求被拒绝。
 
-		// 如果找到了多个连续的 assistant 消息（从 end 到末尾）
-		if end <= len(finalCleaned)-2 {
-			// 我们需要优先保留带有 thinking block 的 assistant 消息
-			keepIndex := len(finalCleaned) - 1
-			hasThinkingMsg := false
-
-			// 在连续的 assistant 消息中查找第一个带有 thinking 的消息（从后往前）
-			for i := len(finalCleaned) - 1; i >= end; i-- {
-				msg := finalCleaned[i]
-				if msg.ThinkingSignature != "" || msg.ReasoningContent != nil {
-					keepIndex = i
-					hasThinkingMsg = true
-					break
-				}
-			}
-
-			if IsDebug {
-				if hasThinkingMsg {
-					log.Printf("[validateAndCleanMessages] Fixing: found %d consecutive assistant messages at end, keeping the one with thinking block at index %d", len(finalCleaned)-end, keepIndex)
-				} else {
-					log.Printf("[validateAndCleanMessages] Fixing: found %d consecutive assistant messages at end, keeping only the last one", len(finalCleaned)-end)
-				}
-			}
-
-			// 构建新的列表
-			newFinalCleaned := make([]Message, 0, len(finalCleaned))
-			newFinalCleaned = append(newFinalCleaned, finalCleaned[:end]...)
-			newFinalCleaned = append(newFinalCleaned, finalCleaned[keepIndex])
-			finalCleaned = newFinalCleaned
-		}
-	}
-
-	return finalCleaned
+        return finalCleaned
 }
 
 // findLegalStart 前向扫描算法，确保消息序列开头不会有孤儿工具结果
 // 参考 nanobot 的 _find_legal_start：从前往后扫描，遇到没有对应 assistant tool_calls 的
 // tool 消息时，从该消息之后重新开始。同时处理连续多个孤儿的情况。
 func findLegalStart(messages []Message) []Message {
-	if len(messages) == 0 {
-		return messages
-	}
+        if len(messages) == 0 {
+                return messages
+        }
 
-	// 收集所有 assistant 消息中声明的 tool_call_id
-	declared := make(map[string]bool)
-	start := 0
+        // 收集所有 assistant 消息中声明的 tool_call_id
+        declared := make(map[string]bool)
+        start := 0
 
-	for i, msg := range messages {
-		switch msg.Role {
-		case "assistant":
-			// 收集此 assistant 消息声明的所有 tool_call ID
-			declared = make(map[string]bool) // 每遇到新的 assistant，重置声明集合
-			if msg.ToolCalls != nil {
-				switch v := msg.ToolCalls.(type) {
-				case []interface{}:
-					for _, tc := range v {
-						if tcMap, ok := tc.(map[string]interface{}); ok {
-							if id, ok := tcMap["id"].(string); ok {
-								declared[id] = true
-							}
-						}
-					}
-				case []map[string]interface{}:
-					for _, tc := range v {
-						if id, ok := tc["id"].(string); ok {
-							declared[id] = true
-						}
-					}
-				}
-			}
-		case "tool":
-			// 检查此 tool 消息是否有对应的声明
-			if !declared[msg.ToolCallID] {
-				// 孤儿工具结果！从下一条消息重新开始
-				start = i + 1
-				declared = make(map[string]bool)
-			}
-		case "user":
-			// user 消息重置声明集合（新的对话轮次）
-			declared = make(map[string]bool)
-		case "system":
-			// system 消息不重置 declared（避免打破 assistant→tool_result 配对）
-			// 但如果 system 消息出现在截断边界处，不应被当作孤儿跳过
-		}
-	}
+        for i, msg := range messages {
+                switch msg.Role {
+                case "assistant":
+                        // 收集此 assistant 消息声明的所有 tool_call ID
+                        declared = make(map[string]bool) // 每遇到新的 assistant，重置声明集合
+                        if msg.ToolCalls != nil {
+                                switch v := msg.ToolCalls.(type) {
+                                case []interface{}:
+                                        for _, tc := range v {
+                                                if tcMap, ok := tc.(map[string]interface{}); ok {
+                                                        if id, ok := tcMap["id"].(string); ok {
+                                                                declared[id] = true
+                                                        }
+                                                }
+                                        }
+                                case []map[string]interface{}:
+                                        for _, tc := range v {
+                                                if id, ok := tc["id"].(string); ok {
+                                                        declared[id] = true
+                                                }
+                                        }
+                                }
+                        }
+                case "tool":
+                        // 检查此 tool 消息是否有对应的声明
+                        if !declared[msg.ToolCallID] {
+                                // 孤儿工具结果！从下一条消息重新开始
+                                start = i + 1
+                                declared = make(map[string]bool)
+                        }
+                case "user":
+                        // user 消息重置声明集合（新的对话轮次）
+                        declared = make(map[string]bool)
+                case "system":
+                        // system 消息不重置 declared（避免打破 assistant→tool_result 配对）
+                        // 但如果 system 消息出现在截断边界处，不应被当作孤儿跳过
+                }
+        }
 
-	if start > 0 {
-		// 安全保护：绝不能截断所有消息
-		if start >= len(messages) {
-			// 從末尾向前找最近一條非 tool 消息（避免返回孤兒 tool result）
-			if IsDebug {
-				log.Printf("[findLegalStart] WARNING: start(%d) >= len(%d), searching for safe fallback", start, len(messages))
-			}
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role != "tool" {
-					return []Message{messages[i]}
-				}
-			}
-			// 全部都是 tool 消息的極端情況，返回最後一條
-			return []Message{messages[len(messages)-1]}
-		}
+        if start > 0 {
+                // 安全保护：绝不能截断所有消息
+                if start >= len(messages) {
+                        // 從末尾向前找最近一條非 tool 消息（避免返回孤兒 tool result）
+                        if IsDebug {
+                                log.Printf("[findLegalStart] WARNING: start(%d) >= len(%d), searching for safe fallback", start, len(messages))
+                        }
+                        for i := len(messages) - 1; i >= 0; i-- {
+                                if messages[i].Role != "tool" {
+                                        return []Message{messages[i]}
+                                }
+                        }
+                        // 全部都是 tool 消息的極端情況，返回最後一條
+                        return []Message{messages[len(messages)-1]}
+                }
 
-		// 保留前导 system 消息（包含 system prompt 等关键信息）
-		systemEnd := 0
-		for i, msg := range messages {
-			if msg.Role == "system" {
-				systemEnd = i + 1
-			} else {
-				break
-			}
-		}
+                // 保留前导 system 消息（包含 system prompt 等关键信息）
+                systemEnd := 0
+                for i, msg := range messages {
+                        if msg.Role == "system" {
+                                systemEnd = i + 1
+                        } else {
+                                break
+                        }
+                }
 
-		// 如果截斷點會丟失 thinking block，回退 start 到最近的含 thinking block 的 assistant
-		if start > systemEnd {
-			for i := start - 1; i >= systemEnd; i-- {
-				if messages[i].Role == "assistant" && (messages[i].ThinkingSignature != "" || messages[i].ReasoningContent != nil) {
-					if IsDebug {
-						log.Printf("[findLegalStart] 保留含 thinking block 的 assistant 訊息 (index=%d)，回退 start 從 %d 到 %d", i, start, i)
-					}
-					start = i
-					break
-				}
-			}
-		}
+                // 如果截斷點會丟失 thinking block，回退 start 到最近的含 thinking block 的 assistant
+                if start > systemEnd {
+                        for i := start - 1; i >= systemEnd; i-- {
+                                if messages[i].Role == "assistant" && (messages[i].ThinkingSignature != "" || messages[i].ReasoningContent != nil) {
+                                        if IsDebug {
+                                                log.Printf("[findLegalStart] 保留含 thinking block 的 assistant 訊息 (index=%d)，回退 start 從 %d 到 %d", i, start, i)
+                                        }
+                                        start = i
+                                        break
+                                }
+                        }
+                }
 
-		if systemEnd > 0 && start >= systemEnd {
-			// 截断点在 system 消息块之后，保留 system 头部 + 非孤儿尾部
-			if IsDebug {
-				log.Printf("[findLegalStart] Removed %d orphaned messages, preserving %d system prefix", start-systemEnd, systemEnd)
-			}
-			return append(messages[:systemEnd], messages[start:]...)
-		}
+                if systemEnd > 0 && start >= systemEnd {
+                        // 截断点在 system 消息块之后，保留 system 头部 + 非孤儿尾部
+                        if IsDebug {
+                                log.Printf("[findLegalStart] Removed %d orphaned messages, preserving %d system prefix", start-systemEnd, systemEnd)
+                        }
+                        return append(messages[:systemEnd], messages[start:]...)
+                }
 
-		if IsDebug {
-			log.Printf("[findLegalStart] Removed %d orphaned leading messages", start)
-		}
-		return messages[start:]
-	}
-	return messages
+                if IsDebug {
+                        log.Printf("[findLegalStart] Removed %d orphaned leading messages", start)
+                }
+                return messages[start:]
+        }
+        return messages
 }
 
 // removeOrphanedToolMessages 移除孤立的 tool 消息（没有前置 assistant+tool_calls）
 func removeOrphanedToolMessages(messages []Message) []Message {
-	if len(messages) == 0 {
-		return messages
-	}
-	result := make([]Message, 0, len(messages))
-	for i, msg := range messages {
-		if msg.Role == "tool" {
-			// 查找前面是否有 assistant 消息带有匹配的 tool_calls
-			hasMatchingAssistant := false
-			for j := i - 1; j >= 0; j-- {
-				prevMsg := messages[j]
-				if prevMsg.Role == "assistant" && prevMsg.ToolCalls != nil {
-					if hasToolCallID(prevMsg.ToolCalls, msg.ToolCallID) {
-						hasMatchingAssistant = true
-						break
-					}
-				}
-				// 如果遇到 user 或 system 消息，停止向前搜索
-				if prevMsg.Role == "user" || prevMsg.Role == "system" {
-					break
-				}
-			}
-			if !hasMatchingAssistant {
-				if IsDebug {
-					log.Printf("Warning: removing orphaned tool message at index %d (tool_call_id: %s)", i, msg.ToolCallID)
-				}
-				continue
-			}
-		}
-		result = append(result, msg)
-	}
-	return result
+        if len(messages) == 0 {
+                return messages
+        }
+        result := make([]Message, 0, len(messages))
+        for i, msg := range messages {
+                if msg.Role == "tool" {
+                        // 查找前面是否有 assistant 消息带有匹配的 tool_calls
+                        hasMatchingAssistant := false
+                        for j := i - 1; j >= 0; j-- {
+                                prevMsg := messages[j]
+                                if prevMsg.Role == "assistant" && prevMsg.ToolCalls != nil {
+                                        if hasToolCallID(prevMsg.ToolCalls, msg.ToolCallID) {
+                                                hasMatchingAssistant = true
+                                                break
+                                        }
+                                }
+                                // 如果遇到 user 或 system 消息，停止向前搜索
+                                if prevMsg.Role == "user" || prevMsg.Role == "system" {
+                                        break
+                                }
+                        }
+                        if !hasMatchingAssistant {
+                                if IsDebug {
+                                        log.Printf("Warning: removing orphaned tool message at index %d (tool_call_id: %s)", i, msg.ToolCallID)
+                                }
+                                continue
+                        }
+                }
+                result = append(result, msg)
+        }
+        return result
 }
 
 // hasToolCallID 檢查 ToolCalls 中是否包含指定的 tool_call_id
 func hasToolCallID(toolCalls interface{}, toolCallID string) bool {
-	if toolCallID == "" {
-		return false
-	}
-	switch v := toolCalls.(type) {
-	case []interface{}:
-		for _, tc := range v {
-			if tcMap, ok := tc.(map[string]interface{}); ok {
-				if id, ok := tcMap["id"].(string); ok && id == toolCallID {
-					return true
-				}
-			}
-		}
-	case []map[string]interface{}:
-		for _, tc := range v {
-			if id, ok := tc["id"].(string); ok && id == toolCallID {
-				return true
-			}
-		}
-	}
-	return false
+        if toolCallID == "" {
+                return false
+        }
+        switch v := toolCalls.(type) {
+        case []interface{}:
+                for _, tc := range v {
+                        if tcMap, ok := tc.(map[string]interface{}); ok {
+                                if id, ok := tcMap["id"].(string); ok && id == toolCallID {
+                                        return true
+                                }
+                        }
+                }
+        case []map[string]interface{}:
+                for _, tc := range v {
+                        if id, ok := tc["id"].(string); ok && id == toolCallID {
+                                return true
+                        }
+                }
+        }
+        return false
 }
 
 // removeOrphanedToolCalls 移除孤立的 tool_calls（assistant 有 tool_calls 但后续没有 tool result）
 func removeOrphanedToolCalls(messages []Message) []Message {
-	if len(messages) == 0 {
-		return messages
-	}
-	// 首先收集所有存在的 tool_call_id（来自 tool 消息）
-	existingToolResults := make(map[string]bool)
-	for _, msg := range messages {
-		if msg.Role == "tool" && msg.ToolCallID != "" {
-			existingToolResults[msg.ToolCallID] = true
-		}
-	}
+        if len(messages) == 0 {
+                return messages
+        }
+        // 首先收集所有存在的 tool_call_id（来自 tool 消息）
+        existingToolResults := make(map[string]bool)
+        for _, msg := range messages {
+                if msg.Role == "tool" && msg.ToolCallID != "" {
+                        existingToolResults[msg.ToolCallID] = true
+                }
+        }
 
-	result := make([]Message, 0, len(messages))
-	for i, msg := range messages {
-		if msg.Role == "assistant" && msg.ToolCalls != nil {
-			// 检查是否所有 tool_calls 都有对应的 tool result
-			hasAnyResult := false
-			remainingToolCalls := filterToolCallsWithResults(msg.ToolCalls, existingToolResults, &hasAnyResult)
+        result := make([]Message, 0, len(messages))
+        for i, msg := range messages {
+                if msg.Role == "assistant" && msg.ToolCalls != nil {
+                        // 检查是否所有 tool_calls 都有对应的 tool result
+                        hasAnyResult := false
+                        remainingToolCalls := filterToolCallsWithResults(msg.ToolCalls, existingToolResults, &hasAnyResult)
 
-			if !hasAnyResult {
-				// 所有 tool_calls 都是孤立的，移除 tool_calls，保留 content
-				if IsDebug {
-					log.Printf("Warning: removing all orphaned tool_calls from assistant message at index %d", i)
-				}
-				newMsg := msg
-				newMsg.ToolCalls = nil
-				if newMsg.Content == nil {
-					newMsg.Content = ""
-				}
-				result = append(result, newMsg)
-				continue
-			} else if len(remainingToolCalls) > 0 {
-				// 部分有结果，只保留有结果的 tool_calls
-				newMsg := msg
-				newMsg.ToolCalls = remainingToolCalls
-				result = append(result, newMsg)
-				continue
-			}
-		}
-		result = append(result, msg)
-	}
-	return result
+                        if !hasAnyResult {
+                                // 所有 tool_calls 都是孤立的，移除 tool_calls，保留 content
+                                if IsDebug {
+                                        log.Printf("Warning: removing all orphaned tool_calls from assistant message at index %d", i)
+                                }
+                                newMsg := msg
+                                newMsg.ToolCalls = nil
+                                if newMsg.Content == nil {
+                                        newMsg.Content = ""
+                                }
+                                result = append(result, newMsg)
+                                continue
+                        } else if len(remainingToolCalls) > 0 {
+                                // 部分有结果，只保留有结果的 tool_calls
+                                newMsg := msg
+                                newMsg.ToolCalls = remainingToolCalls
+                                result = append(result, newMsg)
+                                continue
+                        }
+                }
+                result = append(result, msg)
+        }
+        return result
 }
 
 // filterToolCallsWithResults 过滤出有对应 tool result 的 tool_calls
 func filterToolCallsWithResults(toolCalls interface{}, existingResults map[string]bool, hasAnyResult *bool) []interface{} {
-	var remaining []interface{}
-	switch v := toolCalls.(type) {
-	case []interface{}:
-		for _, tc := range v {
-			if tcMap, ok := tc.(map[string]interface{}); ok {
-				if id, ok := tcMap["id"].(string); ok && existingResults[id] {
-					remaining = append(remaining, tc)
-					*hasAnyResult = true
-				}
-			}
-		}
-	case []map[string]interface{}:
-		for _, tc := range v {
-			if id, ok := tc["id"].(string); ok && existingResults[id] {
-				remaining = append(remaining, tc)
-				*hasAnyResult = true
-			}
-		}
-	}
-	return remaining
+        var remaining []interface{}
+        switch v := toolCalls.(type) {
+        case []interface{}:
+                for _, tc := range v {
+                        if tcMap, ok := tc.(map[string]interface{}); ok {
+                                if id, ok := tcMap["id"].(string); ok && existingResults[id] {
+                                        remaining = append(remaining, tc)
+                                        *hasAnyResult = true
+                                }
+                        }
+                }
+        case []map[string]interface{}:
+                for _, tc := range v {
+                        if id, ok := tc["id"].(string); ok && existingResults[id] {
+                                remaining = append(remaining, tc)
+                                *hasAnyResult = true
+                        }
+                }
+        }
+        return remaining
 }
 
 // mergeConsecutiveSameRole 合并连续同角色的消息（排除 tool 消息和带 tool_calls 的 assistant）
 func mergeConsecutiveSameRole(messages []Message) []Message {
-	if len(messages) <= 1 {
-		return messages
-	}
-	result := make([]Message, 0, len(messages))
-	for _, msg := range messages {
-		if len(result) > 0 {
-			lastMsg := result[len(result)-1]
-			if lastMsg.Role == msg.Role && msg.Role != "tool" {
-				// 不合并有 tool_calls 的 assistant
-				if msg.Role == "assistant" && (lastMsg.ToolCalls != nil || msg.ToolCalls != nil) {
-					result = append(result, msg)
-					continue
-				}
-				// 不合并有 thinking blocks 的消息（必須回傳 API，否則 400 錯誤）
-				if msg.Role == "assistant" && (lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
-					lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "") {
-					result = append(result, msg)
-					continue
-				}
-				// 合并 content（僅限字串類型，跳過多模態內容）
-				lastContent, lastIsStr := lastMsg.Content.(string)
-				thisContent, thisIsStr := msg.Content.(string)
-				if lastIsStr && thisIsStr && lastContent != "" && thisContent != "" {
-					result[len(result)-1].Content = lastContent + "\n" + thisContent
-				} else if thisIsStr && thisContent != "" {
-					result[len(result)-1].Content = thisContent
-				} else {
-					// 非字串內容（多模態等），不合并，直接追加
-					result = append(result, msg)
-					continue
-				}
-				continue
-			}
-		}
-		result = append(result, msg)
-	}
-	return result
+        if len(messages) <= 1 {
+                return messages
+        }
+        result := make([]Message, 0, len(messages))
+        for _, msg := range messages {
+                if len(result) > 0 {
+                        lastMsg := result[len(result)-1]
+                        if lastMsg.Role == msg.Role && msg.Role != "tool" {
+                                // 不合并有 tool_calls 的 assistant
+                                if msg.Role == "assistant" && (lastMsg.ToolCalls != nil || msg.ToolCalls != nil) {
+                                        result = append(result, msg)
+                                        continue
+                                }
+                                // 不合并有 thinking blocks 的消息（必須回傳 API，否則 400 錯誤）
+                                if msg.Role == "assistant" && (lastMsg.ReasoningContent != nil || msg.ReasoningContent != nil ||
+                                        lastMsg.ThinkingSignature != "" || msg.ThinkingSignature != "") {
+                                        result = append(result, msg)
+                                        continue
+                                }
+                                // 合并 content（僅限字串類型，跳過多模態內容）
+                                lastContent, lastIsStr := lastMsg.Content.(string)
+                                thisContent, thisIsStr := msg.Content.(string)
+                                if lastIsStr && thisIsStr && lastContent != "" && thisContent != "" {
+                                        result[len(result)-1].Content = lastContent + "\n" + thisContent
+                                } else if thisIsStr && thisContent != "" {
+                                        result[len(result)-1].Content = thisContent
+                                } else {
+                                        // 非字串內容（多模態等），不合并，直接追加
+                                        result = append(result, msg)
+                                        continue
+                                }
+                                continue
+                        }
+                }
+                result = append(result, msg)
+        }
+        return result
 }
 
 // ensureNoConsecutiveAssistantMessages 确保消息列表末尾不会有多个连续的 assistant 消息
 // 这是最后一道防线，在发送给 API 前必须调用！
 func ensureNoConsecutiveAssistantMessages(messages []Message) []Message {
-	if len(messages) <= 1 {
-		return messages
-	}
+        if len(messages) <= 1 {
+                return messages
+        }
 
-	// 首先打印消息序列，方便调试
-	if IsDebug {
-		log.Printf("[Debug] Message sequence before ensureNoConsecutiveAssistantMessages:")
-		for i, msg := range messages {
-			log.Printf("[Debug]   [%d] role=%s, thinkingSig=%s, hasReasoning=%v",
-				i, msg.Role, msg.ThinkingSignature, msg.ReasoningContent != nil)
-		}
-	}
+        // 首先打印消息序列，方便调试
+        if IsDebug {
+                log.Printf("[Debug] Message sequence before ensureNoConsecutiveAssistantMessages:")
+                for i, msg := range messages {
+                        log.Printf("[Debug]   [%d] role=%s, thinkingSig=%s, hasReasoning=%v",
+                                i, msg.Role, msg.ThinkingSignature, msg.ReasoningContent != nil)
+                }
+        }
 
-	// 从末尾向前找最后一个非 assistant 消息的位置
-	end := len(messages)
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role != "assistant" {
-			break
-		}
-		end = i
-	}
+        // 从末尾向前找最后一个非 assistant 消息的位置
+        end := len(messages)
+        for i := len(messages) - 1; i >= 0; i-- {
+                if messages[i].Role != "assistant" {
+                        break
+                }
+                end = i
+        }
 
-	// 如果有多个连续的 assistant 消息（从 end 到末尾）
-	if end <= len(messages)-2 {
-		log.Printf("[Warning] Found %d consecutive assistant messages at end of list, fixing...", len(messages)-end)
+        // 如果有多个连续的 assistant 消息（从 end 到末尾）
+        if end <= len(messages)-2 {
+                log.Printf("[Warning] Found %d consecutive assistant messages at end of list, fixing...", len(messages)-end)
 
-		// 策略：优先保留带有 thinking block 的 assistant 消息
-		keepIndex := len(messages) - 1 // 默认保留最后一个
-		hasThinkingMsg := false
+                // 策略：优先保留带有 thinking block 的 assistant 消息
+                keepIndex := len(messages) - 1 // 默认保留最后一个
+                hasThinkingMsg := false
 
-		// 从后往前找第一个带有 thinking 的 assistant 消息
-		for i := len(messages) - 1; i >= end; i-- {
-			msg := messages[i]
-			if msg.ThinkingSignature != "" || msg.ReasoningContent != nil {
-				keepIndex = i
-				hasThinkingMsg = true
-				break
-			}
-		}
+                // 从后往前找第一个带有 thinking 的 assistant 消息
+                for i := len(messages) - 1; i >= end; i-- {
+                        msg := messages[i]
+                        if msg.ThinkingSignature != "" || msg.ReasoningContent != nil {
+                                keepIndex = i
+                                hasThinkingMsg = true
+                                break
+                        }
+                }
 
-		if IsDebug {
-			if hasThinkingMsg {
-				log.Printf("[Debug] Keeping assistant message with thinking block at index %d", keepIndex)
-			} else {
-				log.Printf("[Debug] Keeping last assistant message at index %d (no thinking blocks found)", keepIndex)
-			}
-		}
+                if IsDebug {
+                        if hasThinkingMsg {
+                                log.Printf("[Debug] Keeping assistant message with thinking block at index %d", keepIndex)
+                        } else {
+                                log.Printf("[Debug] Keeping last assistant message at index %d (no thinking blocks found)", keepIndex)
+                        }
+                }
 
-		// 构建新的消息列表
-		newMessages := make([]Message, 0, len(messages))
-		newMessages = append(newMessages, messages[:end]...)
-		newMessages = append(newMessages, messages[keepIndex])
-		messages = newMessages
+                // 构建新的消息列表
+                newMessages := make([]Message, 0, len(messages))
+                newMessages = append(newMessages, messages[:end]...)
+                newMessages = append(newMessages, messages[keepIndex])
+                messages = newMessages
 
-		if IsDebug {
-			log.Printf("[Debug] Message sequence after ensureNoConsecutiveAssistantMessages:")
-			for i, msg := range messages {
-				log.Printf("[Debug]   [%d] role=%s", i, msg.Role)
-			}
-		}
-	}
+                if IsDebug {
+                        log.Printf("[Debug] Message sequence after ensureNoConsecutiveAssistantMessages:")
+                        for i, msg := range messages {
+                                log.Printf("[Debug]   [%d] role=%s", i, msg.Role)
+                        }
+                }
+        }
 
-	return messages
+        return messages
 }
 
 // 准备请求数据
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 // 系统提示词从 messages 中的 system 消息提取，根据 API 类型正确处理
 func prepareRequestData(messages []Message, apiType, baseURL, modelID string, temperature float64, maxTokens int, stream bool, thinking bool, role *Role) ([]byte, string, string, error) {
-	var reqBody []byte
-	var endpoint string
-	t0 := time.Now()
+        var reqBody []byte
+        var endpoint string
+        t0 := time.Now()
 
-	// 限制 maxTokens 不超过模型的最大输出 token 限制，避免 API 拒绝请求
-	if maxTokens > 0 {
-		if maxOutputLimit := getMaxOutputTokens(modelID); maxOutputLimit > 0 && maxTokens > maxOutputLimit {
-			maxTokens = maxOutputLimit
-		}
-	}
-	t1 := time.Now()
+        // 限制 maxTokens 不超过模型的最大输出 token 限制，避免 API 拒绝请求
+        if maxTokens > 0 {
+                if maxOutputLimit := getMaxOutputTokens(modelID); maxOutputLimit > 0 && maxTokens > maxOutputLimit {
+                        maxTokens = maxOutputLimit
+                }
+        }
+        t1 := time.Now()
 
-	// 验证并清理消息
-	messages = validateAndCleanMessages(messages)
-	t2 := time.Now()
+        // 验证并清理消息
+        messages = validateAndCleanMessages(messages)
+        t2 := time.Now()
 
-	// 从 messages 中提取系统提示词
-	systemPromptFromMessages, filteredMessages := extractSystemPrompt(messages)
-	t3 := time.Now()
+        // 从 messages 中提取系统提示词
+        systemPromptFromMessages, filteredMessages := extractSystemPrompt(messages)
+        t3 := time.Now()
 
-	// 确定最终使用的系统提示词（不含时间，最大化缓存命中率）
-	var finalSystemPrompt string
-	if systemPromptFromMessages != "" {
-		finalSystemPrompt = systemPromptFromMessages
-	} else {
-		finalSystemPrompt = generateSystemPrompt(apiType)
-	}
-	t4 := time.Now()
+        // 确定最终使用的系统提示词（不含时间，最大化缓存命中率）
+        var finalSystemPrompt string
+        if systemPromptFromMessages != "" {
+                finalSystemPrompt = systemPromptFromMessages
+        } else {
+                finalSystemPrompt = generateSystemPrompt(apiType)
+        }
+        t4 := time.Now()
 
-	filteredMessages = injectRuntimeContext(filteredMessages)
-	filteredMessages = markHistoricalUserMessages(filteredMessages)
-	filteredMessages = markLatestUserRequest(filteredMessages)
-	t5 := time.Now()
+        filteredMessages = injectRuntimeContext(filteredMessages)
+        filteredMessages = markHistoricalUserMessages(filteredMessages)
+        filteredMessages = markLatestUserRequest(filteredMessages)
+        t5 := time.Now()
 
-	// ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
-	// 唔物理刪除工具，改用 message 標記控制模型行為，保持 prompt cache prefix 一致
-	if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools &&
-		globalTasksMode != nil && globalTasksMode.IsActive() {
-		tasksPrompt := GetTasksModeSystemPrompt()
-		if tasksPrompt != "" {
-			planMsg := Message{
-				Role:    "user",
-				Content: "[SYSTEM_PLAN_MODE]\n\n" + tasksPrompt,
-			}
-			filteredMessages = append([]Message{planMsg}, filteredMessages...)
-		}
-	}
+        // ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
+        // 唔物理刪除工具，改用 message 標記控制模型行為，保持 prompt cache prefix 一致
+        if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools &&
+                globalTasksMode != nil && globalTasksMode.IsActive() {
+                tasksPrompt := GetTasksModeSystemPrompt()
+                if tasksPrompt != "" {
+                        planMsg := Message{
+                                Role:    "user",
+                                Content: "[SYSTEM_PLAN_MODE]\n\n" + tasksPrompt,
+                        }
+                        filteredMessages = append([]Message{planMsg}, filteredMessages...)
+                }
+        }
 
-	// 最后一道防线：确保不会有多个连续的 assistant 消息！
-	filteredMessages = ensureNoConsecutiveAssistantMessages(filteredMessages)
+        // 最后一道防线：确保不会有多个连续的 assistant 消息！
+        filteredMessages = ensureNoConsecutiveAssistantMessages(filteredMessages)
 
-	switch apiType {
-	case "anthropic":
-		if baseURL == "" {
-			baseURL = ANTHROPIC_BASE_URL
-		}
-		anthropicMessages := convertToAnthropicFormat(filteredMessages)
-		t6 := time.Now()
-		tools := getToolsAsAnthropicBlocks(apiType, role, getModelContextLength(modelID))
-		t7 := time.Now()
+        switch apiType {
+        case "anthropic":
+                if baseURL == "" {
+                        baseURL = ANTHROPIC_BASE_URL
+                }
+                anthropicMessages := convertToAnthropicFormat(filteredMessages)
+                t6 := time.Now()
+                tools := getToolsAsAnthropicBlocks(apiType, role, getModelContextLength(modelID))
+                t7 := time.Now()
 
-		// Build system blocks; add cache_control only when PromptCache enabled
-		systemBlock := anthropicContentBlock{
-			Type: "text", Text: finalSystemPrompt,
-		}
-		if globalPromptCacheConfig.Enabled {
-			systemBlock.CacheControl = &anthropicCacheControl{Type: "ephemeral"}
-		}
-		systemBlocks := []anthropicContentBlock{systemBlock}
+                // Build system blocks; add cache_control only when PromptCache enabled
+                systemBlock := anthropicContentBlock{
+                        Type: "text", Text: finalSystemPrompt,
+                }
+                if globalPromptCacheConfig.Enabled {
+                        systemBlock.CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+                }
+                systemBlocks := []anthropicContentBlock{systemBlock}
 
-		// Add cache_control to last tool block only when PromptCache enabled
-		if globalPromptCacheConfig.Enabled && len(tools) > 0 {
-			tools[len(tools)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
-		}
+                // Add cache_control to last tool block only when PromptCache enabled
+                if globalPromptCacheConfig.Enabled && len(tools) > 0 {
+                        tools[len(tools)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+                }
 
-		req := anthropicRequest{
-			Model: modelID, System: systemBlocks,
-			Messages: mapSliceToInterfaceSlice(anthropicMessages), Tools: tools,
-			Temperature: temperature, Stream: stream,
-		}
-		if maxTokens > 0 {
-			req.MaxTokens = maxTokens
-		} else {
-			req.MaxTokens = 4096
-		}
-		if thinking {
-			req.Thinking = map[string]string{"type": "enabled"}
-		}
-		reqBody, _ = json.Marshal(req)
-		endpoint = "/messages"
-		log.Printf("[Perf] prepareRequestData breakdown: maxOutput=%v validate=%v extractSys=%v sysPrompt=%v inject=%v convert=%v tools=%v", t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3), t5.Sub(t4), t6.Sub(t5), t7.Sub(t6))
+                req := anthropicRequest{
+                        Model: modelID, System: systemBlocks,
+                        Messages: mapSliceToInterfaceSlice(anthropicMessages), Tools: tools,
+                        Temperature: temperature, Stream: stream,
+                }
+                if maxTokens > 0 {
+                        req.MaxTokens = maxTokens
+                } else {
+                        req.MaxTokens = 4096
+                }
+                if thinking {
+                        req.Thinking = map[string]string{"type": "enabled"}
+                }
+                reqBody, _ = json.Marshal(req)
+                endpoint = "/messages"
+                log.Printf("[Perf] prepareRequestData breakdown: maxOutput=%v validate=%v extractSys=%v sysPrompt=%v inject=%v convert=%v tools=%v", t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3), t5.Sub(t4), t6.Sub(t5), t7.Sub(t6))
 
-	case "ollama":
-		baseURL = OLLAMA_BASE_URL
-		ollamaMessages := convertToOllamaFormat(filteredMessages)
-		req := ollamaRequest{
-			Model: modelID, Messages: mapSliceToInterfaceSlice(ollamaMessages),
-			Tools:  toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
-			Stream: stream, System: finalSystemPrompt, Temperature: temperature,
-		}
-		reqBody, _ = json.Marshal(req)
-		endpoint = "/chat"
+        case "ollama":
+                baseURL = OLLAMA_BASE_URL
+                ollamaMessages := convertToOllamaFormat(filteredMessages)
+                req := ollamaRequest{
+                        Model: modelID, Messages: mapSliceToInterfaceSlice(ollamaMessages),
+                        Tools:  toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+                        Stream: stream, System: finalSystemPrompt, Temperature: temperature,
+                }
+                reqBody, _ = json.Marshal(req)
+                endpoint = "/chat"
 
-	case "openai":
-		if baseURL == "" {
-			baseURL = OPENAI_BASE_URL
-		}
-		// 使用 openaiMessage struct 確保 JSON key order 確定（role → content）
-		var openaiMessages []openaiMessage
-		openaiMessages = append(openaiMessages, openaiMessage{
-			Role: "system", Content: finalSystemPrompt,
-		})
-		for _, m := range convertToOpenAIFormat(filteredMessages) {
-			role, _ := m["role"].(string)
-			openaiMessages = append(openaiMessages, openaiMessage{
-				Role:    role,
-				Content: m["content"],
-			})
-		}
+        case "openai":
+                if baseURL == "" {
+                        baseURL = OPENAI_BASE_URL
+                }
+                // 使用 openaiMessage struct 確保 JSON key order 確定（role → content）
+                var openaiMessages []openaiMessage
+                openaiMessages = append(openaiMessages, openaiMessage{
+                        Role: "system", Content: finalSystemPrompt,
+                })
+                for _, m := range convertToOpenAIFormat(filteredMessages) {
+                        role, _ := m["role"].(string)
+                        openaiMessages = append(openaiMessages, openaiMessage{
+                                Role:    role,
+                                Content: m["content"],
+                        })
+                }
 
-		req := openaiRequest{
-			Model: modelID, Messages: openaiMessages,
-			Tools:       toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
-			Temperature: temperature, Stream: stream,
-		}
-		if maxTokens > 0 {
-			req.MaxTokens = maxTokens
-		}
-		if thinking {
-			if supported, format := isThinkingSupported(baseURL); supported {
-				if format == "bool" {
-					req.Thinking = true
-				} else {
-					req.Thinking = map[string]string{"type": "enabled"}
-				}
-			}
-		}
-		reqBody, _ = json.Marshal(req)
-		endpoint = "/chat/completions"
+                req := openaiRequest{
+                        Model: modelID, Messages: openaiMessages,
+                        Tools:       toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+                        Temperature: temperature, Stream: stream,
+                }
+                if maxTokens > 0 {
+                        req.MaxTokens = maxTokens
+                }
+                if thinking {
+                        if supported, format := isThinkingSupported(baseURL); supported {
+                                if format == "bool" {
+                                        req.Thinking = true
+                                } else {
+                                        req.Thinking = map[string]string{"type": "enabled"}
+                                }
+                        }
+                }
+                reqBody, _ = json.Marshal(req)
+                endpoint = "/chat/completions"
 
-	default:
-		return nil, "", "", fmt.Errorf("unsupported API type: %s", apiType)
-	}
+        default:
+                return nil, "", "", fmt.Errorf("unsupported API type: %s", apiType)
+        }
 
-	return reqBody, endpoint, baseURL, nil
+        return reqBody, endpoint, baseURL, nil
 }
 
 // ── StableTools Anthropic 工具塊緩存 ──────────────────────────
@@ -1501,108 +1474,108 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 // 100+ 次 map→struct 轉換。由 syncGlobalsLocked 在配置變更時失效。
 // key: role name（空字串 = nil role = 完整工具集）
 var (
-	stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
+        stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
 )
 
 // invalidateStableToolsCache 使 StableTools 緩存失效（配置變更時調用）
 func invalidateStableToolsCache() {
-	stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
+        stableAnthropicToolBlocksCache = make(map[string][]anthropicToolBlock)
 }
 
 // getToolsAsAnthropicBlocks 獲取 Anthropic 格式的工具列表，轉換為 anthropicToolBlock。
 // 當 StableTools 啟用時使用完整工具集並緩存結果；否則使用 tier-filtered 工具集。
 func getToolsAsAnthropicBlocks(apiType string, role *Role, contextWindow int) []anthropicToolBlock {
-	// ── StableTools 緩存路徑 ──────────────────────────────────
-	if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools && apiType == "anthropic" {
-		cacheKey := ""
-		if role != nil {
-			cacheKey = role.Name
-		}
-		if cached, ok := stableAnthropicToolBlocksCache[cacheKey]; ok {
-			blocks := make([]anthropicToolBlock, len(cached))
-			copy(blocks, cached)
-			return blocks
-		}
+        // ── StableTools 緩存路徑 ──────────────────────────────────
+        if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools && apiType == "anthropic" {
+                cacheKey := ""
+                if role != nil {
+                        cacheKey = role.Name
+                }
+                if cached, ok := stableAnthropicToolBlocksCache[cacheKey]; ok {
+                        blocks := make([]anthropicToolBlock, len(cached))
+                        copy(blocks, cached)
+                        return blocks
+                }
 
-		tools := getFilteredToolsWithContext(apiType, role, contextWindow)
-		toolList, ok := tools.([]map[string]interface{})
-		if !ok || len(toolList) == 0 {
-			stableAnthropicToolBlocksCache[cacheKey] = nil
-			return nil
-		}
-		blocks := make([]anthropicToolBlock, len(toolList))
-		for i, t := range toolList {
-			blocks[i] = anthropicToolBlock{
-				Name:        getToolName(t),
-				Description: getToolDescription(t),
-				InputSchema: t["input_schema"],
-			}
-		}
-		// 緩存（deep copy 避免外部修改污染緩存）
-		cached := make([]anthropicToolBlock, len(blocks))
-		copy(cached, blocks)
-		stableAnthropicToolBlocksCache[cacheKey] = cached
-		return blocks
-	}
+                tools := getFilteredToolsWithContext(apiType, role, contextWindow)
+                toolList, ok := tools.([]map[string]interface{})
+                if !ok || len(toolList) == 0 {
+                        stableAnthropicToolBlocksCache[cacheKey] = nil
+                        return nil
+                }
+                blocks := make([]anthropicToolBlock, len(toolList))
+                for i, t := range toolList {
+                        blocks[i] = anthropicToolBlock{
+                                Name:        getToolName(t),
+                                Description: getToolDescription(t),
+                                InputSchema: t["input_schema"],
+                        }
+                }
+                // 緩存（deep copy 避免外部修改污染緩存）
+                cached := make([]anthropicToolBlock, len(blocks))
+                copy(cached, blocks)
+                stableAnthropicToolBlocksCache[cacheKey] = cached
+                return blocks
+        }
 
-	// ── 非 StableTools 路徑（原有行為）──────────────────────
-	tools := getFilteredToolsWithContext(apiType, role, contextWindow)
-	toolList, ok := tools.([]map[string]interface{})
-	if !ok || len(toolList) == 0 {
-		return nil
-	}
-	blocks := make([]anthropicToolBlock, len(toolList))
-	for i, t := range toolList {
-		blocks[i] = anthropicToolBlock{
-			Name:        getToolName(t),
-			Description: getToolDescription(t),
-			InputSchema: t["input_schema"],
-		}
-	}
-	return blocks
+        // ── 非 StableTools 路徑（原有行為）──────────────────────
+        tools := getFilteredToolsWithContext(apiType, role, contextWindow)
+        toolList, ok := tools.([]map[string]interface{})
+        if !ok || len(toolList) == 0 {
+                return nil
+        }
+        blocks := make([]anthropicToolBlock, len(toolList))
+        for i, t := range toolList {
+                blocks[i] = anthropicToolBlock{
+                        Name:        getToolName(t),
+                        Description: getToolDescription(t),
+                        InputSchema: t["input_schema"],
+                }
+        }
+        return blocks
 }
 
 // getToolDescription 從工具 map 中提取 description 字段
 func getToolDescription(tool map[string]interface{}) string {
-	if desc, ok := tool["description"].(string); ok {
-		return desc
-	}
-	return ""
+        if desc, ok := tool["description"].(string); ok {
+                return desc
+        }
+        return ""
 }
 
 // mapSliceToInterfaceSlice 將 []map[string]interface{} 轉換為 []interface{}
 // 用於將動態 messages 放入 struct 的 []interface{} 欄位
 func mapSliceToInterfaceSlice(maps []map[string]interface{}) []interface{} {
-	result := make([]interface{}, len(maps))
-	for i, m := range maps {
-		result[i] = m
-	}
-	return result
+        result := make([]interface{}, len(maps))
+        for i, m := range maps {
+                result[i] = m
+        }
+        return result
 }
 
 // toolsToInterfaceSlice 將 interface{} 類型的 tools 轉換為 []interface{}
 // getFilteredToolsWithContext 返回 interface{}，需提取底層 slice
 func toolsToInterfaceSlice(tools interface{}) []interface{} {
-	if tools == nil {
-		return nil
-	}
-	switch v := tools.(type) {
-	case []interface{}:
-		if len(v) == 0 {
-			return nil
-		}
-		return v
-	case []map[string]interface{}:
-		if len(v) == 0 {
-			return nil
-		}
-		result := make([]interface{}, len(v))
-		for i, m := range v {
-			result[i] = m
-		}
-		return result
-	}
-	return nil
+        if tools == nil {
+                return nil
+        }
+        switch v := tools.(type) {
+        case []interface{}:
+                if len(v) == 0 {
+                        return nil
+                }
+                return v
+        case []map[string]interface{}:
+                if len(v) == 0 {
+                        return nil
+                }
+                result := make([]interface{}, len(v))
+                for i, m := range v {
+                        result[i] = m
+                }
+                return result
+        }
+        return nil
 }
 
 // isThinkingSupported 判断该 OpenAI 兼容提供商是否支持 thinking 模式及对应格式
@@ -1617,806 +1590,806 @@ func toolsToInterfaceSlice(tools interface{}) []interface{} {
 //
 // 注意：Anthropic 的 thinking 由 prepareRequestData 的 anthropic 分支单独处理
 func isThinkingSupported(baseURL string) (supported bool, format string) {
-	// 優先使用配置中的 ThinkingFormat 覆蓋（支援代理/自定義 endpoint）
-	if globalAPIConfig.ThinkingFormat != "" {
-		switch strings.ToLower(globalAPIConfig.ThinkingFormat) {
-		case "disabled":
-			return false, ""
-		case "object":
-			return true, "object"
-		case "bool":
-			return true, "bool"
-		}
-	}
+        // 優先使用配置中的 ThinkingFormat 覆蓋（支援代理/自定義 endpoint）
+        if globalAPIConfig.ThinkingFormat != "" {
+                switch strings.ToLower(globalAPIConfig.ThinkingFormat) {
+                case "disabled":
+                        return false, ""
+                case "object":
+                        return true, "object"
+                case "bool":
+                        return true, "bool"
+                }
+        }
 
-	// URL 自動檢測
-	lower := strings.ToLower(baseURL)
-	// DeepSeek 使用对象格式
-	if strings.Contains(lower, "deepseek.com") || strings.Contains(lower, "deepseek") {
-		return true, "object"
-	}
-	// GLM/智谱、Qwen/通义 使用对象格式
-	if strings.Contains(lower, "bigmodel.cn") ||
-		strings.Contains(lower, "dashscope.aliyuncs.com") ||
-		strings.Contains(lower, "aliyuncs.com") {
-		return true, "object"
-	}
-	return false, ""
+        // URL 自動檢測
+        lower := strings.ToLower(baseURL)
+        // DeepSeek 使用对象格式
+        if strings.Contains(lower, "deepseek.com") || strings.Contains(lower, "deepseek") {
+                return true, "object"
+        }
+        // GLM/智谱、Qwen/通义 使用对象格式
+        if strings.Contains(lower, "bigmodel.cn") ||
+                strings.Contains(lower, "dashscope.aliyuncs.com") ||
+                strings.Contains(lower, "aliyuncs.com") {
+                return true, "object"
+        }
+        return false, ""
 }
 
 // isContextLengthError 检测错误消息是否为上下文长度超过限制的错误
 func isContextLengthError(errorBody string) bool {
-	lowerError := strings.ToLower(errorBody)
-	// 常见的上下文长度错误关键词
-	contextLengthKeywords := []string{
-		"context length",
-		"token limit",
-		"context window",
-		"max tokens",
-		"token count",
-		"context size",
-		"input length",
-		"message length",
-		"tokens exceed",
-		"context exceeds",
-		"exceeds the maximum",
-	}
-	for _, keyword := range contextLengthKeywords {
-		if strings.Contains(lowerError, keyword) {
-			return true
-		}
-	}
-	return false
+        lowerError := strings.ToLower(errorBody)
+        // 常见的上下文长度错误关键词
+        contextLengthKeywords := []string{
+                "context length",
+                "token limit",
+                "context window",
+                "max tokens",
+                "token count",
+                "context size",
+                "input length",
+                "message length",
+                "tokens exceed",
+                "context exceeds",
+                "exceeds the maximum",
+        }
+        for _, keyword := range contextLengthKeywords {
+                if strings.Contains(lowerError, keyword) {
+                        return true
+                }
+        }
+        return false
 }
 
 // 发送请求（支持 Context）
 func sendRequest(ctx context.Context, reqBody []byte, endpoint, apiKey, apiType string) (*http.Response, error) {
-	t0 := time.Now()
-	log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(reqBody), apiType)
+        t0 := time.Now()
+        log.Printf("[CallModel] Request to %s: body=%d bytes, apiType=%s", endpoint, len(reqBody), apiType)
 
-	// 重置 connection pool，確保每次 request 用 fresh connection
-	// 解決 stale connection 導致 404 問題
-	if transport, ok := httpClient.Transport.(*http.Transport); ok {
-		transport.CloseIdleConnections()
-		log.Printf("[CallModel] Connection pool reset (CloseIdleConnections)")
-	}
+        // 重置 connection pool，確保每次 request 用 fresh connection
+        // 解決 stale connection 導致 404 問題
+        if transport, ok := httpClient.Transport.(*http.Transport); ok {
+                transport.CloseIdleConnections()
+                log.Printf("[CallModel] Connection pool reset (CloseIdleConnections)")
+        }
 
-	// Debug 模式：寫出完整請求體以便檢查
-	if IsDebug {
-		debugReqFile := fmt.Sprintf("debug_request_%d.json", time.Now().Unix())
-		if err := os.WriteFile(debugReqFile, reqBody, 0600); err != nil {
-			log.Printf("[CallModel] Failed to write debug request: %v", err)
-		} else {
-			log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
-		}
-	}
+        // Debug 模式：寫出完整請求體以便檢查
+        if IsDebug {
+                debugReqFile := fmt.Sprintf("debug_request_%d.json", time.Now().Unix())
+                if err := os.WriteFile(debugReqFile, reqBody, 0600); err != nil {
+                        log.Printf("[CallModel] Failed to write debug request: %v", err)
+                } else {
+                        log.Printf("[CallModel] Debug request body written to: %s", debugReqFile)
+                }
+        }
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
+        req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqBody))
+        if err != nil {
+                return nil, fmt.Errorf("failed to create request: %w", err)
+        }
 
-	req.Header.Set("Content-Type", "application/json")
-	if apiType == "anthropic" && globalPromptCacheConfig.Enabled {
-		req.Header.Set("anthropic-version", "2023-06-01")
-	}
-	if apiKey != "" {
-		if apiType == "openai" || apiType == "ollama" {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-		} else if apiType == "anthropic" {
-			req.Header.Set("x-api-key", apiKey)
-		}
-	}
+        req.Header.Set("Content-Type", "application/json")
+        if apiType == "anthropic" && globalPromptCacheConfig.Enabled {
+                req.Header.Set("anthropic-version", "2023-06-01")
+        }
+        if apiKey != "" {
+                if apiType == "openai" || apiType == "ollama" {
+                        req.Header.Set("Authorization", "Bearer "+apiKey)
+                } else if apiType == "anthropic" {
+                        req.Header.Set("x-api-key", apiKey)
+                }
+        }
 
-	if IsDebug {
-		fmt.Printf("Sending request to: %s\n", endpoint)
-	}
+        if IsDebug {
+                fmt.Printf("Sending request to: %s\n", endpoint)
+        }
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		if IsDebug {
-			fmt.Printf("Error sending request: %v\n", err)
-		}
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
+        resp, err := httpClient.Do(req)
+        if err != nil {
+                if IsDebug {
+                        fmt.Printf("Error sending request: %v\n", err)
+                }
+                return nil, fmt.Errorf("failed to send request: %w", err)
+        }
 
-	log.Printf("[CallModel] TTFB: %v (status=%d)", time.Since(t0), resp.StatusCode)
+        log.Printf("[CallModel] TTFB: %v (status=%d)", time.Since(t0), resp.StatusCode)
 
-	if resp.StatusCode != http.StatusOK {
-		errorBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		errorBodyStr := string(errorBody)
-		if IsDebug {
-			fmt.Printf("Error response status: %d\n", resp.StatusCode)
-			fmt.Printf("Error response body: %s\n", errorBodyStr)
-		}
-		// 检测上下文长度超过限制的错误
-		if isContextLengthError(errorBodyStr) {
-			return nil, fmt.Errorf("context_length_exceeded: %s", errorBodyStr)
-		}
-		return nil, fmt.Errorf("API returned error status: %d, body: %s", resp.StatusCode, errorBodyStr)
-	}
+        if resp.StatusCode != http.StatusOK {
+                errorBody, _ := io.ReadAll(resp.Body)
+                resp.Body.Close()
+                errorBodyStr := string(errorBody)
+                if IsDebug {
+                        fmt.Printf("Error response status: %d\n", resp.StatusCode)
+                        fmt.Printf("Error response body: %s\n", errorBodyStr)
+                }
+                // 检测上下文长度超过限制的错误
+                if isContextLengthError(errorBodyStr) {
+                        return nil, fmt.Errorf("context_length_exceeded: %s", errorBodyStr)
+                }
+                return nil, fmt.Errorf("API returned error status: %d, body: %s", resp.StatusCode, errorBodyStr)
+        }
 
-	return resp, nil
+        return resp, nil
 }
 
 // 处理OpenAI响应
 func handleOpenAIResponse(resp *http.Response) (Response, error) {
-	var result Response
-	// 使用 map 来解析，因为 MiniMax 等 API 可能返回不同格式的 arguments
-	var openaiResp struct {
-		Choices []struct {
-			Message struct {
-				Role      string      `json:"role"`
-				Content   interface{} `json:"content"`
-				ToolCalls []struct {
-					ID       string `json:"id"`
-					Type     string `json:"type"`
-					Function struct {
-						Name      string      `json:"name"`
-						Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
-					} `json:"function"`
-				} `json:"tool_calls"`
-				FunctionCall struct {
-					Name      string      `json:"name"`
-					Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
-				} `json:"function_call"`
-				ReasoningContent  interface{} `json:"reasoning_content,omitempty"`
-				Reasoning         interface{} `json:"reasoning,omitempty"` // MiniMax 等模型
-				ThinkingSignature string      `json:"thinking_signature,omitempty"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-		} `json:"choices"`
-	}
+        var result Response
+        // 使用 map 来解析，因为 MiniMax 等 API 可能返回不同格式的 arguments
+        var openaiResp struct {
+                Choices []struct {
+                        Message struct {
+                                Role      string      `json:"role"`
+                                Content   interface{} `json:"content"`
+                                ToolCalls []struct {
+                                        ID       string `json:"id"`
+                                        Type     string `json:"type"`
+                                        Function struct {
+                                                Name      string      `json:"name"`
+                                                Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
+                                        } `json:"function"`
+                                } `json:"tool_calls"`
+                                FunctionCall struct {
+                                        Name      string      `json:"name"`
+                                        Arguments interface{} `json:"arguments"` // 改为 interface{} 以支持对象或字符串
+                                } `json:"function_call"`
+                                ReasoningContent  interface{} `json:"reasoning_content,omitempty"`
+                                Reasoning         interface{} `json:"reasoning,omitempty"` // MiniMax 等模型
+                                ThinkingSignature string      `json:"thinking_signature,omitempty"`
+                        } `json:"message"`
+                        FinishReason string `json:"finish_reason"`
+                } `json:"choices"`
+        }
 
-	err := json.NewDecoder(resp.Body).Decode(&openaiResp)
-	if err != nil {
-		return Response{}, fmt.Errorf("failed to decode OpenAI response: %w", err)
-	}
+        err := json.NewDecoder(resp.Body).Decode(&openaiResp)
+        if err != nil {
+                return Response{}, fmt.Errorf("failed to decode OpenAI response: %w", err)
+        }
 
-	if len(openaiResp.Choices) > 0 {
-		choice := openaiResp.Choices[0]
-		result.StopReason = choice.FinishReason
+        if len(openaiResp.Choices) > 0 {
+                choice := openaiResp.Choices[0]
+                result.StopReason = choice.FinishReason
 
-		if IsDebug {
-			messageJson, _ := json.Marshal(choice.Message)
-			fmt.Printf("Message structure: %s\n", string(messageJson))
-		}
+                if IsDebug {
+                        messageJson, _ := json.Marshal(choice.Message)
+                        fmt.Printf("Message structure: %s\n", string(messageJson))
+                }
 
-		if len(choice.Message.ToolCalls) > 0 {
-			var content []map[string]interface{}
-			for _, toolCall := range choice.Message.ToolCalls {
-				// 将 arguments 转换为 JSON 字符串
-				var argsStr string
-				switch v := toolCall.Function.Arguments.(type) {
-				case string:
-					argsStr = v
-				case map[string]interface{}:
-					if argsJSON, err := json.Marshal(v); err == nil {
-						argsStr = string(argsJSON)
-					}
-				default:
-					if argsJSON, err := json.Marshal(v); err == nil {
-						argsStr = string(argsJSON)
-					}
-				}
+                if len(choice.Message.ToolCalls) > 0 {
+                        var content []map[string]interface{}
+                        for _, toolCall := range choice.Message.ToolCalls {
+                                // 将 arguments 转换为 JSON 字符串
+                                var argsStr string
+                                switch v := toolCall.Function.Arguments.(type) {
+                                case string:
+                                        argsStr = v
+                                case map[string]interface{}:
+                                        if argsJSON, err := json.Marshal(v); err == nil {
+                                                argsStr = string(argsJSON)
+                                        }
+                                default:
+                                        if argsJSON, err := json.Marshal(v); err == nil {
+                                                argsStr = string(argsJSON)
+                                        }
+                                }
 
-				toolUse := map[string]interface{}{
-					"id":   toolCall.ID,
-					"type": "function",
-					"function": map[string]interface{}{
-						"name":      toolCall.Function.Name,
-						"arguments": argsStr,
-					},
-				}
-				content = append(content, toolUse)
-			}
-			result.Content = content
-			result.StopReason = "function_call"
-		} else {
-			if choice.Message.FunctionCall.Name != "" {
-				// 将 arguments 转换为 JSON 字符串
-				var argsStr string
-				switch v := choice.Message.FunctionCall.Arguments.(type) {
-				case string:
-					argsStr = v
-				case map[string]interface{}:
-					if argsJSON, err := json.Marshal(v); err == nil {
-						argsStr = string(argsJSON)
-					}
-				default:
-					if argsJSON, err := json.Marshal(v); err == nil {
-						argsStr = string(argsJSON)
-					}
-				}
+                                toolUse := map[string]interface{}{
+                                        "id":   toolCall.ID,
+                                        "type": "function",
+                                        "function": map[string]interface{}{
+                                                "name":      toolCall.Function.Name,
+                                                "arguments": argsStr,
+                                        },
+                                }
+                                content = append(content, toolUse)
+                        }
+                        result.Content = content
+                        result.StopReason = "function_call"
+                } else {
+                        if choice.Message.FunctionCall.Name != "" {
+                                // 将 arguments 转换为 JSON 字符串
+                                var argsStr string
+                                switch v := choice.Message.FunctionCall.Arguments.(type) {
+                                case string:
+                                        argsStr = v
+                                case map[string]interface{}:
+                                        if argsJSON, err := json.Marshal(v); err == nil {
+                                                argsStr = string(argsJSON)
+                                        }
+                                default:
+                                        if argsJSON, err := json.Marshal(v); err == nil {
+                                                argsStr = string(argsJSON)
+                                        }
+                                }
 
-				var args map[string]interface{}
-				json.Unmarshal([]byte(argsStr), &args)
+                                var args map[string]interface{}
+                                json.Unmarshal([]byte(argsStr), &args)
 
-				toolUse := map[string]interface{}{
-					"type":  "function",
-					"id":    "1",
-					"name":  choice.Message.FunctionCall.Name,
-					"input": args,
-				}
-				result.Content = []map[string]interface{}{toolUse}
-				result.StopReason = "function_call"
-			} else {
-				if contentStr, ok := choice.Message.Content.(string); ok {
-					result.Content = applyReplacements(contentStr)
-				} else {
-					result.Content = choice.Message.Content
-				}
-				if reasoningStr, ok := choice.Message.ReasoningContent.(string); ok {
-					result.ReasoningContent = applyReplacements(reasoningStr)
-				} else if reasoningStr, ok := choice.Message.Reasoning.(string); ok {
-					result.ReasoningContent = applyReplacements(reasoningStr)
-				} else {
-					result.ReasoningContent = choice.Message.ReasoningContent
-				}
-			}
-		}
-		// 提取 thinking_signature（DeepSeek 思考模式返回，必須回傳 API）
-		if choice.Message.ThinkingSignature != "" {
-			result.ThinkingSignature = choice.Message.ThinkingSignature
-		}
-	}
+                                toolUse := map[string]interface{}{
+                                        "type":  "function",
+                                        "id":    "1",
+                                        "name":  choice.Message.FunctionCall.Name,
+                                        "input": args,
+                                }
+                                result.Content = []map[string]interface{}{toolUse}
+                                result.StopReason = "function_call"
+                        } else {
+                                if contentStr, ok := choice.Message.Content.(string); ok {
+                                        result.Content = applyReplacements(contentStr)
+                                } else {
+                                        result.Content = choice.Message.Content
+                                }
+                                if reasoningStr, ok := choice.Message.ReasoningContent.(string); ok {
+                                        result.ReasoningContent = applyReplacements(reasoningStr)
+                                } else if reasoningStr, ok := choice.Message.Reasoning.(string); ok {
+                                        result.ReasoningContent = applyReplacements(reasoningStr)
+                                } else {
+                                        result.ReasoningContent = choice.Message.ReasoningContent
+                                }
+                        }
+                }
+                // 提取 thinking_signature（DeepSeek 思考模式返回，必須回傳 API）
+                if choice.Message.ThinkingSignature != "" {
+                        result.ThinkingSignature = choice.Message.ThinkingSignature
+                }
+        }
 
-	return result, nil
+        return result, nil
 }
 
 // 处理Ollama响应
 func handleOllamaResponse(resp *http.Response) (Response, error) {
-	var result Response
-	var ollamaResp struct {
-		Message struct {
-			Role    string      `json:"role"`
-			Content interface{} `json:"content"`
-		} `json:"message"`
-		Done bool `json:"done"`
-	}
+        var result Response
+        var ollamaResp struct {
+                Message struct {
+                        Role    string      `json:"role"`
+                        Content interface{} `json:"content"`
+                } `json:"message"`
+                Done bool `json:"done"`
+        }
 
-	err := json.NewDecoder(resp.Body).Decode(&ollamaResp)
-	if err != nil {
-		return Response{}, fmt.Errorf("failed to decode Ollama response: %w", err)
-	}
+        err := json.NewDecoder(resp.Body).Decode(&ollamaResp)
+        if err != nil {
+                return Response{}, fmt.Errorf("failed to decode Ollama response: %w", err)
+        }
 
-	result.Content = ollamaResp.Message.Content
-	if contentStr, ok := result.Content.(string); ok {
-		result.Content = applyReplacements(contentStr)
-	}
-	if ollamaResp.Done {
-		result.StopReason = "stop"
-	} else {
-		result.StopReason = "tool_use"
-	}
+        result.Content = ollamaResp.Message.Content
+        if contentStr, ok := result.Content.(string); ok {
+                result.Content = applyReplacements(contentStr)
+        }
+        if ollamaResp.Done {
+                result.StopReason = "stop"
+        } else {
+                result.StopReason = "tool_use"
+        }
 
-	return result, nil
+        return result, nil
 }
 
 // 处理Anthropic响应
 func handleAnthropicResponse(resp *http.Response) (Response, error) {
-	var result Response
-	var anthropicResp struct {
-		Content []struct {
-			Type    string `json:"type"`
-			Text    string `json:"text,omitempty"`
-			ToolUse struct {
-				ID    string                 `json:"id"`
-				Name  string                 `json:"name"`
-				Input map[string]interface{} `json:"input"`
-			} `json:"tool_use,omitempty"`
-			Thinking  string `json:"thinking,omitempty"`
-			Signature string `json:"signature,omitempty"`
-		} `json:"content"`
-		StopReason string `json:"stop_reason"`
-	}
+        var result Response
+        var anthropicResp struct {
+                Content []struct {
+                        Type    string `json:"type"`
+                        Text    string `json:"text,omitempty"`
+                        ToolUse struct {
+                                ID    string                 `json:"id"`
+                                Name  string                 `json:"name"`
+                                Input map[string]interface{} `json:"input"`
+                        } `json:"tool_use,omitempty"`
+                        Thinking  string `json:"thinking,omitempty"`
+                        Signature string `json:"signature,omitempty"`
+                } `json:"content"`
+                StopReason string `json:"stop_reason"`
+        }
 
-	err := json.NewDecoder(resp.Body).Decode(&anthropicResp)
-	if err != nil {
-		return Response{}, fmt.Errorf("failed to decode Anthropic response: %w", err)
-	}
+        err := json.NewDecoder(resp.Body).Decode(&anthropicResp)
+        if err != nil {
+                return Response{}, fmt.Errorf("failed to decode Anthropic response: %w", err)
+        }
 
-	var content interface{}
-	var hasToolUse bool
-	var toolCalls []map[string]interface{}
-	var reasoningContent strings.Builder
-	var thinkingSignature string
+        var content interface{}
+        var hasToolUse bool
+        var toolCalls []map[string]interface{}
+        var reasoningContent strings.Builder
+        var thinkingSignature string
 
-	for _, item := range anthropicResp.Content {
-		if item.Type == "text" && item.Text != "" {
-			if content == nil {
-				content = item.Text
-			} else if str, ok := content.(string); ok {
-				content = str + "\n" + item.Text
-			}
-		} else if item.Type == "tool_use" {
-			hasToolUse = true
-			toolCall := map[string]interface{}{
-				"id":   item.ToolUse.ID,
-				"type": "function",
-				"function": map[string]interface{}{
-					"name":      item.ToolUse.Name,
-					"arguments": item.ToolUse.Input,
-				},
-			}
-			toolCalls = append(toolCalls, toolCall)
-		} else if item.Type == "thinking" {
-			if item.Thinking != "" {
-				reasoningContent.WriteString(item.Thinking)
-				reasoningContent.WriteString("\n")
-			}
-			if item.Signature != "" {
-				thinkingSignature = item.Signature
-			}
-		}
-	}
+        for _, item := range anthropicResp.Content {
+                if item.Type == "text" && item.Text != "" {
+                        if content == nil {
+                                content = item.Text
+                        } else if str, ok := content.(string); ok {
+                                content = str + "\n" + item.Text
+                        }
+                } else if item.Type == "tool_use" {
+                        hasToolUse = true
+                        toolCall := map[string]interface{}{
+                                "id":   item.ToolUse.ID,
+                                "type": "function",
+                                "function": map[string]interface{}{
+                                        "name":      item.ToolUse.Name,
+                                        "arguments": item.ToolUse.Input,
+                                },
+                        }
+                        toolCalls = append(toolCalls, toolCall)
+                } else if item.Type == "thinking" {
+                        if item.Thinking != "" {
+                                reasoningContent.WriteString(item.Thinking)
+                                reasoningContent.WriteString("\n")
+                        }
+                        if item.Signature != "" {
+                                thinkingSignature = item.Signature
+                        }
+                }
+        }
 
-	if reasoningContent.Len() > 0 {
-		result.ReasoningContent = reasoningContent.String()
-	}
-	if thinkingSignature != "" {
-		result.ThinkingSignature = thinkingSignature
-	}
+        if reasoningContent.Len() > 0 {
+                result.ReasoningContent = reasoningContent.String()
+        }
+        if thinkingSignature != "" {
+                result.ThinkingSignature = thinkingSignature
+        }
 
-	if hasToolUse {
-		result.Content = toolCalls
-		result.StopReason = "function_call"
-	} else {
-		result.StopReason = anthropicResp.StopReason
-		if str, ok := content.(string); ok {
-			result.Content = applyReplacements(str)
-		} else {
-			result.Content = content
-		}
-	}
+        if hasToolUse {
+                result.Content = toolCalls
+                result.StopReason = "function_call"
+        } else {
+                result.StopReason = anthropicResp.StopReason
+                if str, ok := content.(string); ok {
+                        result.Content = applyReplacements(str)
+                } else {
+                        result.Content = content
+                }
+        }
 
-	return result, nil
+        return result, nil
 }
 
 // 处理非流式响应
 func handleNonStreamResponse(resp *http.Response, apiType string) (Response, error) {
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		if IsDebug {
-			fmt.Printf("Error reading response body: %v\n", err)
-		}
-		return Response{}, fmt.Errorf("failed to read response body: %w", err)
-	}
+        responseBody, err := io.ReadAll(resp.Body)
+        if err != nil {
+                if IsDebug {
+                        fmt.Printf("Error reading response body: %v\n", err)
+                }
+                return Response{}, fmt.Errorf("failed to read response body: %w", err)
+        }
 
-	if IsDebug {
-		fmt.Printf("Response body: %s\n", string(responseBody))
-		debugFile := fmt.Sprintf("debug_response_%d.json", time.Now().Unix())
-		if err := os.WriteFile(debugFile, responseBody, 0600); err == nil {
-			fmt.Printf("Debug response data written to: %s\n", debugFile)
-		}
-	}
+        if IsDebug {
+                fmt.Printf("Response body: %s\n", string(responseBody))
+                debugFile := fmt.Sprintf("debug_response_%d.json", time.Now().Unix())
+                if err := os.WriteFile(debugFile, responseBody, 0600); err == nil {
+                        fmt.Printf("Debug response data written to: %s\n", debugFile)
+                }
+        }
 
-	r := bytes.NewReader(responseBody)
-	resp.Body = io.NopCloser(r)
+        r := bytes.NewReader(responseBody)
+        resp.Body = io.NopCloser(r)
 
-	switch apiType {
-	case "openai":
-		return handleOpenAIResponse(resp)
-	case "ollama":
-		return handleOllamaResponse(resp)
-	default:
-		return handleAnthropicResponse(resp)
-	}
+        switch apiType {
+        case "openai":
+                return handleOpenAIResponse(resp)
+        case "ollama":
+                return handleOllamaResponse(resp)
+        default:
+                return handleAnthropicResponse(resp)
+        }
 }
 
 // compressMessages 根据级别压缩消息列表
 // level: 0-简化工具消息（提取原始命令+后200字符），1-移除所有工具消息，2-保留最近20条
 func compressMessages(messages []Message, level int) []Message {
-	if level < 0 {
-		level = 0
-	}
-	if level > 2 {
-		level = 2
-	}
+        if level < 0 {
+                level = 0
+        }
+        if level > 2 {
+                level = 2
+        }
 
-	// 复制一份，避免修改原切片
-	newMsgs := make([]Message, len(messages))
-	copy(newMsgs, messages)
+        // 复制一份，避免修改原切片
+        newMsgs := make([]Message, len(messages))
+        copy(newMsgs, messages)
 
-	switch level {
-	case 0:
-		// 构建从 tool_call_id 到 (命令, 工具名) 的映射
-		cmdMap := make(map[string]struct {
-			cmd  string
-			tool string
-		})
-		for _, msg := range newMsgs {
-			if msg.Role == "assistant" && msg.ToolCalls != nil {
-				// 遍历 tool_calls
-				if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
-					for _, tc := range tcSlice {
-						if tcMap, ok := tc.(map[string]interface{}); ok {
-							if id, ok := tcMap["id"].(string); ok && id != "" {
-								// 提取工具名称和命令
-								toolName := ""
-								command := ""
-								if function, ok := tcMap["function"].(map[string]interface{}); ok {
-									if name, ok := function["name"].(string); ok {
-										toolName = name
-									}
-									if args, ok := function["arguments"]; ok {
-										var argsMap map[string]interface{}
-										switch v := args.(type) {
-										case string:
-											json.Unmarshal([]byte(v), &argsMap)
-										case map[string]interface{}:
-											argsMap = v
-										}
-										if argsMap != nil {
-											if cmd, ok := argsMap["command"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["script"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["expression"].(string); ok {
-												command = cmd
-											} else if cmd, ok := argsMap["query"].(string); ok {
-												command = cmd
-											}
-										}
-									}
-								}
-								cmdMap[id] = struct {
-									cmd  string
-									tool string
-								}{cmd: command, tool: toolName}
-							}
-						}
-					}
-				}
-			}
-		}
+        switch level {
+        case 0:
+                // 构建从 tool_call_id 到 (命令, 工具名) 的映射
+                cmdMap := make(map[string]struct {
+                        cmd  string
+                        tool string
+                })
+                for _, msg := range newMsgs {
+                        if msg.Role == "assistant" && msg.ToolCalls != nil {
+                                // 遍历 tool_calls
+                                if tcSlice, ok := msg.ToolCalls.([]interface{}); ok {
+                                        for _, tc := range tcSlice {
+                                                if tcMap, ok := tc.(map[string]interface{}); ok {
+                                                        if id, ok := tcMap["id"].(string); ok && id != "" {
+                                                                // 提取工具名称和命令
+                                                                toolName := ""
+                                                                command := ""
+                                                                if function, ok := tcMap["function"].(map[string]interface{}); ok {
+                                                                        if name, ok := function["name"].(string); ok {
+                                                                                toolName = name
+                                                                        }
+                                                                        if args, ok := function["arguments"]; ok {
+                                                                                var argsMap map[string]interface{}
+                                                                                switch v := args.(type) {
+                                                                                case string:
+                                                                                        json.Unmarshal([]byte(v), &argsMap)
+                                                                                case map[string]interface{}:
+                                                                                        argsMap = v
+                                                                                }
+                                                                                if argsMap != nil {
+                                                                                        if cmd, ok := argsMap["command"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["script"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["expression"].(string); ok {
+                                                                                                command = cmd
+                                                                                        } else if cmd, ok := argsMap["query"].(string); ok {
+                                                                                                command = cmd
+                                                                                        }
+                                                                                }
+                                                                        }
+                                                                }
+                                                                cmdMap[id] = struct {
+                                                                        cmd  string
+                                                                        tool string
+                                                                }{cmd: command, tool: toolName}
+                                                        }
+                                                }
+                                        }
+                                }
+                        }
+                }
 
-		// 简化 tool 消息的内容
-		for i, msg := range newMsgs {
-			if msg.Role == "tool" {
-				contentStr, ok := msg.Content.(string)
-				if !ok {
-					contentStr = fmt.Sprintf("%v", msg.Content)
-				}
-				// 获取命令信息
-				cmdInfo := cmdMap[msg.ToolCallID]
-				command := cmdInfo.cmd
-				toolName := cmdInfo.tool
-				// 判断是否失败
-				isError := strings.HasPrefix(contentStr, "Error:") || strings.HasPrefix(contentStr, "error:")
-				status := "成功"
-				if isError {
-					status = "失败"
-				}
-				// 取后200字符作为摘要
-				runes := []rune(contentStr)
-				tail := contentStr
-				if len(runes) > 200 {
-					tail = string(runes[len(runes)-200:])
-				}
-				var prefix string
-				if command != "" {
-					prefix = fmt.Sprintf("[%s: %s] [%s] ", toolName, command, status)
-				} else {
-					prefix = fmt.Sprintf("[工具执行%s] ", status)
-				}
-				newMsgs[i].Content = prefix + tail
-			}
-		}
-	case 1:
-		// 移除所有 tool 消息，并清除 assistant 中的 tool_calls
-		filtered := make([]Message, 0, len(newMsgs))
-		for _, msg := range newMsgs {
-			if msg.Role == "tool" {
-				continue
-			}
-			if msg.Role == "assistant" && msg.ToolCalls != nil {
-				// 创建新消息，移除 tool_calls
-				newMsg := msg
-				newMsg.ToolCalls = nil
-				if msg.Content == nil {
-					newMsg.Content = ""
-				}
-				// 只有 content 非空时才保留，避免产生空 assistant 消息
-				if contentStr, ok := newMsg.Content.(string); ok && contentStr == "" {
-					continue
-				}
-				filtered = append(filtered, newMsg)
-			} else {
-				filtered = append(filtered, msg)
-			}
-		}
-		newMsgs = filtered
-		// 合并连续同角色消息（移除 tool 消息后可能产生连续 assistant）
-		newMsgs = mergeConsecutiveSameRole(newMsgs)
-	case 2:
-		// 保留最近20条消息，但保留系统消息（如果有）
-		const keepRecent = 20
-		if len(newMsgs) <= keepRecent {
-			break
-		}
-		var systemMsg *Message
-		if len(newMsgs) > 0 && newMsgs[0].Role == "system" {
-			systemMsg = &newMsgs[0]
-			newMsgs = newMsgs[1:]
-		}
+                // 简化 tool 消息的内容
+                for i, msg := range newMsgs {
+                        if msg.Role == "tool" {
+                                contentStr, ok := msg.Content.(string)
+                                if !ok {
+                                        contentStr = fmt.Sprintf("%v", msg.Content)
+                                }
+                                // 获取命令信息
+                                cmdInfo := cmdMap[msg.ToolCallID]
+                                command := cmdInfo.cmd
+                                toolName := cmdInfo.tool
+                                // 判断是否失败
+                                isError := strings.HasPrefix(contentStr, "Error:") || strings.HasPrefix(contentStr, "error:")
+                                status := "成功"
+                                if isError {
+                                        status = "失败"
+                                }
+                                // 取后200字符作为摘要
+                                runes := []rune(contentStr)
+                                tail := contentStr
+                                if len(runes) > 200 {
+                                        tail = string(runes[len(runes)-200:])
+                                }
+                                var prefix string
+                                if command != "" {
+                                        prefix = fmt.Sprintf("[%s: %s] [%s] ", toolName, command, status)
+                                } else {
+                                        prefix = fmt.Sprintf("[工具执行%s] ", status)
+                                }
+                                newMsgs[i].Content = prefix + tail
+                        }
+                }
+        case 1:
+                // 移除所有 tool 消息，并清除 assistant 中的 tool_calls
+                filtered := make([]Message, 0, len(newMsgs))
+                for _, msg := range newMsgs {
+                        if msg.Role == "tool" {
+                                continue
+                        }
+                        if msg.Role == "assistant" && msg.ToolCalls != nil {
+                                // 创建新消息，移除 tool_calls
+                                newMsg := msg
+                                newMsg.ToolCalls = nil
+                                if msg.Content == nil {
+                                        newMsg.Content = ""
+                                }
+                                // 只有 content 非空时才保留，避免产生空 assistant 消息
+                                if contentStr, ok := newMsg.Content.(string); ok && contentStr == "" {
+                                        continue
+                                }
+                                filtered = append(filtered, newMsg)
+                        } else {
+                                filtered = append(filtered, msg)
+                        }
+                }
+                newMsgs = filtered
+                // 合并连续同角色消息（移除 tool 消息后可能产生连续 assistant）
+                newMsgs = mergeConsecutiveSameRole(newMsgs)
+        case 2:
+                // 保留最近20条消息，但保留系统消息（如果有）
+                const keepRecent = 20
+                if len(newMsgs) <= keepRecent {
+                        break
+                }
+                var systemMsg *Message
+                if len(newMsgs) > 0 && newMsgs[0].Role == "system" {
+                        systemMsg = &newMsgs[0]
+                        newMsgs = newMsgs[1:]
+                }
 
-		// 在被截斷部分中搜尋最新的含 thinking block 的 assistant 訊息
-		// thinking blocks (含 signature) 必須回傳給 API，否則會得到 400 錯誤
-		var lastThinkingMsg *Message
-		if len(newMsgs) > keepRecent {
-			cutEnd := len(newMsgs) - keepRecent
-			for i := cutEnd - 1; i >= 0; i-- {
-				if newMsgs[i].Role == "assistant" && (newMsgs[i].ThinkingSignature != "" || newMsgs[i].ReasoningContent != nil) {
-					m := newMsgs[i]
-					lastThinkingMsg = &m
-					break
-				}
-			}
-			newMsgs = newMsgs[len(newMsgs)-keepRecent:]
-		}
+                // 在被截斷部分中搜尋最新的含 thinking block 的 assistant 訊息
+                // thinking blocks (含 signature) 必須回傳給 API，否則會得到 400 錯誤
+                var lastThinkingMsg *Message
+                if len(newMsgs) > keepRecent {
+                        cutEnd := len(newMsgs) - keepRecent
+                        for i := cutEnd - 1; i >= 0; i-- {
+                                if newMsgs[i].Role == "assistant" && (newMsgs[i].ThinkingSignature != "" || newMsgs[i].ReasoningContent != nil) {
+                                        m := newMsgs[i]
+                                        lastThinkingMsg = &m
+                                        break
+                                }
+                        }
+                        newMsgs = newMsgs[len(newMsgs)-keepRecent:]
+                }
 
-		if systemMsg != nil {
-			newMsgs = append([]Message{*systemMsg}, newMsgs...)
-		}
+                if systemMsg != nil {
+                        newMsgs = append([]Message{*systemMsg}, newMsgs...)
+                }
 
-		// 如果被截斷部分有 thinking block 而保留部分沒有，必須插入該訊息
-		if lastThinkingMsg != nil {
-			hasThinking := false
-			for _, msg := range newMsgs {
-				if msg.Role == "assistant" && (msg.ThinkingSignature != "" || msg.ReasoningContent != nil) {
-					hasThinking = true
-					break
-				}
-			}
-			if !hasThinking {
-				// 检查插入位置后面的第一条消息是否是 assistant，避免连续两个 assistant 消息
-				insertPos := 0
-				for i, msg := range newMsgs {
-					if msg.Role == "system" {
-						insertPos = i + 1
-					} else {
-						break
-					}
-				}
+                // 如果被截斷部分有 thinking block 而保留部分沒有，必須插入該訊息
+                if lastThinkingMsg != nil {
+                        hasThinking := false
+                        for _, msg := range newMsgs {
+                                if msg.Role == "assistant" && (msg.ThinkingSignature != "" || msg.ReasoningContent != nil) {
+                                        hasThinking = true
+                                        break
+                                }
+                        }
+                        if !hasThinking {
+                                // 检查插入位置后面的第一条消息是否是 assistant，避免连续两个 assistant 消息
+                                insertPos := 0
+                                for i, msg := range newMsgs {
+                                        if msg.Role == "system" {
+                                                insertPos = i + 1
+                                        } else {
+                                                break
+                                        }
+                                }
 
-				// 检查插入后会否导致连续的 assistant 消息
-				// 如果插入位置后的第一条消息是 assistant，我们需要确保不要造成连续两个 assistant
-				// 一个更安全的方法是：如果 insertPos 后面已经有 assistant 消息，我们就不应该在这个位置插入
-				// 或者，我们可以检查插入后的消息序列是否合法
+                                // 检查插入后会否导致连续的 assistant 消息
+                                // 如果插入位置后的第一条消息是 assistant，我们需要确保不要造成连续两个 assistant
+                                // 一个更安全的方法是：如果 insertPos 后面已经有 assistant 消息，我们就不应该在这个位置插入
+                                // 或者，我们可以检查插入后的消息序列是否合法
 
-				// 另一种更简单且安全的方案：检查保留消息列表的最后一个消息的角色
-				// 如果最后一条是 assistant，我们不应该再插入另一个 assistant 消息（除非中间有 user/tool 消息）
-				// 但其实我们可以做一个更完整的检查：插入 thinking 消息后，检查是否会产生连续的 assistant
+                                // 另一种更简单且安全的方案：检查保留消息列表的最后一个消息的角色
+                                // 如果最后一条是 assistant，我们不应该再插入另一个 assistant 消息（除非中间有 user/tool 消息）
+                                // 但其实我们可以做一个更完整的检查：插入 thinking 消息后，检查是否会产生连续的 assistant
 
-				// 让我们先构建临时的结果，然后检查
-				tempResult := make([]Message, 0, len(newMsgs)+1)
-				tempResult = append(tempResult, newMsgs[:insertPos]...)
-				tempResult = append(tempResult, *lastThinkingMsg)
-				tempResult = append(tempResult, newMsgs[insertPos:]...)
+                                // 让我们先构建临时的结果，然后检查
+                                tempResult := make([]Message, 0, len(newMsgs)+1)
+                                tempResult = append(tempResult, newMsgs[:insertPos]...)
+                                tempResult = append(tempResult, *lastThinkingMsg)
+                                tempResult = append(tempResult, newMsgs[insertPos:]...)
 
-				// 检查临时结果中是否有连续的 assistant 消息（跳过检查中间有 thinking 的情况？）
-				// 其实更简单的是：我们只需要检查插入位置的前后是否都是 assistant
-				hasConsecutiveAssistant := false
+                                // 检查临时结果中是否有连续的 assistant 消息（跳过检查中间有 thinking 的情况？）
+                                // 其实更简单的是：我们只需要检查插入位置的前后是否都是 assistant
+                                hasConsecutiveAssistant := false
 
-				// 检查前一个位置（如果有）
-				if insertPos > 0 && tempResult[insertPos-1].Role == "assistant" {
-					hasConsecutiveAssistant = true
-				}
-				// 检查后一个位置（如果有）
-				if insertPos < len(tempResult)-1 && tempResult[insertPos+1].Role == "assistant" {
-					hasConsecutiveAssistant = true
-				}
+                                // 检查前一个位置（如果有）
+                                if insertPos > 0 && tempResult[insertPos-1].Role == "assistant" {
+                                        hasConsecutiveAssistant = true
+                                }
+                                // 检查后一个位置（如果有）
+                                if insertPos < len(tempResult)-1 && tempResult[insertPos+1].Role == "assistant" {
+                                        hasConsecutiveAssistant = true
+                                }
 
-				if !hasConsecutiveAssistant {
-					newMsgs = tempResult
-					log.Printf("[compressMessages] level 2: 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
-				} else {
-					log.Printf("[compressMessages] level 2: 跳過插入含 thinking block 的 assistant 訊息，避免連續兩個 assistant 訊息")
-				}
-			}
-		}
+                                if !hasConsecutiveAssistant {
+                                        newMsgs = tempResult
+                                        log.Printf("[compressMessages] level 2: 保留含 thinking block 的 assistant 訊息（避免 API 400 錯誤）")
+                                } else {
+                                        log.Printf("[compressMessages] level 2: 跳過插入含 thinking block 的 assistant 訊息，避免連續兩個 assistant 訊息")
+                                }
+                        }
+                }
 
-		// 截断后可能产生孤立 tool 消息或非法序列，进行清理
-		newMsgs = removeOrphanedToolMessages(newMsgs)
-		newMsgs = removeOrphanedToolCalls(newMsgs)
-		newMsgs = mergeConsecutiveSameRole(newMsgs)
-	}
-	return newMsgs
+                // 截断后可能产生孤立 tool 消息或非法序列，进行清理
+                newMsgs = removeOrphanedToolMessages(newMsgs)
+                newMsgs = removeOrphanedToolCalls(newMsgs)
+                newMsgs = mergeConsecutiveSameRole(newMsgs)
+        }
+        return newMsgs
 }
 
 // resolveEndpoint 是 URL 拼接的唯一入口。
 // 將 baseURL 與 apiPath 拼接為完整的請求 URL。
 // 所有 URL 構建邏輯必須經過此函數，確保不會出現雙重拼接。
 func resolveEndpoint(baseURL, apiPath string) string {
-	return strings.TrimRight(baseURL, "/") + apiPath
+        return strings.TrimRight(baseURL, "/") + apiPath
 }
 
 // sendRequestAndGetChunks 发送请求并返回流式数据块通道
 // baseURL: API 基地址（可能被 session 級別覆蓋）
 // apiPath: API 路徑（如 /messages、/chat/completions、/chat）
 func sendRequestAndGetChunks(ctx context.Context, reqBody []byte, baseURL, apiPath, apiKey, apiType string, stream bool) (<-chan StreamChunk, error) {
-	// 速率限制：基于 BaseURL 粒度，使用当前全局 API 配置的 RateLimit
-	if globalAPIConfig.RateLimit > 0 {
-		if err := globalRateLimiter.waitIfNeeded(ctx, globalAPIConfig.BaseURL, globalAPIConfig.RateLimit); err != nil {
-			return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
-		}
-	}
+        // 速率限制：基于 BaseURL 粒度，使用当前全局 API 配置的 RateLimit
+        if globalAPIConfig.RateLimit > 0 {
+                if err := globalRateLimiter.waitIfNeeded(ctx, globalAPIConfig.BaseURL, globalAPIConfig.RateLimit); err != nil {
+                        return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
+                }
+        }
 
-	// ── P4: 從憑證池獲取 API Key（若池中有可用憑證）───────────
-	effectiveAPIKey := apiKey
-	activeCredentialID := ""
-	if globalCredentialPool != nil && globalCredentialPool.GetHealthyCredentialCount() > 0 {
-		if globalCredentialPool.PoolSize() >= 2 {
-			// 多憑證：預取 fallback，減少 429 時的切換延遲
-			best, _, err := globalCredentialPool.GetCredentialWithFallback()
-			if err == nil && best != nil {
-				effectiveAPIKey = best.Key
-				activeCredentialID = best.ID
-			}
-		} else {
-			if cred, err := globalCredentialPool.GetCredential(); err == nil && cred != nil {
-				effectiveAPIKey = cred.Key
-				activeCredentialID = cred.ID
-			}
-		}
-	}
+        // ── P4: 從憑證池獲取 API Key（若池中有可用憑證）───────────
+        effectiveAPIKey := apiKey
+        activeCredentialID := ""
+        if globalCredentialPool != nil && globalCredentialPool.GetHealthyCredentialCount() > 0 {
+                if globalCredentialPool.PoolSize() >= 2 {
+                        // 多憑證：預取 fallback，減少 429 時的切換延遲
+                        best, _, err := globalCredentialPool.GetCredentialWithFallback()
+                        if err == nil && best != nil {
+                                effectiveAPIKey = best.Key
+                                activeCredentialID = best.ID
+                        }
+                } else {
+                        if cred, err := globalCredentialPool.GetCredential(); err == nil && cred != nil {
+                                effectiveAPIKey = cred.Key
+                                activeCredentialID = cred.ID
+                        }
+                }
+        }
 
-	// ── P3: 使用 Provider Failover（若有多個 Provider 且當前不可用）──
-	// effectiveBaseURL：最終使用的 baseURL，默認為 session 傳入的 baseURL，
-	// 若 Provider Failover 有可用 provider，則使用 failover provider 的 BaseURL。
-	effectiveBaseURL := baseURL
-	effectiveKey := effectiveAPIKey
-	activeProviderName := "default"
-	if globalProviderFailover != nil && globalProviderFailover.ProviderCount() > 0 {
-		if active, err := globalProviderFailover.GetActiveProvider(); err == nil && active != nil {
-			effectiveBaseURL = active.BaseURL
-			effectiveKey = active.APIKey
-			activeProviderName = active.Name
-		}
-	}
+        // ── P3: 使用 Provider Failover（若有多個 Provider 且當前不可用）──
+        // effectiveBaseURL：最終使用的 baseURL，默認為 session 傳入的 baseURL，
+        // 若 Provider Failover 有可用 provider，則使用 failover provider 的 BaseURL。
+        effectiveBaseURL := baseURL
+        effectiveKey := effectiveAPIKey
+        activeProviderName := "default"
+        if globalProviderFailover != nil && globalProviderFailover.ProviderCount() > 0 {
+                if active, err := globalProviderFailover.GetActiveProvider(); err == nil && active != nil {
+                        effectiveBaseURL = active.BaseURL
+                        effectiveKey = active.APIKey
+                        activeProviderName = active.Name
+                }
+        }
 
-	// 使用網絡韌性層發送請求（自動處理超時放寬、Provider 故障轉移、指數退避重試）
-	resp, err := resilientDo(ctx, reqBody, effectiveBaseURL, apiPath, effectiveKey, apiType,
-		&globalResilienceConfig, activeProviderName)
+        // 使用網絡韌性層發送請求（自動處理超時放寬、Provider 故障轉移、指數退避重試）
+        resp, err := resilientDo(ctx, reqBody, effectiveBaseURL, apiPath, effectiveKey, apiType,
+                &globalResilienceConfig, activeProviderName)
 
-	if err != nil {
-		// 報告失敗到憑證池
-		if globalCredentialPool != nil && activeCredentialID != "" {
-			globalCredentialPool.ReportFailure(activeCredentialID, err.Error())
-		}
-		return nil, err
-	}
+        if err != nil {
+                // 報告失敗到憑證池
+                if globalCredentialPool != nil && activeCredentialID != "" {
+                        globalCredentialPool.ReportFailure(activeCredentialID, err.Error())
+                }
+                return nil, err
+        }
 
-	// 報告成功到憑證池
-	if globalCredentialPool != nil && activeCredentialID != "" {
-		globalCredentialPool.ReportSuccess(activeCredentialID)
-		globalCredentialPool.RecordRequest(activeCredentialID)
-	}
+        // 報告成功到憑證池
+        if globalCredentialPool != nil && activeCredentialID != "" {
+                globalCredentialPool.ReportSuccess(activeCredentialID)
+                globalCredentialPool.RecordRequest(activeCredentialID)
+        }
 
-	chunkChan := make(chan StreamChunk, 100)
+        chunkChan := make(chan StreamChunk, 100)
 
-	go func() {
-		defer close(chunkChan)
-		defer resp.Body.Close()
+        go func() {
+                defer close(chunkChan)
+                defer resp.Body.Close()
 
-		if stream {
-			// 流式：直接使用 getStreamChunks 并将数据转发
-			innerChan, err := getStreamChunks(resp.Body, apiType)
-			if err != nil {
-				select {
-				case <-ctx.Done():
-				case chunkChan <- StreamChunk{Error: err.Error()}:
-				}
-				return
-			}
-			chunkCount := 0
-			for chunk := range innerChan {
-				chunkCount++
-				select {
-				case <-ctx.Done():
-					return
-				case chunkChan <- chunk:
-				}
-				if chunk.Done {
-					break
-				}
-			}
-			if chunkCount == 0 {
-				log.Printf("No stream chunks received from API")
-				select {
-				case <-ctx.Done():
-				case chunkChan <- StreamChunk{Error: "no valid stream data received"}:
-				}
-			}
-		} else {
-			// 非流式：读取完整响应，解析后构造一个包含所有内容的块，并标记 Done
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				select {
-				case <-ctx.Done():
-				case chunkChan <- StreamChunk{Error: err.Error()}:
-				}
-				return
-			}
-			if IsDebug {
-				debugFile := fmt.Sprintf("debug_response_%d.json", time.Now().Unix())
-				if err := os.WriteFile(debugFile, bodyBytes, 0600); err != nil {
-					log.Printf("[CallModel] Failed to write debug response: %v", err)
-				} else {
-					fmt.Printf("Debug response data written to: %s\n", debugFile)
-				}
-			}
-			r := bytes.NewReader(bodyBytes)
-			resp.Body = io.NopCloser(r)
-			response, err := handleNonStreamResponse(resp, apiType)
-			if err != nil {
-				select {
-				case <-ctx.Done():
-				case chunkChan <- StreamChunk{Error: err.Error()}:
-				}
-				return
-			}
-			// 非流式 responses 是有限且順序的，使用 select 防 goroutine leak
-			if str, ok := response.Content.(string); ok && str != "" {
-				select {
-				case <-ctx.Done():
-					return
-				case chunkChan <- StreamChunk{Content: str}:
-				}
-			}
-			if reasoning, ok := response.ReasoningContent.(string); ok && reasoning != "" {
-				select {
-				case <-ctx.Done():
-					return
-				case chunkChan <- StreamChunk{ReasoningContent: reasoning}:
-				}
-			}
-			if response.ThinkingSignature != "" {
-				select {
-				case <-ctx.Done():
-					return
-				case chunkChan <- StreamChunk{ThinkingSignature: response.ThinkingSignature}:
-				}
-			}
-			if toolCalls, ok := response.Content.([]map[string]interface{}); ok {
-				select {
-				case <-ctx.Done():
-					return
-				case chunkChan <- StreamChunk{ToolCalls: toolCalls}:
-				}
-			}
-			select {
-			case <-ctx.Done():
-			case chunkChan <- StreamChunk{Done: true, FinishReason: response.StopReason}:
-			}
-		}
-	}()
+                if stream {
+                        // 流式：直接使用 getStreamChunks 并将数据转发
+                        innerChan, err := getStreamChunks(resp.Body, apiType)
+                        if err != nil {
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
+                                return
+                        }
+                        chunkCount := 0
+                        for chunk := range innerChan {
+                                chunkCount++
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- chunk:
+                                }
+                                if chunk.Done {
+                                        break
+                                }
+                        }
+                        if chunkCount == 0 {
+                                log.Printf("No stream chunks received from API")
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: "no valid stream data received"}:
+                                }
+                        }
+                } else {
+                        // 非流式：读取完整响应，解析后构造一个包含所有内容的块，并标记 Done
+                        bodyBytes, err := io.ReadAll(resp.Body)
+                        if err != nil {
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
+                                return
+                        }
+                        if IsDebug {
+                                debugFile := fmt.Sprintf("debug_response_%d.json", time.Now().Unix())
+                                if err := os.WriteFile(debugFile, bodyBytes, 0600); err != nil {
+                                        log.Printf("[CallModel] Failed to write debug response: %v", err)
+                                } else {
+                                        fmt.Printf("Debug response data written to: %s\n", debugFile)
+                                }
+                        }
+                        r := bytes.NewReader(bodyBytes)
+                        resp.Body = io.NopCloser(r)
+                        response, err := handleNonStreamResponse(resp, apiType)
+                        if err != nil {
+                                select {
+                                case <-ctx.Done():
+                                case chunkChan <- StreamChunk{Error: err.Error()}:
+                                }
+                                return
+                        }
+                        // 非流式 responses 是有限且順序的，使用 select 防 goroutine leak
+                        if str, ok := response.Content.(string); ok && str != "" {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{Content: str}:
+                                }
+                        }
+                        if reasoning, ok := response.ReasoningContent.(string); ok && reasoning != "" {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ReasoningContent: reasoning}:
+                                }
+                        }
+                        if response.ThinkingSignature != "" {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ThinkingSignature: response.ThinkingSignature}:
+                                }
+                        }
+                        if toolCalls, ok := response.Content.([]map[string]interface{}); ok {
+                                select {
+                                case <-ctx.Done():
+                                        return
+                                case chunkChan <- StreamChunk{ToolCalls: toolCalls}:
+                                }
+                        }
+                        select {
+                        case <-ctx.Done():
+                        case chunkChan <- StreamChunk{Done: true, FinishReason: response.StopReason}:
+                        }
+                }
+        }()
 
-	return chunkChan, nil
+        return chunkChan, nil
 }
 
 // estimateMessagesTokens 估算消息列表的词元数
 func estimateMessagesTokens(messages []Message) int {
-	total := 0
-	for _, msg := range messages {
-		if content, ok := msg.Content.(string); ok {
-			total += EstimateTokens(content)
-		}
-		if msg.ToolCalls != nil {
-			total += 50 // tool_calls 的额外开销估算
-		}
-		total += 10 // 每条消息的基础开销
-	}
-	return total
+        total := 0
+        for _, msg := range messages {
+                if content, ok := msg.Content.(string); ok {
+                        total += EstimateTokens(content)
+                }
+                if msg.ToolCalls != nil {
+                        total += 50 // tool_calls 的额外开销估算
+                }
+                total += 10 // 每条消息的基础开销
+        }
+        return total
 }
 
 // getModelContextLength 获取模型的上下文长度限制
 // 委托给 context_manager.go 的 GetModelContextLengthSafe（统一数据源），
 // 确保新模型（如 claude-sonnet-4-6）能正确匹配上下文窗口。
 func getModelContextLength(modelID string) int {
-	return GetModelContextLengthSafe(modelID)
+        return GetModelContextLengthSafe(modelID)
 }
 
 // getMaxOutputTokens 返回模型的最大输出 token 限制（max_tokens 上限）
@@ -2424,288 +2397,288 @@ func getModelContextLength(modelID string) int {
 // 此函数返回的是单次回复允许的最大 token 数。
 // 返回 0 表示不限制（使用调用方指定的值）。
 func getMaxOutputTokens(modelID string) int {
-	// 常见模型的最大输出 token 限制
-	maxOutputLimits := map[string]int{
-		// OpenAI
-		"gpt-4":                  4096,
-		"gpt-4-1106-preview":     4096,
-		"gpt-4-0125-preview":     4096,
-		"gpt-4-0613":             4096,
-		"gpt-4-32k":              4096,
-		"gpt-4o":                 16384,
-		"gpt-4o-mini":            16384,
-		"gpt-3.5-turbo":          4096,
-		"gpt-3.5-turbo-1106":     4096,
-		"gpt-3.5-turbo-0125":     4096,
-		"gpt-3.5-turbo-16k":      4096,
-		"gpt-3.5-turbo-instruct": 4096,
-		// Anthropic
-		"claude-3-opus-20240229":   4096,
-		"claude-3-sonnet-20240229": 4096,
-		"claude-3-haiku-20240307":  4096,
-		"claude-2.1":               4096,
-		"claude-2":                 4096,
-		// DeepSeek
-		"deepseek-chat": 8192,
-		"deepseek-llm":  8192,
-		// GLM/智谱 — 注意：GLM-4.6V 输出上限为 32768，而非上下文窗口大小
-		"GLM-4.6V":    32768,
-		"glm-4.6v":    32768,
-		"glm-4v":      4096,
-		"GLM-4-Plus":  4096,
-		"GLM-4-0520":  4096,
-		"glm-4":       4096,
-		"glm-3-turbo": 4096,
-		"GLM-4-Flash": 4096,
-		"GLM-4-Air":   4096,
-		"GLM-4-Long":  4096,
-	}
+        // 常见模型的最大输出 token 限制
+        maxOutputLimits := map[string]int{
+                // OpenAI
+                "gpt-4":                  4096,
+                "gpt-4-1106-preview":     4096,
+                "gpt-4-0125-preview":     4096,
+                "gpt-4-0613":             4096,
+                "gpt-4-32k":              4096,
+                "gpt-4o":                 16384,
+                "gpt-4o-mini":            16384,
+                "gpt-3.5-turbo":          4096,
+                "gpt-3.5-turbo-1106":     4096,
+                "gpt-3.5-turbo-0125":     4096,
+                "gpt-3.5-turbo-16k":      4096,
+                "gpt-3.5-turbo-instruct": 4096,
+                // Anthropic
+                "claude-3-opus-20240229":   4096,
+                "claude-3-sonnet-20240229": 4096,
+                "claude-3-haiku-20240307":  4096,
+                "claude-2.1":               4096,
+                "claude-2":                 4096,
+                // DeepSeek
+                "deepseek-chat": 8192,
+                "deepseek-llm":  8192,
+                // GLM/智谱 — 注意：GLM-4.6V 输出上限为 32768，而非上下文窗口大小
+                "GLM-4.6V":    32768,
+                "glm-4.6v":    32768,
+                "glm-4v":      4096,
+                "GLM-4-Plus":  4096,
+                "GLM-4-0520":  4096,
+                "glm-4":       4096,
+                "glm-3-turbo": 4096,
+                "GLM-4-Flash": 4096,
+                "GLM-4-Air":   4096,
+                "GLM-4-Long":  4096,
+        }
 
-	// 检查精确匹配（大小写不敏感）
-	lowerID := strings.ToLower(modelID)
-	if limit, ok := maxOutputLimits[modelID]; ok {
-		return limit
-	}
-	if limit, ok := maxOutputLimits[lowerID]; ok {
-		return limit
-	}
+        // 检查精确匹配（大小写不敏感）
+        lowerID := strings.ToLower(modelID)
+        if limit, ok := maxOutputLimits[modelID]; ok {
+                return limit
+        }
+        if limit, ok := maxOutputLimits[lowerID]; ok {
+                return limit
+        }
 
-	// 检查模糊匹配（模型名称包含关键词）
-	for key, limit := range maxOutputLimits {
-		if strings.Contains(lowerID, strings.ToLower(key)) {
-			return limit
-		}
-	}
+        // 检查模糊匹配（模型名称包含关键词）
+        for key, limit := range maxOutputLimits {
+                if strings.Contains(lowerID, strings.ToLower(key)) {
+                        return limit
+                }
+        }
 
-	// 返回 0 表示不限制，使用调用方指定的值
-	return 0
+        // 返回 0 表示不限制，使用调用方指定的值
+        return 0
 }
 
 // CallModel 调用 LLM API，返回流式数据块通道
 // role 参数用于工具权限过滤，为 nil 时返回所有工具
 func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
-	temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
+        temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
 
-	if apiType == "" {
-		apiType = DEFAULT_API_TYPE
-	}
-	if modelID == "" {
-		modelID = DEFAULT_MODEL_ID
-	}
+        if apiType == "" {
+                apiType = DEFAULT_API_TYPE
+        }
+        if modelID == "" {
+                modelID = DEFAULT_MODEL_ID
+        }
 
-	// ── Prompt Cache 檢查 + Prompt Loop 偵測 + 存儲 ────────
-	// 優化：先計算一次 tokenCount，避免 estimateMessagesTokens 重複調用
-	tokenCount := estimateMessagesTokens(messages)
+        // ── Prompt Cache 檢查 + Prompt Loop 偵測 + 存儲 ────────
+        // 優化：先計算一次 tokenCount，避免 estimateMessagesTokens 重複調用
+        tokenCount := estimateMessagesTokens(messages)
 
-	if globalPromptCache != nil {
-		if cached, found := globalPromptCache.Lookup(messages); found {
-			log.Printf("[PromptCache] Cache HIT for %d messages (hit_count: %d)",
-				len(messages), cached.HitCount)
-			// ── Prompt Loop 偵測：相同提示被重複發送 ─────────
-			// 如果同一消息序列被發送超過 3 次，可能是模型陷入死循環
-			if cached.HitCount >= 3 {
-				log.Printf("[PromptCache] WARNING: Same prompt sent %d times consecutively, possible prompt loop detected!",
-					cached.HitCount)
-				// 返回一個帶有警告的 Done chunk，讓調用者知道
-				errCh := make(chan StreamChunk, 1)
-				close(errCh)
-				return errCh, fmt.Errorf("prompt loop detected: same prompt sent %d times", cached.HitCount)
-			}
-		} else {
-			log.Printf("[PromptCache] Cache MISS for %d messages", len(messages))
-		}
-		// 存儲本次請求的消息到緩存（異步，不阻塞）
-		// 優化：直接使用已計算的 tokenCount，避免第二次 estimateMessagesTokens
-		go func(msgs []Message, tokCount int) {
-			globalPromptCache.Store(msgs, tokCount)
-		}(messages, tokenCount)
-	}
+        if globalPromptCache != nil {
+                if cached, found := globalPromptCache.Lookup(messages); found {
+                        log.Printf("[PromptCache] Cache HIT for %d messages (hit_count: %d)",
+                                len(messages), cached.HitCount)
+                        // ── Prompt Loop 偵測：相同提示被重複發送 ─────────
+                        // 如果同一消息序列被發送超過 3 次，可能是模型陷入死循環
+                        if cached.HitCount >= 3 {
+                                log.Printf("[PromptCache] WARNING: Same prompt sent %d times consecutively, possible prompt loop detected!",
+                                        cached.HitCount)
+                                // 返回一個帶有警告的 Done chunk，讓調用者知道
+                                errCh := make(chan StreamChunk, 1)
+                                close(errCh)
+                                return errCh, fmt.Errorf("prompt loop detected: same prompt sent %d times", cached.HitCount)
+                        }
+                } else {
+                        log.Printf("[PromptCache] Cache MISS for %d messages", len(messages))
+                }
+                // 存儲本次請求的消息到緩存（異步，不阻塞）
+                // 優化：直接使用已計算的 tokenCount，避免第二次 estimateMessagesTokens
+                go func(msgs []Message, tokCount int) {
+                        globalPromptCache.Store(msgs, tokCount)
+                }(messages, tokenCount)
+        }
 
-	// 获取模型的上下文长度限制
-	contextLimit := getModelContextLength(modelID)
-	log.Printf("[CallModel] Estimated tokens: %d, Context limit: %d", tokenCount, contextLimit)
+        // 获取模型的上下文长度限制
+        contextLimit := getModelContextLength(modelID)
+        log.Printf("[CallModel] Estimated tokens: %d, Context limit: %d", tokenCount, contextLimit)
 
-	// 检查是否接近或超过上下文限制
-	if tokenCount >= contextLimit*9/10 { // 90% 阈值
-		// 上下文长度接近或超过限制，尝试自动创建新会话
-		return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
-	}
+        // 检查是否接近或超过上下文限制
+        if tokenCount >= contextLimit*9/10 { // 90% 阈值
+                // 上下文长度接近或超过限制，尝试自动创建新会话
+                return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+        }
 
-	// 准备请求数据（初始尝试）
-	prepStart := time.Now()
-	reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
-	log.Printf("[CallModel] prepareRequestData took %v", time.Since(prepStart))
-	if err != nil {
-		return nil, err
-	}
+        // 准备请求数据（初始尝试）
+        prepStart := time.Now()
+        reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(messages, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+        log.Printf("[CallModel] prepareRequestData took %v", time.Since(prepStart))
+        if err != nil {
+                return nil, err
+        }
 
-	// 检查请求体大小
-	maxSize := globalAPIConfig.MaxRequestSizeBytes
-	// 若未手動設定，根據模型 context window 動態計算合理上限
-	// JSON 中每 token 約佔 6-10 bytes，取 8 bytes/token，上限 10MB
-	if maxSize == 0 {
-		maxSize = contextLimit * 8
-		if maxSize > 10*1024*1024 {
-			maxSize = 10 * 1024 * 1024
-		}
-		if maxSize < 256*1024 {
-			maxSize = 256 * 1024 // 不低於舊有預設值
-		}
-	}
-	if maxSize == 0 || len(reqBody) <= maxSize || IsDebug {
-		// 大小合适或调试模式，直接发送
-		chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
-		if err != nil {
-			// 检查是否是上下文长度超过限制的错误
-			if strings.Contains(err.Error(), "context_length_exceeded") {
-				// 上下文长度超过限制，尝试自动创建新会话
-				return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
-			}
-			return nil, err
-		}
-		return chunkChan, nil
-	}
+        // 检查请求体大小
+        maxSize := globalAPIConfig.MaxRequestSizeBytes
+        // 若未手動設定，根據模型 context window 動態計算合理上限
+        // JSON 中每 token 約佔 6-10 bytes，取 8 bytes/token，上限 10MB
+        if maxSize == 0 {
+                maxSize = contextLimit * 8
+                if maxSize > 10*1024*1024 {
+                        maxSize = 10 * 1024 * 1024
+                }
+                if maxSize < 256*1024 {
+                        maxSize = 256 * 1024 // 不低於舊有預設值
+                }
+        }
+        if maxSize == 0 || len(reqBody) <= maxSize || IsDebug {
+                // 大小合适或调试模式，直接发送
+                chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+                if err != nil {
+                        // 检查是否是上下文长度超过限制的错误
+                        if strings.Contains(err.Error(), "context_length_exceeded") {
+                                // 上下文长度超过限制，尝试自动创建新会话
+                                return handleContextLengthExceeded(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+                        }
+                        return nil, err
+                }
+                return chunkChan, nil
+        }
 
-	// 压缩重试
-	compressLevels := []int{0, 1, 2}
-	for _, level := range compressLevels {
-		compressedMsgs := compressMessages(messages, level)
-		// 估算压缩后消息的词元数
-		compressedTokenCount := estimateMessagesTokens(compressedMsgs)
-		log.Printf("[CallModel] Compressed tokens: %d, Context limit: %d", compressedTokenCount, contextLimit)
-		// 检查压缩后是否仍接近或超过上下文限制
-		if compressedTokenCount >= contextLimit*9/10 {
-			// 压缩后仍接近或超过限制，尝试自动创建新会话
-			return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
-		}
-		reqBody, apiPath, resolvedBaseURL, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
-		if err != nil {
-			continue
-		}
-		if maxSize == 0 || len(reqBody) <= maxSize {
-			chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
-			if err != nil {
-				// 检查是否是上下文长度超过限制的错误
-				if strings.Contains(err.Error(), "context_length_exceeded") {
-					// 上下文长度超过限制，尝试自动创建新会话
-					return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
-				}
-				return nil, err
-			}
-			return chunkChan, nil
-		}
-	}
+        // 压缩重试
+        compressLevels := []int{0, 1, 2}
+        for _, level := range compressLevels {
+                compressedMsgs := compressMessages(messages, level)
+                // 估算压缩后消息的词元数
+                compressedTokenCount := estimateMessagesTokens(compressedMsgs)
+                log.Printf("[CallModel] Compressed tokens: %d, Context limit: %d", compressedTokenCount, contextLimit)
+                // 检查压缩后是否仍接近或超过上下文限制
+                if compressedTokenCount >= contextLimit*9/10 {
+                        // 压缩后仍接近或超过限制，尝试自动创建新会话
+                        return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+                }
+                reqBody, apiPath, resolvedBaseURL, err = prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+                if err != nil {
+                        continue
+                }
+                if maxSize == 0 || len(reqBody) <= maxSize {
+                        chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+                        if err != nil {
+                                // 检查是否是上下文长度超过限制的错误
+                                if strings.Contains(err.Error(), "context_length_exceeded") {
+                                        // 上下文长度超过限制，尝试自动创建新会话
+                                        return handleContextLengthExceeded(ctx, compressedMsgs, apiType, baseURL, apiKey, modelID, temperature, maxTokens, stream, thinking, role)
+                                }
+                                return nil, err
+                        }
+                        return chunkChan, nil
+                }
+        }
 
-	// 所有压缩都失败
-	errMsg := fmt.Sprintf("🚫 请求体过大（%d bytes），超过配置限制（%d bytes）。即使经过压缩过滤仍然无法满足大小限制。请考虑：\n"+
-		"• 使用 /new 开始新对话\n"+
-		"• 减少不必要的工具调用\n"+
-		"• 调整配置中的 MaxRequestSizeBytes 值（设置为 0 表示不限制）\n"+
-		"任务已停止。", len(reqBody), maxSize)
-	log.Printf("[CallModel] Request size still too large after compression: %d > %d", len(reqBody), maxSize)
+        // 所有压缩都失败
+        errMsg := fmt.Sprintf("🚫 请求体过大（%d bytes），超过配置限制（%d bytes）。即使经过压缩过滤仍然无法满足大小限制。请考虑：\n"+
+                "• 使用 /new 开始新对话\n"+
+                "• 减少不必要的工具调用\n"+
+                "• 调整配置中的 MaxRequestSizeBytes 值（设置为 0 表示不限制）\n"+
+                "任务已停止。", len(reqBody), maxSize)
+        log.Printf("[CallModel] Request size still too large after compression: %d > %d", len(reqBody), maxSize)
 
-	errChan := make(chan StreamChunk, 1)
-	errChan <- StreamChunk{Error: errMsg, Done: true}
-	close(errChan)
-	return errChan, nil
+        errChan := make(chan StreamChunk, 1)
+        errChan <- StreamChunk{Error: errMsg, Done: true}
+        close(errChan)
+        return errChan, nil
 }
 
 // handleContextLengthExceeded 处理上下文长度超过限制的情况，自动创建新会话并使用现有压缩策略初始化新会话
 // 注意：thinking 模式是用戶的硬性設置，壓縮時已確保保留 thinking blocks，不可擅自關閉
 func handleContextLengthExceeded(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
-	temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
-	log.Printf("[CallModel] Context length exceeded, creating new session with compressed context")
+        temperature float64, maxTokens int, stream bool, thinking bool, role *Role) (<-chan StreamChunk, error) {
+        log.Printf("[CallModel] Context length exceeded, creating new session with compressed context")
 
-	// 壓縮消息，保留頭尾中間摘要
-	// 使用最高級別的壓縮，確保消息大小在限制範圍內
-	// compressMessages 內部已確保保留 thinking blocks（若原訊息中存在）
-	compressedMsgs := compressMessages(messages, 2)
+        // 壓縮消息，保留頭尾中間摘要
+        // 使用最高級別的壓縮，確保消息大小在限制範圍內
+        // compressMessages 內部已確保保留 thinking blocks（若原訊息中存在）
+        compressedMsgs := compressMessages(messages, 2)
 
-	// 准备新会话的请求数据
-	reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
-	if err != nil {
-		return nil, err
-	}
+        // 准备新会话的请求数据
+        reqBody, apiPath, resolvedBaseURL, err := prepareRequestData(compressedMsgs, apiType, baseURL, modelID, temperature, maxTokens, stream, thinking, role)
+        if err != nil {
+                return nil, err
+        }
 
-	// 发送请求到新会话
-	chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
-	if err != nil {
-		return nil, err
-	}
+        // 发送请求到新会话
+        chunkChan, err := sendRequestAndGetChunks(ctx, reqBody, resolvedBaseURL, apiPath, apiKey, apiType, stream)
+        if err != nil {
+                return nil, err
+        }
 
-	return chunkChan, nil
+        return chunkChan, nil
 }
 
 // messagesContainThinkingBlock 檢查消息列表中是否有任何 assistant 消息包含 thinking block
 func messagesContainThinkingBlock(messages []Message) bool {
-	for _, msg := range messages {
-		if msg.Role == "assistant" && msg.ThinkingSignature != "" {
-			return true
-		}
-		if msg.Role == "assistant" && msg.ReasoningContent != nil {
-			if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
-				return true
-			}
-		}
-	}
-	return false
+        for _, msg := range messages {
+                if msg.Role == "assistant" && msg.ThinkingSignature != "" {
+                        return true
+                }
+                if msg.Role == "assistant" && msg.ReasoningContent != nil {
+                        if reasoning, ok := msg.ReasoningContent.(string); ok && reasoning != "" {
+                                return true
+                        }
+                }
+        }
+        return false
 }
 
 // CallModelSync 同步调用 LLM API，返回完整响应（用于子代理）
 func CallModelSync(ctx context.Context, messages []Message, apiType, baseURL, apiKey, modelID string,
-	temperature float64, maxTokens int, stream bool, thinking bool) (Response, error) {
+        temperature float64, maxTokens int, stream bool, thinking bool) (Response, error) {
 
-	var response Response
+        var response Response
 
-	// 使用流式接口但同步等待结果
-	chunkChan, err := CallModel(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, false, thinking, nil)
-	if err != nil {
-		return response, err
-	}
+        // 使用流式接口但同步等待结果
+        chunkChan, err := CallModel(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens, false, thinking, nil)
+        if err != nil {
+                return response, err
+        }
 
-	var content strings.Builder
-	var reasoning strings.Builder
-	var toolCalls []map[string]interface{}
-	var finishReason string
-	var thinkingSignature string
+        var content strings.Builder
+        var reasoning strings.Builder
+        var toolCalls []map[string]interface{}
+        var finishReason string
+        var thinkingSignature string
 
-	for chunk := range chunkChan {
-		if chunk.Error != "" {
-			return response, fmt.Errorf("model error: %s", chunk.Error)
-		}
-		if chunk.Content != "" {
-			content.WriteString(chunk.Content)
-		}
-		if chunk.ReasoningContent != "" {
-			reasoning.WriteString(chunk.ReasoningContent)
-		}
-		if chunk.ThinkingSignature != "" {
-			thinkingSignature = chunk.ThinkingSignature
-		}
-		if chunk.ToolCalls != nil {
-			toolCalls = chunk.ToolCalls
-		}
-		if chunk.Done {
-			finishReason = chunk.FinishReason
-			break
-		}
-	}
+        for chunk := range chunkChan {
+                if chunk.Error != "" {
+                        return response, fmt.Errorf("model error: %s", chunk.Error)
+                }
+                if chunk.Content != "" {
+                        content.WriteString(chunk.Content)
+                }
+                if chunk.ReasoningContent != "" {
+                        reasoning.WriteString(chunk.ReasoningContent)
+                }
+                if chunk.ThinkingSignature != "" {
+                        thinkingSignature = chunk.ThinkingSignature
+                }
+                if chunk.ToolCalls != nil {
+                        toolCalls = chunk.ToolCalls
+                }
+                if chunk.Done {
+                        finishReason = chunk.FinishReason
+                        break
+                }
+        }
 
-	// 构建响应
-	if toolCalls != nil {
-		response.Content = toolCalls
-	} else {
-		response.Content = content.String()
-	}
+        // 构建响应
+        if toolCalls != nil {
+                response.Content = toolCalls
+        } else {
+                response.Content = content.String()
+        }
 
-	if reasoning.Len() > 0 {
-		response.ReasoningContent = reasoning.String()
-	}
-	if thinkingSignature != "" {
-		response.ThinkingSignature = thinkingSignature
-	}
+        if reasoning.Len() > 0 {
+                response.ReasoningContent = reasoning.String()
+        }
+        if thinkingSignature != "" {
+                response.ThinkingSignature = thinkingSignature
+        }
 
-	response.StopReason = finishReason
+        response.StopReason = finishReason
 
-	return response, nil
+        return response, nil
 }

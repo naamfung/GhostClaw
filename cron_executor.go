@@ -50,4 +50,3 @@ func createChannelFromConf(jobName string, conf *ChannelConf) (Channel, error) {
 		return nil, fmt.Errorf("unknown channel type: %s", conf.Type)
 	}
 }
-

@@ -1,3 +1,4 @@
+//go:build !irc
 // +build !irc
 
 // IRC 渠道存根

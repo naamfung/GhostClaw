@@ -246,9 +246,9 @@ func TestConvertToAnthropicFormat(t *testing.T) {
 	t.Run("thinking + tool_calls 组合", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role:             "assistant",
-				Content:          "let me search",
-				ReasoningContent: "thinking...",
+				Role:              "assistant",
+				Content:           "let me search",
+				ReasoningContent:  "thinking...",
 				ThinkingSignature: "sig_tools",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("tc_1", "search", `{"query":"test"}`),
@@ -274,9 +274,9 @@ func TestConvertToAnthropicFormat(t *testing.T) {
 	t.Run("redacted thinking + tool_calls", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role:             "assistant",
-				Content:          "",
-				ReasoningContent: nil,
+				Role:              "assistant",
+				Content:           "",
+				ReasoningContent:  nil,
 				ThinkingSignature: "sig_redacted",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("tc_r", "run", `{"cmd":"ls"}`),
@@ -528,7 +528,7 @@ func TestConvertToOpenAIFormat(t *testing.T) {
 	t.Run("空 content + tool_calls 省略 content 字段", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: "",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("id_e", "empty", `{}`),
@@ -544,7 +544,7 @@ func TestConvertToOpenAIFormat(t *testing.T) {
 	t.Run("nil content + tool_calls 无 content 字段", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: nil,
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("id_n", "nil", `{}`),
@@ -560,8 +560,8 @@ func TestConvertToOpenAIFormat(t *testing.T) {
 	t.Run("tool_calls 空切片", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role:     "assistant",
-				Content:  "test",
+				Role:      "assistant",
+				Content:   "test",
 				ToolCalls: []interface{}{},
 			},
 		}
@@ -648,7 +648,7 @@ func TestConvertToOllamaFormat(t *testing.T) {
 	t.Run("assistant + tool_calls", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: "calling tool",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("id_o", "tool_ollama", `{}`),
@@ -876,8 +876,8 @@ func TestValidateAndCleanMessages(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "run this"},
 			{
-				Role: "assistant",
-				Content: "",
+				Role:      "assistant",
+				Content:   "",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc_keep", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "done", ToolCallID: "tc_keep"},
@@ -1095,7 +1095,7 @@ func TestRemoveOrphanedToolMessages(t *testing.T) {
 	t.Run("正常配对", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc1", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "result", ToolCallID: "tc1"},
@@ -1123,7 +1123,7 @@ func TestRemoveOrphanedToolMessages(t *testing.T) {
 	t.Run("ID 不匹配视为孤儿", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc_a", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "result", ToolCallID: "tc_b"},
@@ -1137,7 +1137,7 @@ func TestRemoveOrphanedToolMessages(t *testing.T) {
 	t.Run("user 阻断搜索", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc", "fn", `{}`)),
 			},
 			{Role: "user", Content: "interruption"},
@@ -1153,7 +1153,7 @@ func TestRemoveOrphanedToolMessages(t *testing.T) {
 	t.Run("system 阻断搜索", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc", "fn", `{}`)),
 			},
 			{Role: "system", Content: "interruption"},
@@ -1177,7 +1177,7 @@ func TestRemoveOrphanedToolCalls(t *testing.T) {
 	t.Run("正常配对", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc1", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "result", ToolCallID: "tc1"},
@@ -1191,8 +1191,8 @@ func TestRemoveOrphanedToolCalls(t *testing.T) {
 	t.Run("全部孤立 tool_calls 移除", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role:    "assistant",
-				Content: "no result",
+				Role:      "assistant",
+				Content:   "no result",
 				ToolCalls: makeToolCallSlice(makeToolCall("orphan_id", "fn", `{}`)),
 			},
 		}
@@ -1205,8 +1205,8 @@ func TestRemoveOrphanedToolCalls(t *testing.T) {
 	t.Run("全部孤立且 nil content → 空字符串", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
-				Content: nil,
+				Role:      "assistant",
+				Content:   nil,
 				ToolCalls: makeToolCallSlice(makeToolCall("orphan_id", "fn", `{}`)),
 			},
 		}
@@ -1242,7 +1242,7 @@ func TestRemoveOrphanedToolCalls(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "hi"},
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("no_result", "fn", `{}`)),
 			},
 		}
@@ -1403,8 +1403,8 @@ func TestMergeConsecutiveSameRole(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "q"},
 			{
-				Role: "assistant",
-				Content: "a1",
+				Role:      "assistant",
+				Content:   "a1",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc", "fn", `{}`)),
 			},
 			{Role: "assistant", Content: "a2"},
@@ -1570,7 +1570,7 @@ func TestFindLegalStart(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "q"},
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc_good", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "result", ToolCallID: "tc_good"},
@@ -1624,7 +1624,7 @@ func TestCompressMessages(t *testing.T) {
 	t.Run("Level 0: tool 结果截断", func(t *testing.T) {
 		msgs := []Message{
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: "calling",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("tc_t0", "bash", `{"command":"echo hello world and more text"}`),
@@ -1681,8 +1681,8 @@ func TestCompressMessages(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "q"},
 			{
-				Role: "assistant",
-				Content: "calling",
+				Role:      "assistant",
+				Content:   "calling",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc_1", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "result", ToolCallID: "tc_1"},
@@ -1795,8 +1795,8 @@ func TestCompressMessages(t *testing.T) {
 		}
 		// 最后加一个 tool_calls + tool result 对 (在尾部保留区域)
 		msgs = append(msgs, Message{
-			Role: "assistant",
-			Content: "calling",
+			Role:      "assistant",
+			Content:   "calling",
 			ToolCalls: makeToolCallSlice(makeToolCall("tc_end", "fn", `{}`)),
 		})
 		msgs = append(msgs, Message{Role: "tool", Content: "result", ToolCallID: "tc_end"})
@@ -2111,7 +2111,7 @@ func TestFullPipelineCombinations(t *testing.T) {
 		msgs := []Message{
 			{Role: "user", Content: "run cmd"},
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: "running",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("tc_pipe", "bash", `{"command":"ls"}`),
@@ -2140,7 +2140,7 @@ func TestFullPipelineCombinations(t *testing.T) {
 			{Role: "tool", Content: "orphan1", ToolCallID: "no_match"},
 			{Role: "tool", Content: "orphan2", ToolCallID: "also_no_match"},
 			{
-				Role: "assistant",
+				Role:      "assistant",
 				ToolCalls: makeToolCallSlice(makeToolCall("tc_real", "fn", `{}`)),
 			},
 			{Role: "tool", Content: "real_result", ToolCallID: "tc_real"},
@@ -2187,12 +2187,12 @@ func TestFullPipelineCombinations(t *testing.T) {
 		orig := []Message{
 			{Role: "user", Content: "q"},
 			{
-				Role: "assistant",
+				Role:    "assistant",
 				Content: "a",
 				ToolCalls: makeToolCallSlice(
 					makeToolCall("tc_immut", "fn", `{"key":"val"}`),
 				),
-				ReasoningContent: "think",
+				ReasoningContent:  "think",
 				ThinkingSignature: "sig",
 			},
 		}
@@ -2257,11 +2257,11 @@ func TestFullPipelineCombinations(t *testing.T) {
 		msgs := []Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "q1"},
-			{Role: "assistant", Content: "a1", ReasoningContent: ""},           // 无 thinking
+			{Role: "assistant", Content: "a1", ReasoningContent: ""}, // 无 thinking
 			{Role: "user", Content: "q2"},
-			{Role: "assistant", Content: "a2", ReasoningContent: "thinking"},  // 有 thinking
+			{Role: "assistant", Content: "a2", ReasoningContent: "thinking"}, // 有 thinking
 			{Role: "user", Content: "q3"},
-			{Role: "assistant", Content: "a3", ReasoningContent: ""},           // 无 thinking again
+			{Role: "assistant", Content: "a3", ReasoningContent: ""}, // 无 thinking again
 		}
 		result := convertToOpenAIFormat(msgs)
 		// 所有 assistant 消息都必须包含 reasoning_content
@@ -2334,11 +2334,11 @@ func TestReasoningContentPersistenceRoundTrip(t *testing.T) {
 		msgs := []Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "q1"},
-			{Role: "assistant", Content: "a1", ReasoningContent: ""},       // 无 thinking
+			{Role: "assistant", Content: "a1", ReasoningContent: ""}, // 无 thinking
 			{Role: "user", Content: "q2"},
 			{Role: "assistant", Content: "a2", ReasoningContent: "think"}, // 有 thinking
 			{Role: "user", Content: "q3"},
-			{Role: "assistant", Content: "a3", ReasoningContent: ""},       // 无 thinking again
+			{Role: "assistant", Content: "a3", ReasoningContent: ""}, // 无 thinking again
 		}
 		// round-trip each message
 		var restored []Message

@@ -13,21 +13,21 @@ import (
 // SystemInfo 系统信息结构体
 type SystemInfo struct {
 	// 操作系统信息
-	OS           string `json:"os"`            // 操作系统名称 (windows/linux/darwin/freebsd)
-	Arch         string `json:"arch"`          // 架构 (amd64/arm64/386/loong64)
-	OSVersion    string `json:"os_version"`    // 操作系统版本
-	Hostname     string `json:"hostname"`      // 主机名
+	OS        string `json:"os"`         // 操作系统名称 (windows/linux/darwin/freebsd)
+	Arch      string `json:"arch"`       // 架构 (amd64/arm64/386/loong64)
+	OSVersion string `json:"os_version"` // 操作系统版本
+	Hostname  string `json:"hostname"`   // 主机名
 
 	// 内存信息
-	TotalMemory  uint64 `json:"total_memory"`  // 总内存 (MB)
-	FreeMemory   uint64 `json:"free_memory"`   // 可用内存 (MB)
+	TotalMemory uint64 `json:"total_memory"` // 总内存 (MB)
+	FreeMemory  uint64 `json:"free_memory"`  // 可用内存 (MB)
 
 	// CPU 信息
-	NumCPU       int    `json:"num_cpu"`       // CPU 核心数
-	CPUModel     string `json:"cpu_model"`     // CPU 型号
+	NumCPU   int    `json:"num_cpu"`   // CPU 核心数
+	CPUModel string `json:"cpu_model"` // CPU 型号
 
 	// GPU 信息
-	GPUInfo      string `json:"gpu_info"`      // GPU 信息
+	GPUInfo string `json:"gpu_info"` // GPU 信息
 }
 
 // systemInfoCache 系统信息缓存（静态信息在进程生命周期内不变）

@@ -309,7 +309,7 @@ func TestExtractFilePathFromArgs(t *testing.T) {
 	t.Run("优先级: file_path > filePath", func(t *testing.T) {
 		args := map[string]interface{}{
 			"FilePath": "/first/path.txt",
-			"filePath":  "/second/path.txt",
+			"filePath": "/second/path.txt",
 		}
 		got := extractFilePathFromArgs(args)
 		if got != "/first/path.txt" {

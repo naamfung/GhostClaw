@@ -1,11 +1,11 @@
 package main
 
 import (
-        "fmt"
-        "sort"
-        "strconv"
-        "strings"
-        "sync"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 // ============================================================================
@@ -20,46 +20,46 @@ var TODO = NewTodoManager()
 
 // TodoItem 待辦事項
 type TodoItem struct {
-        ID     string `json:"id"`
-        Text   string `json:"text"`
-        Status string `json:"status"` // pending, in_progress, completed, waiting
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Status string `json:"status"` // pending, in_progress, completed, waiting
 }
 
 // TodoList 一個 todo 列表
 type TodoList struct {
-        ID    string
-        Items []TodoItem
+	ID    string
+	Items []TodoItem
 }
 
 // TodoManager 管理多個待辦事項列表
 type TodoManager struct {
-        lists map[string]*TodoList // list_id -> TodoList
-        mu    sync.RWMutex
+	lists map[string]*TodoList // list_id -> TodoList
+	mu    sync.RWMutex
 }
 
 // NewTodoManager 創建新的 TodoManager
 func NewTodoManager() *TodoManager {
-        return &TodoManager{
-                lists: make(map[string]*TodoList),
-        }
+	return &TodoManager{
+		lists: make(map[string]*TodoList),
+	}
 }
 
 // normalizeTodoStatus 將模型可能傳入嘅各種 status 格式統一轉為 handler 期望嘅 PascalCase
 func normalizeTodoStatus(status string) string {
-        switch strings.ToLower(status) {
-        case "pending":
-                return "Pending"
-        case "inprogress", "in_progress":
-                return "InProgress"
-        case "completed", "done":
-                return "Completed"
-        case "waiting", "blocked":
-                return "Waiting"
-        case "cancelled", "canceled":
-                return "Cancelled"
-        default:
-                return status
-        }
+	switch strings.ToLower(status) {
+	case "pending":
+		return "Pending"
+	case "inprogress", "in_progress":
+		return "InProgress"
+	case "completed", "done":
+		return "Completed"
+	case "waiting", "blocked":
+		return "Waiting"
+	case "cancelled", "canceled":
+		return "Cancelled"
+	default:
+		return status
+	}
 }
 
 // Update 更新指定列表的待辦事項（智能合併模式）
@@ -71,607 +71,607 @@ func normalizeTodoStatus(status string) string {
 //
 // list_id 為空時使用 "default"
 func (tm *TodoManager) Update(items []TodoItem, listID ...string) (string, error) {
-        id := "default"
-        if len(listID) > 0 && listID[0] != "" {
-                id = listID[0]
-        }
+	id := "default"
+	if len(listID) > 0 && listID[0] != "" {
+		id = listID[0]
+	}
 
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-        // 獲取現有列表
-        oldItems := []TodoItem{}
-        if existing, ok := tm.lists[id]; ok {
-                oldItems = existing.Items
-        }
+	// 獲取現有列表
+	oldItems := []TodoItem{}
+	if existing, ok := tm.lists[id]; ok {
+		oldItems = existing.Items
+	}
 
-        // 空列表 → 清空（兼容舊行為：全部完成後傳 [] 清空）
-        if len(items) == 0 {
-                delete(tm.lists, id)
-                return fmt.Sprintf(" todos[%s] (0/0 completed)\n  (列表已清空)", id), nil
-        }
+	// 空列表 → 清空（兼容舊行為：全部完成後傳 [] 清空）
+	if len(items) == 0 {
+		delete(tm.lists, id)
+		return fmt.Sprintf(" todos[%s] (0/0 completed)\n  (列表已清空)", id), nil
+	}
 
-        if len(items) > 20 {
-                return "", fmt.Errorf("max 20 todos per list")
-        }
+	if len(items) > 20 {
+		return "", fmt.Errorf("max 20 todos per list")
+	}
 
-        // Step 1: 驗證新 items
-        type validatedItem struct {
-                item     TodoItem
-                origIdx  int
-        }
-        validated := []validatedItem{}
-        inProgressCount := 0
+	// Step 1: 驗證新 items
+	type validatedItem struct {
+		item    TodoItem
+		origIdx int
+	}
+	validated := []validatedItem{}
+	inProgressCount := 0
 
-        for i, item := range items {
-                text := strings.TrimSpace(item.Text)
-                status := normalizeTodoStatus(item.Status)
-                if status == "" {
-                        status = "Pending"
-                }
-                itemID := item.ID
-                if itemID == "" {
-                        itemID = strconv.Itoa(i + 1)
-                }
+	for i, item := range items {
+		text := strings.TrimSpace(item.Text)
+		status := normalizeTodoStatus(item.Status)
+		if status == "" {
+			status = "Pending"
+		}
+		itemID := item.ID
+		if itemID == "" {
+			itemID = strconv.Itoa(i + 1)
+		}
 
-                if text == "" {
-                        return "", fmt.Errorf("item %s: text required", itemID)
-                }
+		if text == "" {
+			return "", fmt.Errorf("item %s: text required", itemID)
+		}
 
-                if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
-                        return "", fmt.Errorf("item %s: invalid status '%s'", itemID, status)
-                }
+		if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
+			return "", fmt.Errorf("item %s: invalid status '%s'", itemID, status)
+		}
 
-                if status == "InProgress" {
-                        inProgressCount++
-                }
+		if status == "InProgress" {
+			inProgressCount++
+		}
 
-                validated = append(validated, validatedItem{
-                        item:    TodoItem{ID: itemID, Text: text, Status: status},
-                        origIdx: i,
-                })
-        }
+		validated = append(validated, validatedItem{
+			item:    TodoItem{ID: itemID, Text: text, Status: status},
+			origIdx: i,
+		})
+	}
 
-        if inProgressCount > 1 {
-                return "", fmt.Errorf("only one task can be InProgress at a time")
-        }
+	if inProgressCount > 1 {
+		return "", fmt.Errorf("only one task can be InProgress at a time")
+	}
 
-        // Step 2: 將新 items 同舊列表做匹配
-        matchedOld := make(map[int]bool)       // oldItems 中已被匹配的 index
-        oldMatchNew := make(map[int]int)       // new item origIdx -> oldItems index
-        usedOldIDs := make(map[string]bool)   // 已用的舊 ID（避免重複匹配）
+	// Step 2: 將新 items 同舊列表做匹配
+	matchedOld := make(map[int]bool)    // oldItems 中已被匹配的 index
+	oldMatchNew := make(map[int]int)    // new item origIdx -> oldItems index
+	usedOldIDs := make(map[string]bool) // 已用的舊 ID（避免重複匹配）
 
-        for vi, v := range validated {
-                // 優先 ID 精確匹配
-                matched := false
-                for oi, old := range oldItems {
-                        if matchedOld[oi] || usedOldIDs[old.ID] {
-                                continue
-                        }
-                        if v.item.ID == old.ID {
-                                oldMatchNew[vi] = oi
-                                matchedOld[oi] = true
-                                usedOldIDs[old.ID] = true
-                                matched = true
-                                break
-                        }
-                }
+	for vi, v := range validated {
+		// 優先 ID 精確匹配
+		matched := false
+		for oi, old := range oldItems {
+			if matchedOld[oi] || usedOldIDs[old.ID] {
+				continue
+			}
+			if v.item.ID == old.ID {
+				oldMatchNew[vi] = oi
+				matchedOld[oi] = true
+				usedOldIDs[old.ID] = true
+				matched = true
+				break
+			}
+		}
 
-                // ID 唔匹配，試內容相似度匹配
-                if !matched {
-                        bestMatch := -1
-                        bestScore := 0.0
-                        for oi, old := range oldItems {
-                                if matchedOld[oi] {
-                                        continue
-                                }
-                                score := textSimilarity(v.item.Text, old.Text)
-                                if score > bestScore {
-                                        bestScore = score
-                                        bestMatch = oi
-                                }
-                        }
-                        // 相似度 > 80% 視為同一項
-                        if bestMatch >= 0 && bestScore > 0.8 {
-                                oldMatchNew[vi] = bestMatch
-                                matchedOld[bestMatch] = true
-                        }
-                }
-        }
+		// ID 唔匹配，試內容相似度匹配
+		if !matched {
+			bestMatch := -1
+			bestScore := 0.0
+			for oi, old := range oldItems {
+				if matchedOld[oi] {
+					continue
+				}
+				score := textSimilarity(v.item.Text, old.Text)
+				if score > bestScore {
+					bestScore = score
+					bestMatch = oi
+				}
+			}
+			// 相似度 > 80% 視為同一項
+			if bestMatch >= 0 && bestScore > 0.8 {
+				oldMatchNew[vi] = bestMatch
+				matchedOld[bestMatch] = true
+			}
+		}
+	}
 
-        // 如果新 items 完全冇 match 任何舊項（ID 同內容都唔同），
-        // 視為模型想完全取代列表，唔保留舊項
-        anyMatched := false
-        for _, matched := range oldMatchNew {
-                _ = matched
-                anyMatched = true
-                break
-        }
+	// 如果新 items 完全冇 match 任何舊項（ID 同內容都唔同），
+	// 視為模型想完全取代列表，唔保留舊項
+	anyMatched := false
+	for _, matched := range oldMatchNew {
+		_ = matched
+		anyMatched = true
+		break
+	}
 
-        // Step 3: 構建最終列表
-        // 有匹配 → 合併；完全冇匹配 → 全量取代
-        finalItems := []TodoItem{}
-        usedFinalIDs := make(map[string]bool)
-        hasInProgress := false
+	// Step 3: 構建最終列表
+	// 有匹配 → 合併；完全冇匹配 → 全量取代
+	finalItems := []TodoItem{}
+	usedFinalIDs := make(map[string]bool)
+	hasInProgress := false
 
-        for _, v := range validated {
-                if oi, matched := oldMatchNew[v.origIdx]; matched {
-                        // 匹配項：保留舊 ID，更新內容同狀態
-                        status := v.item.Status
-                        if status == "InProgress" {
-                                if hasInProgress {
-                                        status = "Pending" // 只允許一個 InProgress
-                                } else {
-                                        hasInProgress = true
-                                }
-                        }
-                        updated := TodoItem{
-                                ID:     oldItems[oi].ID,
-                                Text:   v.item.Text,
-                                Status: status,
-                        }
-                        finalItems = append(finalItems, updated)
-                        usedFinalIDs[oldItems[oi].ID] = true
-                } else {
-                        // 新項：用新 ID
-                        status := v.item.Status
-                        if status == "InProgress" {
-                                if hasInProgress {
-                                        status = "Pending"
-                                } else {
-                                        hasInProgress = true
-                                }
-                        }
-                        finalItems = append(finalItems, TodoItem{
-                                ID:     v.item.ID,
-                                Text:   v.item.Text,
-                                Status: status,
-                        })
-                        usedFinalIDs[v.item.ID] = true
-                }
-        }
+	for _, v := range validated {
+		if oi, matched := oldMatchNew[v.origIdx]; matched {
+			// 匹配項：保留舊 ID，更新內容同狀態
+			status := v.item.Status
+			if status == "InProgress" {
+				if hasInProgress {
+					status = "Pending" // 只允許一個 InProgress
+				} else {
+					hasInProgress = true
+				}
+			}
+			updated := TodoItem{
+				ID:     oldItems[oi].ID,
+				Text:   v.item.Text,
+				Status: status,
+			}
+			finalItems = append(finalItems, updated)
+			usedFinalIDs[oldItems[oi].ID] = true
+		} else {
+			// 新項：用新 ID
+			status := v.item.Status
+			if status == "InProgress" {
+				if hasInProgress {
+					status = "Pending"
+				} else {
+					hasInProgress = true
+				}
+			}
+			finalItems = append(finalItems, TodoItem{
+				ID:     v.item.ID,
+				Text:   v.item.Text,
+				Status: status,
+			})
+			usedFinalIDs[v.item.ID] = true
+		}
+	}
 
-        // 追加未被提及的舊項（如有 InProgress 衝突則降級）
-        // 但如果新舊完全冇匹配 → 模型想全量取代，唔保留舊項
-        preservedCount := 0
-        if anyMatched {
-                for oi, old := range oldItems {
-                        if !matchedOld[oi] && !usedFinalIDs[old.ID] {
-                                item := old
-                                if item.Status == "InProgress" && hasInProgress {
-                                        item.Status = "Pending"
-                                }
-                                finalItems = append(finalItems, item)
-                                preservedCount++
-                        }
-                }
-        }
+	// 追加未被提及的舊項（如有 InProgress 衝突則降級）
+	// 但如果新舊完全冇匹配 → 模型想全量取代，唔保留舊項
+	preservedCount := 0
+	if anyMatched {
+		for oi, old := range oldItems {
+			if !matchedOld[oi] && !usedFinalIDs[old.ID] {
+				item := old
+				if item.Status == "InProgress" && hasInProgress {
+					item.Status = "Pending"
+				}
+				finalItems = append(finalItems, item)
+				preservedCount++
+			}
+		}
+	}
 
-        if len(finalItems) > 20 {
-                return "", fmt.Errorf("merge result exceeds max 20 todos (would be %d)", len(finalItems))
-        }
+	if len(finalItems) > 20 {
+		return "", fmt.Errorf("merge result exceeds max 20 todos (would be %d)", len(finalItems))
+	}
 
-        tm.lists[id] = &TodoList{ID: id, Items: finalItems}
-        result := tm.renderListLocked(id)
+	tm.lists[id] = &TodoList{ID: id, Items: finalItems}
+	result := tm.renderListLocked(id)
 
-        // Step 4: Guard — 只有合併模式下先加提醒
-        if anyMatched && len(items) > 0 && len(oldItems) > 0 {
-                unmentioned := len(oldItems) - len(matchedOld)
-                if unmentioned > 2 {
-                        result += fmt.Sprintf("\n\n⚠️  %d 項舊任務未被本次更新提及，已自動保留。如果其中部分已完成或不再需要，請用 TodoDelete 清理。", unmentioned)
-                }
-        }
+	// Step 4: Guard — 只有合併模式下先加提醒
+	if anyMatched && len(items) > 0 && len(oldItems) > 0 {
+		unmentioned := len(oldItems) - len(matchedOld)
+		if unmentioned > 2 {
+			result += fmt.Sprintf("\n\n⚠️  %d 項舊任務未被本次更新提及，已自動保留。如果其中部分已完成或不再需要，請用 TodoDelete 清理。", unmentioned)
+		}
+	}
 
-        return result, nil
+	return result, nil
 }
 
 // textSimilarity 計算兩段文本的簡單相似度（0.0 ~ 1.0）
 // 基於字符級 overlap：較短文本有多少比例字符出現在較長文本中
 func textSimilarity(a, b string) float64 {
-        // 歸一化：去空白、轉小寫
-        na := strings.ToLower(strings.Join(strings.Fields(a), ""))
-        nb := strings.ToLower(strings.Join(strings.Fields(b), ""))
+	// 歸一化：去空白、轉小寫
+	na := strings.ToLower(strings.Join(strings.Fields(a), ""))
+	nb := strings.ToLower(strings.Join(strings.Fields(b), ""))
 
-        if na == nb {
-                return 1.0
-        }
-        if len(na) == 0 || len(nb) == 0 {
-                return 0.0
-        }
+	if na == nb {
+		return 1.0
+	}
+	if len(na) == 0 || len(nb) == 0 {
+		return 0.0
+	}
 
-        // 確保 na 是較短的那個
-        if len(na) > len(nb) {
-                na, nb = nb, na
-        }
+	// 確保 na 是較短的那個
+	if len(na) > len(nb) {
+		na, nb = nb, na
+	}
 
-        // 計算 na 中每個字符在 nb 中出現的比例
-        nbRunes := []rune(nb)
-        nbUsed := make([]bool, len(nbRunes))
-        matched := 0
-        for _, ra := range na {
-                for j, rb := range nbRunes {
-                        if !nbUsed[j] && ra == rb {
-                                nbUsed[j] = true
-                                matched++
-                                break
-                        }
-                }
-        }
-        return float64(matched) / float64(len(na))
+	// 計算 na 中每個字符在 nb 中出現的比例
+	nbRunes := []rune(nb)
+	nbUsed := make([]bool, len(nbRunes))
+	matched := 0
+	for _, ra := range na {
+		for j, rb := range nbRunes {
+			if !nbUsed[j] && ra == rb {
+				nbUsed[j] = true
+				matched++
+				break
+			}
+		}
+	}
+	return float64(matched) / float64(len(na))
 }
 
 // Create 創建單個任務，自動分配 ID
 func (tm *TodoManager) Create(content, status string) (string, error) {
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-        content = strings.TrimSpace(content)
-        if content == "" {
-                return "", fmt.Errorf("content is required")
-        }
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "", fmt.Errorf("content is required")
+	}
 
-        status = normalizeTodoStatus(status)
-        if status == "" {
-                status = "Pending"
-        }
-        if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
-                return "", fmt.Errorf("invalid status: %s", status)
-        }
+	status = normalizeTodoStatus(status)
+	if status == "" {
+		status = "Pending"
+	}
+	if status != "Pending" && status != "InProgress" && status != "Completed" && status != "Waiting" && status != "Cancelled" {
+		return "", fmt.Errorf("invalid status: %s", status)
+	}
 
-        if status == "InProgress" {
-                // 先將所有 InProgress 降為 Pending（只允許一個 InProgress）
-                for _, list := range tm.lists {
-                        for j, item := range list.Items {
-                                if item.Status == "InProgress" {
-                                        list.Items[j].Status = "Pending"
-                                }
-                        }
-                }
-        }
+	if status == "InProgress" {
+		// 先將所有 InProgress 降為 Pending（只允許一個 InProgress）
+		for _, list := range tm.lists {
+			for j, item := range list.Items {
+				if item.Status == "InProgress" {
+					list.Items[j].Status = "Pending"
+				}
+			}
+		}
+	}
 
-        list := tm.lists["default"]
-        if list == nil {
-                list = &TodoList{ID: "default"}
-                tm.lists["default"] = list
-        }
+	list := tm.lists["default"]
+	if list == nil {
+		list = &TodoList{ID: "default"}
+		tm.lists["default"] = list
+	}
 
-        if len(list.Items) >= 20 {
-                return "", fmt.Errorf("max 20 todos")
-        }
+	if len(list.Items) >= 20 {
+		return "", fmt.Errorf("max 20 todos")
+	}
 
-        // 自動分配 ID（計數 + 1）
-        newID := strconv.Itoa(len(list.Items) + 1)
-        item := TodoItem{ID: newID, Text: content, Status: status}
-        list.Items = append(list.Items, item)
-        return tm.renderListLocked("default"), nil
+	// 自動分配 ID（計數 + 1）
+	newID := strconv.Itoa(len(list.Items) + 1)
+	item := TodoItem{ID: newID, Text: content, Status: status}
+	list.Items = append(list.Items, item)
+	return tm.renderListLocked("default"), nil
 }
 
 // UpdateSingle 更新或刪除單個任務
 // status 為空字串時刪除該任務
 func (tm *TodoManager) UpdateSingle(id, content, status string) (string, error) {
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-        list := tm.lists["default"]
-        if list == nil {
-                return "沒有任何任務", nil
-        }
+	list := tm.lists["default"]
+	if list == nil {
+		return "沒有任何任務", nil
+	}
 
-        for i, item := range list.Items {
-                if item.ID == id {
-                        // 刪除：status 為空字串
-                        if status == "" && content == "" {
-                                list.Items = append(list.Items[:i], list.Items[i+1:]...)
-                                return tm.renderListLocked("default"), nil
-                        }
+	for i, item := range list.Items {
+		if item.ID == id {
+			// 刪除：status 為空字串
+			if status == "" && content == "" {
+				list.Items = append(list.Items[:i], list.Items[i+1:]...)
+				return tm.renderListLocked("default"), nil
+			}
 
-                        if content != "" {
-                                list.Items[i].Text = strings.TrimSpace(content)
-                        }
-                        if status != "" {
-                                s := normalizeTodoStatus(status)
-                                if s != "Pending" && s != "InProgress" && s != "Completed" && s != "Waiting" && s != "Cancelled" {
-                                        return "", fmt.Errorf("invalid status: %s", status)
-                                }
-                                if s == "InProgress" {
-                                        // 只允許一個 InProgress
-                                        for j := range list.Items {
-                                                if j != i && list.Items[j].Status == "InProgress" {
-                                                        list.Items[j].Status = "Pending"
-                                                }
-                                        }
-                                }
-                                list.Items[i].Status = s
-                        }
-                        return tm.renderListLocked("default"), nil
-                }
-        }
-        return "", fmt.Errorf("task %s not found", id)
+			if content != "" {
+				list.Items[i].Text = strings.TrimSpace(content)
+			}
+			if status != "" {
+				s := normalizeTodoStatus(status)
+				if s != "Pending" && s != "InProgress" && s != "Completed" && s != "Waiting" && s != "Cancelled" {
+					return "", fmt.Errorf("invalid status: %s", status)
+				}
+				if s == "InProgress" {
+					// 只允許一個 InProgress
+					for j := range list.Items {
+						if j != i && list.Items[j].Status == "InProgress" {
+							list.Items[j].Status = "Pending"
+						}
+					}
+				}
+				list.Items[i].Status = s
+			}
+			return tm.renderListLocked("default"), nil
+		}
+	}
+	return "", fmt.Errorf("task %s not found", id)
 }
 
 // Delete 刪除指定 ID 的任務
 func (tm *TodoManager) Delete(id string, listID ...string) (string, error) {
-        lid := "default"
-        if len(listID) > 0 && listID[0] != "" {
-                lid = listID[0]
-        }
+	lid := "default"
+	if len(listID) > 0 && listID[0] != "" {
+		lid = listID[0]
+	}
 
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-        list := tm.lists[lid]
-        if list == nil {
-                return "", fmt.Errorf("task %s not found", id)
-        }
+	list := tm.lists[lid]
+	if list == nil {
+		return "", fmt.Errorf("task %s not found", id)
+	}
 
-        for i, item := range list.Items {
-                if item.ID == id {
-                        list.Items = append(list.Items[:i], list.Items[i+1:]...)
-                        return tm.renderListLocked(lid), nil
-                }
-        }
-        return "", fmt.Errorf("task %s not found", id)
+	for i, item := range list.Items {
+		if item.ID == id {
+			list.Items = append(list.Items[:i], list.Items[i+1:]...)
+			return tm.renderListLocked(lid), nil
+		}
+	}
+	return "", fmt.Errorf("task %s not found", id)
 }
 
 // UpdateDefault 舊接口兼容：更新默認列表
 func (tm *TodoManager) UpdateDefault(items []TodoItem) (string, error) {
-        return tm.Update(items)
+	return tm.Update(items)
 }
 
 // GetStructuredItems 獲取默認列表嘅結構化事項（用於前端即時面板）
 // 排除 plan 相關列表，只返回用戶自己創建嘅任務
 func (tm *TodoManager) GetStructuredItems() []TodoItem {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        var allItems []TodoItem
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                allItems = append(allItems, list.Items...)
-        }
-        return allItems
+	var allItems []TodoItem
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		allItems = append(allItems, list.Items...)
+	}
+	return allItems
 }
 
 // GetItems 獲取指定列表的所有事項（副本）
 func (tm *TodoManager) GetItems(listID ...string) []TodoItem {
-        id := "default"
-        if len(listID) > 0 && listID[0] != "" {
-                id = listID[0]
-        }
+	id := "default"
+	if len(listID) > 0 && listID[0] != "" {
+		id = listID[0]
+	}
 
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        list, ok := tm.lists[id]
-        if !ok {
-                return nil
-        }
+	list, ok := tm.lists[id]
+	if !ok {
+		return nil
+	}
 
-        result := make([]TodoItem, len(list.Items))
-        copy(result, list.Items)
-        return result
+	result := make([]TodoItem, len(list.Items))
+	copy(result, list.Items)
+	return result
 }
 
 // Render 渲染指定列表的待辦事項
 func (tm *TodoManager) Render(listID ...string) string {
-        id := "default"
-        if len(listID) > 0 && listID[0] != "" {
-                id = listID[0]
-        }
+	id := "default"
+	if len(listID) > 0 && listID[0] != "" {
+		id = listID[0]
+	}
 
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
-        return tm.renderListLocked(id)
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.renderListLocked(id)
 }
 
 // renderListLocked 渲染列表（需持有鎖）
 func (tm *TodoManager) renderListLocked(id string) string {
-        list, ok := tm.lists[id]
-        if !ok || len(list.Items) == 0 {
-                return ""
-        }
+	list, ok := tm.lists[id]
+	if !ok || len(list.Items) == 0 {
+		return ""
+	}
 
-        lines := []string{}
-        done := 0
+	lines := []string{}
+	done := 0
 
-        for _, item := range list.Items {
-                var marker string
-                switch item.Status {
-                case "Pending":
-                        marker = "[ ]"
-                case "InProgress":
-                        marker = "[>"
-                case "Waiting":
-                        marker = "[~]"
-                case "Completed":
-                        marker = "[x]"
-                        done++
-                case "Cancelled":
-                        marker = "[-]"
-                default:
-                        marker = "[?]"
-                }
-                lines = append(lines, fmt.Sprintf("%s #%s: %s", marker, item.ID, item.Text))
-        }
+	for _, item := range list.Items {
+		var marker string
+		switch item.Status {
+		case "Pending":
+			marker = "[ ]"
+		case "InProgress":
+			marker = "[>"
+		case "Waiting":
+			marker = "[~]"
+		case "Completed":
+			marker = "[x]"
+			done++
+		case "Cancelled":
+			marker = "[-]"
+		default:
+			marker = "[?]"
+		}
+		lines = append(lines, fmt.Sprintf("%s #%s: %s", marker, item.ID, item.Text))
+	}
 
-        result := fmt.Sprintf(" todos[%s] (%d/%d completed)", id, done, len(list.Items))
-        for _, line := range lines {
-                result += "\n  " + line
-        }
-        return result
+	result := fmt.Sprintf(" todos[%s] (%d/%d completed)", id, done, len(list.Items))
+	for _, line := range lines {
+		result += "\n  " + line
+	}
+	return result
 }
 
 // Clear 清空指定列表
 func (tm *TodoManager) Clear(listID ...string) error {
-        id := "default"
-        if len(listID) > 0 && listID[0] != "" {
-                id = listID[0]
-        }
+	id := "default"
+	if len(listID) > 0 && listID[0] != "" {
+		id = listID[0]
+	}
 
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-        delete(tm.lists, id)
-        return nil
+	delete(tm.lists, id)
+	return nil
 }
 
 // planRelatedListIDs Plan Mode 使用的列表 ID，退出守衛應排除這些列表
 var planRelatedListIDs = map[string]bool{
-        "plan":   true,
-        "phase1": true,
-        "phase2": true,
+	"plan":   true,
+	"phase1": true,
+	"phase2": true,
 }
 
 // HasUnfinishedItems 檢查是否有未完成的非計劃項目（Pending 或 InProgress）
 // 用於 AgentLoop 退出守衛：如果有未完成項目，程序不允許模型停止
 func (tm *TodoManager) HasUnfinishedItems() bool {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                for _, item := range list.Items {
-                        if item.Status == "Pending" || item.Status == "InProgress" {
-                                return true
-                        }
-                }
-        }
-        return false
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		for _, item := range list.Items {
+			if item.Status == "Pending" || item.Status == "InProgress" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AllUnfinishedAreWaiting 檢查所有未完成的非計劃項目是否都處於 waiting 狀態
 // 如果是，說明所有剩餘任務已提交為異步操作（如 CronAdd），允許退出
 func (tm *TodoManager) AllUnfinishedAreWaiting() bool {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                for _, item := range list.Items {
-                        if item.Status == "Pending" || item.Status == "InProgress" {
-                                return false
-                        }
-                }
-        }
-        return true
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		for _, item := range list.Items {
+			if item.Status == "Pending" || item.Status == "InProgress" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // GetUnfinishedSummary 獲取未完成的非計劃項目摘要（用於注入續行提示）
 func (tm *TodoManager) GetUnfinishedSummary() string {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        var unfinished []string
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                for _, item := range list.Items {
-                        if item.Status == "Pending" || item.Status == "InProgress" {
-                                unfinished = append(unfinished, fmt.Sprintf("  - #%s: %s [%s]", item.ID, item.Text, item.Status))
-                        }
-                }
-        }
-        if len(unfinished) == 0 {
-                return ""
-        }
-        return strings.Join(unfinished, "\n")
+	var unfinished []string
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		for _, item := range list.Items {
+			if item.Status == "Pending" || item.Status == "InProgress" {
+				unfinished = append(unfinished, fmt.Sprintf("  - #%s: %s [%s]", item.ID, item.Text, item.Status))
+			}
+		}
+	}
+	if len(unfinished) == 0 {
+		return ""
+	}
+	return strings.Join(unfinished, "\n")
 }
 
 // GetUnfinishedDigest 返回未完成項目嘅穩定指紋字串（ID:status 排序後用換行分隔）。
 // 用於 exit guard 檢測兩次 resume 之間 todo 係咪有進展。
 // 指紋唔同 → 有進展 → 應該畀模型繼續做。
 func (tm *TodoManager) GetUnfinishedDigest() string {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        var parts []string
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                for _, item := range list.Items {
-                        if item.Status == "Pending" || item.Status == "InProgress" {
-                                parts = append(parts, item.ID+":"+item.Status)
-                        }
-                }
-        }
-        if len(parts) == 0 {
-                return ""
-        }
-        sort.Strings(parts)
-        return strings.Join(parts, "\n")
+	var parts []string
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		for _, item := range list.Items {
+			if item.Status == "Pending" || item.Status == "InProgress" {
+				parts = append(parts, item.ID+":"+item.Status)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "\n")
 }
 
 // IsEmpty 檢查非 Plan Mode 列表是否有任何項目
 // 排除 Plan Mode 的列表（plan, phase1-2），只檢查用戶自己創建的 todo 列表
 // 用於 todos 使用提醒守衛：如果用戶從未使用過 todos，則為 true
 func (tm *TodoManager) IsEmpty() bool {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        for id, list := range tm.lists {
-                if planRelatedListIDs[id] {
-                        continue
-                }
-                if len(list.Items) > 0 {
-                        return false
-                }
-        }
-        return true
+	for id, list := range tm.lists {
+		if planRelatedListIDs[id] {
+			continue
+		}
+		if len(list.Items) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // ClearAll 清空所有列表
 func (tm *TodoManager) ClearAll() {
-        tm.mu.Lock()
-        defer tm.mu.Unlock()
-        tm.lists = make(map[string]*TodoList)
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.lists = make(map[string]*TodoList)
 }
 
 // ListIDs 返回所有列表 ID
 func (tm *TodoManager) ListIDs() []string {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        ids := make([]string, 0, len(tm.lists))
-        for id := range tm.lists {
-                ids = append(ids, id)
-        }
-        sort.Strings(ids)
-        return ids
+	ids := make([]string, 0, len(tm.lists))
+	for id := range tm.lists {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // RenderAll 渲染所有非空列表
 func (tm *TodoManager) RenderAll() string {
-        tm.mu.RLock()
-        defer tm.mu.RUnlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-        if len(tm.lists) == 0 {
-                return "No todos."
-        }
+	if len(tm.lists) == 0 {
+		return "No todos."
+	}
 
-        // 收集所有列表並排序
-        ids := make([]string, 0, len(tm.lists))
-        for id, list := range tm.lists {
-                if len(list.Items) > 0 {
-                        ids = append(ids, id)
-                }
-        }
-        sort.Strings(ids)
+	// 收集所有列表並排序
+	ids := make([]string, 0, len(tm.lists))
+	for id, list := range tm.lists {
+		if len(list.Items) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
 
-        if len(ids) == 0 {
-                return "No todos."
-        }
+	if len(ids) == 0 {
+		return "No todos."
+	}
 
-        parts := make([]string, 0, len(ids))
-        for _, id := range ids {
-                parts = append(parts, tm.renderListLocked(id))
-        }
-        return strings.Join(parts, "\n")
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, tm.renderListLocked(id))
+	}
+	return strings.Join(parts, "\n")
 }

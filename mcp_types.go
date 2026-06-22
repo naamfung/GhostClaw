@@ -12,18 +12,18 @@ const MCPVersion = "2024-11-05"
 
 // JSONRPCRequest JSON-RPC 请求
 type JSONRPCRequest struct {
-	JSONRPC string         `json:"jsonrpc"`
-	ID      interface{}    `json:"id,omitempty"`      // string | number | null
-	Method  string         `json:"method"`
+	JSONRPC string                 `json:"jsonrpc"`
+	ID      interface{}            `json:"id,omitempty"` // string | number | null
+	Method  string                 `json:"method"`
 	Params  map[string]interface{} `json:"params,omitempty"`
 }
 
 // JSONRPCResponse JSON-RPC 响应
 type JSONRPCResponse struct {
-	JSONRPC string         `json:"jsonrpc"`
-	ID      interface{}    `json:"id"`
-	Result  interface{}    `json:"result,omitempty"`
-	Error   *JSONRPCError  `json:"error,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      interface{}   `json:"id"`
+	Result  interface{}   `json:"result,omitempty"`
+	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
 // JSONRPCError JSON-RPC 错误
@@ -158,7 +158,7 @@ func NewImageContent(data, mimeType string) MCPContent {
 // NewResourceContent 创建资源内容
 func NewResourceContent(uri, mimeType string, text string) MCPContent {
 	return MCPContent{
-		"type":     "resource",
+		"type": "resource",
 		"resource": map[string]interface{}{
 			"uri":      uri,
 			"mimeType": mimeType,
@@ -209,9 +209,9 @@ type ResourceContents struct {
 
 // MCPPrompt 提示定义
 type MCPPrompt struct {
-	Name        string                  `json:"name"`
-	Description string                  `json:"description,omitempty"`
-	Arguments   []PromptArgument        `json:"arguments,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
 }
 
 // PromptArgument 提示参数
@@ -229,20 +229,20 @@ type ListPromptsResult struct {
 
 // GetPromptParams 获取提示参数
 type GetPromptParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]string      `json:"arguments,omitempty"`
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
 }
 
 // GetPromptResult 获取提示结果
 type GetPromptResult struct {
-	Description string            `json:"description,omitempty"`
-	Messages    []PromptMessage   `json:"messages"`
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
 }
 
 // PromptMessage 提示消息
 type PromptMessage struct {
-	Role    string      `json:"role"`
-	Content MCPContent  `json:"content"`
+	Role    string     `json:"role"`
+	Content MCPContent `json:"content"`
 }
 
 // ============================================================

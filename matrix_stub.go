@@ -1,3 +1,4 @@
+//go:build !matrix
 // +build !matrix
 
 // Matrix 渠道存根

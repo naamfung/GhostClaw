@@ -368,7 +368,9 @@ func TestProcessAnalysisResult(t *testing.T) {
 	// 設置 UnifiedMemory
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -394,7 +396,9 @@ func TestProcessAnalysisResult(t *testing.T) {
 func TestProcessAnalysisResultEmpty(t *testing.T) {
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -438,7 +442,9 @@ func TestAnalyzePromptEffectivenessIntegration(t *testing.T) {
 	// 設置 UnifiedMemory（避免 nil pointer）
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -478,7 +484,9 @@ func TestAnalyzePromptEffectivenessInsufficientData(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -511,7 +519,9 @@ func TestAnalyzeToolPatternsIntegration(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -531,12 +541,12 @@ func TestAnalyzeToolPatternsIntegration(t *testing.T) {
 	mgr.SaveSession("tool_analysis_test", "Tool Test", "helper", "default", 0, 0, 0, 0, messages)
 
 	se := &SelfEvolver{
-		minPromptInterval:         0,
-		minToolInterval:           0,
-		minErrorInterval:          0,
-		minCrossInterval:          0,
-		sessionsAnalyzed:          make(map[string]bool),
-		minToolCallsForAnalysis:   10,
+		minPromptInterval:           0,
+		minToolInterval:             0,
+		minErrorInterval:            0,
+		minCrossInterval:            0,
+		sessionsAnalyzed:            make(map[string]bool),
+		minToolCallsForAnalysis:     10,
 		minSessionsForCrossAnalysis: 5,
 	}
 
@@ -554,7 +564,9 @@ func TestAnalyzeToolPatternsBelowThreshold(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -592,7 +604,9 @@ func TestAnalyzeErrorRecoveryIntegration(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -630,7 +644,9 @@ func TestAnalyzeErrorRecoveryNoErrors(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -666,7 +682,9 @@ func TestSynthesizeCrossSessionIntegration(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})
@@ -705,7 +723,9 @@ func TestSynthesizeCrossSessionBelowThreshold(t *testing.T) {
 
 	oldMem := globalUnifiedMemory
 	tmpDir := t.TempDir()
-	var errUM error; globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir); _ = errUM
+	var errUM error
+	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
+	_ = errUM
 	t.Cleanup(func() {
 		globalUnifiedMemory = oldMem
 	})

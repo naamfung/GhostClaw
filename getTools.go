@@ -1,21 +1,21 @@
 package main
 
 import (
-        "log"
-        "strconv"
-        "strings"
-        "sync"
+	"log"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 // getTools 根据 API 类型返回对应格式的工具定义
 // 现在从统一的工具注册中心生成，消除了双份定义和参数漂移
 func getTools(apiType string) interface{} {
-        switch apiType {
-        case "openai", "ollama":
-                return getOpenAIToolsFromRegistry()
-        default: // anthropic 及其他兼容格式
-                return getAnthropicToolsFromRegistry()
-        }
+	switch apiType {
+	case "openai", "ollama":
+		return getOpenAIToolsFromRegistry()
+	default: // anthropic 及其他兼容格式
+		return getAnthropicToolsFromRegistry()
+	}
 }
 
 // ── 工具定義緩存（啟動時生成一次，之後直接復用）─────────────
@@ -23,95 +23,95 @@ func getTools(apiType string) interface{} {
 // 這是 prepareRequestData 6-7s 延遲的主要來源之一。
 
 var (
-        cachedOpenAITools    []map[string]interface{}
-        cachedAnthropicTools []map[string]interface{}
-        toolCacheOnce        sync.Once
+	cachedOpenAITools    []map[string]interface{}
+	cachedAnthropicTools []map[string]interface{}
+	toolCacheOnce        sync.Once
 )
 
 // initToolCache 初始化工具定義緩存（僅在首次調用時執行）
 func initToolCache() {
-        tools := GetRegistryTools()
-        openaiResult := make([]map[string]interface{}, len(tools))
-        anthropicResult := make([]map[string]interface{}, len(tools))
-        for i, td := range tools {
-                openaiResult[i] = td.ToOpenAI()
-                anthropicResult[i] = td.ToAnthropic()
-        }
-        cachedOpenAITools = openaiResult
-        cachedAnthropicTools = anthropicResult
+	tools := GetRegistryTools()
+	openaiResult := make([]map[string]interface{}, len(tools))
+	anthropicResult := make([]map[string]interface{}, len(tools))
+	for i, td := range tools {
+		openaiResult[i] = td.ToOpenAI()
+		anthropicResult[i] = td.ToAnthropic()
+	}
+	cachedOpenAITools = openaiResult
+	cachedAnthropicTools = anthropicResult
 }
 
 // getOpenAIToolsFromRegistry 从注册中心生成 OpenAI 格式工具列表（带缓存）
 func getOpenAIToolsFromRegistry() []map[string]interface{} {
-        toolCacheOnce.Do(initToolCache)
-        return cachedOpenAITools
+	toolCacheOnce.Do(initToolCache)
+	return cachedOpenAITools
 }
 
 // getAnthropicToolsFromRegistry 从注册中心生成 Anthropic 格式工具列表（带缓存）
 func getAnthropicToolsFromRegistry() []map[string]interface{} {
-        toolCacheOnce.Do(initToolCache)
-        return cachedAnthropicTools
+	toolCacheOnce.Do(initToolCache)
+	return cachedAnthropicTools
 }
 
 // getOpenAITools 保留旧接口兼容（内部现在委托给注册中心）
 func getOpenAITools() []map[string]interface{} {
-        return getOpenAIToolsFromRegistry()
+	return getOpenAIToolsFromRegistry()
 }
 
 // getAnthropicTools 保留旧接口兼容（内部现在委托给注册中心）
 func getAnthropicTools() []map[string]interface{} {
-        return getAnthropicToolsFromRegistry()
+	return getAnthropicToolsFromRegistry()
 }
 
 // getToolName 从工具定义中提取工具名称
 func getToolName(tool map[string]interface{}) string {
-        // OpenAI/Ollama 格式: {"type": "function", "function": {"name": "xxx"}}
-        if function, ok := tool["function"].(map[string]interface{}); ok {
-                if name, ok := function["name"].(string); ok {
-                        return name
-                }
-        }
-        // Anthropic 格式: {"name": "xxx", "input_schema": {...}}
-        if name, ok := tool["name"].(string); ok {
-                return name
-        }
-        return ""
+	// OpenAI/Ollama 格式: {"type": "function", "function": {"name": "xxx"}}
+	if function, ok := tool["function"].(map[string]interface{}); ok {
+		if name, ok := function["name"].(string); ok {
+			return name
+		}
+	}
+	// Anthropic 格式: {"name": "xxx", "input_schema": {...}}
+	if name, ok := tool["name"].(string); ok {
+		return name
+	}
+	return ""
 }
 
 // convertOpenAIToolToAnthropic 将 OpenAI 格式的工具转换为 Anthropic 格式
 func convertOpenAIToolToAnthropic(tool map[string]interface{}) map[string]interface{} {
-        function, _ := tool["function"].(map[string]interface{})
-        if function == nil {
-                return tool
-        }
+	function, _ := tool["function"].(map[string]interface{})
+	if function == nil {
+		return tool
+	}
 
-        name, _ := function["name"].(string)
-        description, _ := function["description"].(string)
-        parameters, _ := function["parameters"].(map[string]interface{})
+	name, _ := function["name"].(string)
+	description, _ := function["description"].(string)
+	parameters, _ := function["parameters"].(map[string]interface{})
 
-        // 构建 Anthropic 格式工具
-        anthropicTool := map[string]interface{}{
-                "name":         name,
-                "description":  description,
-                "input_schema": parameters,
-        }
+	// 构建 Anthropic 格式工具
+	anthropicTool := map[string]interface{}{
+		"name":         name,
+		"description":  description,
+		"input_schema": parameters,
+	}
 
-        return anthropicTool
+	return anthropicTool
 }
 
 // convertToolsToAnthropic 将工具列表从 OpenAI 格式转换为 Anthropic 格式
 func convertToolsToAnthropic(tools []map[string]interface{}) []map[string]interface{} {
-        result := make([]map[string]interface{}, len(tools))
-        for i, tool := range tools {
-                result[i] = convertOpenAIToolToAnthropic(tool)
-        }
-        return result
+	result := make([]map[string]interface{}, len(tools))
+	for i, tool := range tools {
+		result[i] = convertOpenAIToolToAnthropic(tool)
+	}
+	return result
 }
 
 // getFilteredTools 根据角色权限与工具配置过滤工具列表
 // role 为 nil 时返回所有工具（但仍受工具配置限制）
 func getFilteredTools(apiType string, role *Role) interface{} {
-        return getFilteredToolsWithContext(apiType, role, 0)
+	return getFilteredToolsWithContext(apiType, role, 0)
 }
 
 // getFilteredToolsWithContext 带上下文窗口感知的工具过滤
@@ -119,307 +119,307 @@ func getFilteredTools(apiType string, role *Role) interface{} {
 // contextWindow == 0 时行为与 getFilteredTools 完全一致（向后兼容，返回全部工具）
 // Anthropic 使用原生格式数据源，不做 OpenAI→Anthropic 格式转换
 func getFilteredToolsWithContext(apiType string, role *Role, contextWindow int) interface{} {
-        // ── Fast path：冇任何過濾需要，直接返回已緩存嘅全量工具 ──
-        // getTools() 內部由 sync.Once 緩存，近乎零成本。
-        // 條件：無 tier filtering、無 distribution sampling、無 config 過濾、
-        //       無 Plan Mode、無 role 過濾、無 MCP 動態工具
-        if contextWindow == 0 &&
-                (globalToolDistributionMgr == nil) &&
-                !hasConfigDisabledTools() &&
-                !globalToolsConfig.DeferExtendedTools &&
-                (globalTasksMode == nil || !globalTasksMode.IsActive()) &&
-                (role == nil || role.ToolPermission.Mode == ToolPermissionAll) &&
-                (globalMCPClientManager == nil || len(globalMCPClientManager.GetAllTools()) == 0) {
-                return getTools(apiType)
-        }
+	// ── Fast path：冇任何過濾需要，直接返回已緩存嘅全量工具 ──
+	// getTools() 內部由 sync.Once 緩存，近乎零成本。
+	// 條件：無 tier filtering、無 distribution sampling、無 config 過濾、
+	//       無 Plan Mode、無 role 過濾、無 MCP 動態工具
+	if contextWindow == 0 &&
+		(globalToolDistributionMgr == nil) &&
+		!hasConfigDisabledTools() &&
+		!globalToolsConfig.DeferExtendedTools &&
+		(globalTasksMode == nil || !globalTasksMode.IsActive()) &&
+		(role == nil || role.ToolPermission.Mode == ToolPermissionAll) &&
+		(globalMCPClientManager == nil || len(globalMCPClientManager.GetAllTools()) == 0) {
+		return getTools(apiType)
+	}
 
-        var tools interface{}
+	var tools interface{}
 
-        // ── StableTools: 跳過 tier/sampling/density 過濾，保持工具集穩定 ──
-        // DeepSeek KV Cache / Anthropic Prompt Cache 都需要工具集一致先可以命中
-        stableTools := globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools
+	// ── StableTools: 跳過 tier/sampling/density 過濾，保持工具集穩定 ──
+	// DeepSeek KV Cache / Anthropic Prompt Cache 都需要工具集一致先可以命中
+	stableTools := globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools
 
-        // ── P3: 工具分發 — 若已配置分發規則，從中抽樣工具子集 ──────
-        var sampledToolNames []string
-        if !stableTools && globalToolDistributionMgr != nil {
-                if sampled := globalToolDistributionMgr.SampleToolset(); sampled != nil && len(sampled.ToolNames) > 0 {
-                        sampledToolNames = sampled.ToolNames
-                }
-        }
+	// ── P3: 工具分發 — 若已配置分發規則，從中抽樣工具子集 ──────
+	var sampledToolNames []string
+	if !stableTools && globalToolDistributionMgr != nil {
+		if sampled := globalToolDistributionMgr.SampleToolset(); sampled != nil && len(sampled.ToolNames) > 0 {
+			sampledToolNames = sampled.ToolNames
+		}
+	}
 
-        // 如果提供了上下文窗口信息，使用分层工具管理
-        // 根據 API 類型選擇對應格式的原生數據源，避免格式轉換
-        // StableTools 啟用時跳過 tier filtering，直接使用完整工具集
-        if contextWindow > 0 && !stableTools {
-                if apiType == "anthropic" {
-                        tools = getFilteredAnthropicTools(contextWindow, role)
-                } else {
-                        tools = getFilteredOpenAITools(contextWindow, role)
-                }
-        } else {
-                // 向後兼容：無上下文窗口信息時返回全部工具
-                // StableTools 啟用時亦使用完整工具集
-                tools = getTools(apiType)
-        }
+	// 如果提供了上下文窗口信息，使用分层工具管理
+	// 根據 API 類型選擇對應格式的原生數據源，避免格式轉換
+	// StableTools 啟用時跳過 tier filtering，直接使用完整工具集
+	if contextWindow > 0 && !stableTools {
+		if apiType == "anthropic" {
+			tools = getFilteredAnthropicTools(contextWindow, role)
+		} else {
+			tools = getFilteredOpenAITools(contextWindow, role)
+		}
+	} else {
+		// 向後兼容：無上下文窗口信息時返回全部工具
+		// StableTools 啟用時亦使用完整工具集
+		tools = getTools(apiType)
+	}
 
-        // 首先根据工具配置过滤
-        tools = filterToolsByConfig(apiType, tools)
+	// 首先根据工具配置过滤
+	tools = filterToolsByConfig(apiType, tools)
 
-        // ── Defer 非核心工具：DeferExtendedTools 啟用時，排除 Extended/Expert ──
-        if globalToolsConfig.DeferExtendedTools {
-                tools = filterDeferredTools(apiType, tools)
-        }
+	// ── Defer 非核心工具：DeferExtendedTools 啟用時，排除 Extended/Expert ──
+	if globalToolsConfig.DeferExtendedTools {
+		tools = filterDeferredTools(apiType, tools)
+	}
 
-        // ── P3: 應用工具分發抽樣結果（StableTools 啟用時跳過）──────
-        if len(sampledToolNames) > 0 {
-                tools = applyToolDistributionFilter(apiType, tools, sampledToolNames)
-        }
+	// ── P3: 應用工具分發抽樣結果（StableTools 啟用時跳過）──────
+	if len(sampledToolNames) > 0 {
+		tools = applyToolDistributionFilter(apiType, tools, sampledToolNames)
+	}
 
-        // 如果没有角色或权限模式为 all，返回过滤后的工具
-        if role == nil || role.ToolPermission.Mode == ToolPermissionAll {
-                // 添加 MCP 客户端工具与记忆整合工具
-                return appendDynamicTools(apiType, tools)
-        }
+	// 如果没有角色或权限模式为 all，返回过滤后的工具
+	if role == nil || role.ToolPermission.Mode == ToolPermissionAll {
+		// 添加 MCP 客户端工具与记忆整合工具
+		return appendDynamicTools(apiType, tools)
+	}
 
-        // 处理工具过滤（两种格式逻辑相同）
-        toolList, ok := tools.([]map[string]interface{})
-        if !ok {
-                return tools
-        }
-        filtered := make([]map[string]interface{}, 0)
-        for _, tool := range toolList {
-                name := getToolName(tool)
-                if role.IsToolAllowed(name) {
-                        filtered = append(filtered, tool)
-                }
-        }
-        // 添加 MCP 客户端工具与记忆整合工具
-        return appendDynamicTools(apiType, filtered)
+	// 处理工具过滤（两种格式逻辑相同）
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
+	}
+	filtered := make([]map[string]interface{}, 0)
+	for _, tool := range toolList {
+		name := getToolName(tool)
+		if role.IsToolAllowed(name) {
+			filtered = append(filtered, tool)
+		}
+	}
+	// 添加 MCP 客户端工具与记忆整合工具
+	return appendDynamicTools(apiType, filtered)
 }
 
 // filterDeferredTools 排除 Extended + Expert tier 工具，只保留 Core。
 // DeferExtendedTools 啟用時，非核心工具唔發送完整 schema，改為喺系統 prompt 列出名稱。
 func filterDeferredTools(apiType string, tools interface{}) interface{} {
-        toolList, ok := tools.([]map[string]interface{})
-        if !ok {
-                return tools
-        }
-        filtered := make([]map[string]interface{}, 0, len(toolList))
-        for _, t := range toolList {
-                name := getToolName(t)
-                if td, exists := toolRegistryMap[name]; exists && td.Tier == "core" {
-                        filtered = append(filtered, t)
-                }
-        }
-        return filtered
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
+	}
+	filtered := make([]map[string]interface{}, 0, len(toolList))
+	for _, t := range toolList {
+		name := getToolName(t)
+		if td, exists := toolRegistryMap[name]; exists && td.Tier == "core" {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
 }
 
 // GetDeferredToolNames 返回所有被延遲加載嘅工具名稱列表（用於系統 prompt）。
 func GetDeferredToolNames() string {
-        var names []string
-        for _, td := range toolRegistry {
-                if td.Tier != "core" {
-                        names = append(names, td.Name)
-                }
-        }
-        if len(names) == 0 {
-                return ""
-        }
-        return "可通過 Menu 按需加載嘅延遲工具（" + strconv.Itoa(len(names)) + " 個）：" + strings.Join(names, "、")
+	var names []string
+	for _, td := range toolRegistry {
+		if td.Tier != "core" {
+			names = append(names, td.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "可通過 Menu 按需加載嘅延遲工具（" + strconv.Itoa(len(names)) + " 個）：" + strings.Join(names, "、")
 }
 
 // hasConfigDisabledTools 快速檢查是否有工具被配置禁用（無需構建工具列表）。
 // 用於 getFilteredToolsWithContext fast path，避免不必要嘅 filterToolsByConfig 調用。
 func hasConfigDisabledTools() bool {
-        if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
-                return true
-        }
-        if isOpenCLIAvailable() && DisableBrowserTools {
-                return true
-        }
-        return false
+	if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
+		return true
+	}
+	if isOpenCLIAvailable() && DisableBrowserTools {
+		return true
+	}
+	return false
 }
 
 // filterToolsByConfig 根据工具配置过滤工具列表
 func filterToolsByConfig(apiType string, tools interface{}) interface{} {
-        // 需要过滤的工具名称
-        disabledTools := make(map[string]bool)
+	// 需要过滤的工具名称
+	disabledTools := make(map[string]bool)
 
-        // 检查 SmartShell 是否启用
-        if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
-                disabledTools["SmartShell"] = true
-        }
+	// 检查 SmartShell 是否启用
+	if globalToolsConfig.SmartShell.Enabled != nil && !*globalToolsConfig.SmartShell.Enabled {
+		disabledTools["SmartShell"] = true
+	}
 
-        // 预先计算 opencli 状态（isOpenCLIAvailable 已有 sync.Once 缓存，但此处短路避免重复调用）
-        opencliAvail := isOpenCLIAvailable()
-        disableBrowser := opencliAvail && DisableBrowserTools
+	// 预先计算 opencli 状态（isOpenCLIAvailable 已有 sync.Once 缓存，但此处短路避免重复调用）
+	opencliAvail := isOpenCLIAvailable()
+	disableBrowser := opencliAvail && DisableBrowserTools
 
-        if disableBrowser {
-                log.Println("[Tools] opencli is available, disabling browser_* tools")
-        }
+	if disableBrowser {
+		log.Println("[Tools] opencli is available, disabling browser_* tools")
+	}
 
-        // 如果未有需要过滤的工具，直接返回
-        if len(disabledTools) == 0 && !disableBrowser {
-                return tools
-        }
+	// 如果未有需要过滤的工具，直接返回
+	if len(disabledTools) == 0 && !disableBrowser {
+		return tools
+	}
 
-        // 处理工具过滤（两种格式逻辑相同）
-        toolList, ok := tools.([]map[string]interface{})
-        if !ok {
-                return tools
-        }
-        filtered := make([]map[string]interface{}, 0, len(toolList))
-        for _, tool := range toolList {
-                name := getToolName(tool)
-                // 检查是否需要禁用（短路求值：先检查 disabledTools map，O(1)）
-                shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_") && name != "BrowserSearch")
-                if !shouldDisable {
-                        filtered = append(filtered, tool)
-                }
-        }
-        return filtered
+	// 处理工具过滤（两种格式逻辑相同）
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
+	}
+	filtered := make([]map[string]interface{}, 0, len(toolList))
+	for _, tool := range toolList {
+		name := getToolName(tool)
+		// 检查是否需要禁用（短路求值：先检查 disabledTools map，O(1)）
+		shouldDisable := disabledTools[name] || (disableBrowser && strings.HasPrefix(name, "browser_") && name != "BrowserSearch")
+		if !shouldDisable {
+			filtered = append(filtered, tool)
+		}
+	}
+	return filtered
 }
 
 // appendDynamicTools 添加动态工具（MCP 客户端工具、记忆整合工具、Plan Mode 工具）
 func appendDynamicTools(apiType string, tools interface{}) interface{} {
-        toolList, ok := tools.([]map[string]interface{})
-        if !ok {
-                return tools
-        }
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
+	}
 
-        // 如果 Plan Mode 已激活，只注入 Plan Mode 专用工具（替代所有其他动态工具）
-        if globalTasksMode != nil && globalTasksMode.IsActive() {
-                planTools := GetTasksModeToolDefs()
+	// 如果 Plan Mode 已激活，只注入 Plan Mode 专用工具（替代所有其他动态工具）
+	if globalTasksMode != nil && globalTasksMode.IsActive() {
+		planTools := GetTasksModeToolDefs()
 
-                // StableTools 啟用時：保留完整工具集（唔物理刪除工具），
-                // 改用 message 標記控制行為（見 prepareRequestData 嘅 [SYSTEM_PLAN_MODE] 注入）
-                // runtime guard IsToolAllowedInTasksMode 仍然生效
-                if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools {
-                        // 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
-                        planToolNames := make(map[string]bool, len(planTools))
-                        for _, pt := range planTools {
-                                if name := getToolName(pt); name != "" {
-                                        planToolNames[name] = true
-                                }
-                        }
-                        filtered := make([]map[string]interface{}, 0, len(toolList))
-                        for _, t := range toolList {
-                                name := getToolName(t)
-                                if planToolNames[name] {
-                                        continue // 動態工具已覆蓋，跳過同名靜態工具
-                                }
-                                filtered = append(filtered, t)
-                        }
-                        phase := globalTasksMode.Phase()
-                        log.Printf("[TasksMode] Phase %s (StableTools): 保留完整工具集 %d + plan tools %d",
-                                phase, len(filtered), len(planTools))
+		// StableTools 啟用時：保留完整工具集（唔物理刪除工具），
+		// 改用 message 標記控制行為（見 prepareRequestData 嘅 [SYSTEM_PLAN_MODE] 注入）
+		// runtime guard IsToolAllowedInTasksMode 仍然生效
+		if globalPromptCacheConfig.Enabled && globalPromptCacheConfig.StableTools {
+			// 過濾掉與 Plan Mode 動態工具同名的靜態工具，避免重複定義
+			planToolNames := make(map[string]bool, len(planTools))
+			for _, pt := range planTools {
+				if name := getToolName(pt); name != "" {
+					planToolNames[name] = true
+				}
+			}
+			filtered := make([]map[string]interface{}, 0, len(toolList))
+			for _, t := range toolList {
+				name := getToolName(t)
+				if planToolNames[name] {
+					continue // 動態工具已覆蓋，跳過同名靜態工具
+				}
+				filtered = append(filtered, t)
+			}
+			phase := globalTasksMode.Phase()
+			log.Printf("[TasksMode] Phase %s (StableTools): 保留完整工具集 %d + plan tools %d",
+				phase, len(filtered), len(planTools))
 
-                        if apiType == "anthropic" {
-                                planTools = convertToolsToAnthropic(planTools)
-                        }
-                        filtered = append(filtered, planTools...)
-                        return filtered
-                }
+			if apiType == "anthropic" {
+				planTools = convertToolsToAnthropic(planTools)
+			}
+			filtered = append(filtered, planTools...)
+			return filtered
+		}
 
-                // 原有行為：根據 Phase allow-list 物理移除不允許的工具
-                planToolNames := make(map[string]bool, len(planTools))
-                for _, pt := range planTools {
-                        if name := getToolName(pt); name != "" {
-                                planToolNames[name] = true
-                        }
-                }
+		// 原有行為：根據 Phase allow-list 物理移除不允許的工具
+		planToolNames := make(map[string]bool, len(planTools))
+		for _, pt := range planTools {
+			if name := getToolName(pt); name != "" {
+				planToolNames[name] = true
+			}
+		}
 
-                // 根據當前 Phase 的 allow-list 物理移除不允許的工具
-                // 與 IsToolAllowedInPlanMode 用同一份 allow-list，確保一致性
-                phase := globalTasksMode.Phase()
+		// 根據當前 Phase 的 allow-list 物理移除不允許的工具
+		// 與 IsToolAllowedInPlanMode 用同一份 allow-list，確保一致性
+		phase := globalTasksMode.Phase()
 
-                filtered := make([]map[string]interface{}, 0, len(toolList))
-                for _, t := range toolList {
-                        name := getToolName(t)
-                        if planToolNames[name] {
-                                continue // 動態工具已覆蓋，跳過同名靜態工具
-                        }
-                        // 改用 allow-list 檢查（與 IsToolAllowedInPlanMode 一致），
-                        // 避免 model 睇到但 runtime block 嘅不一致導致死循環
-                        if !IsToolAllowedInTasksMode(name) {
-                                continue
-                        }
-                        if strings.HasPrefix(name, "browser_") {
-                                continue // 瀏覽器工具在 Plan Mode 中不需要
-                        }
-                        filtered = append(filtered, t)
-                }
-                log.Printf("[TasksMode] Phase %s: 過濾後工具數 %d（原始 %d，移除 %d）",
-                        phase, len(filtered), len(toolList), len(toolList)-len(filtered))
+		filtered := make([]map[string]interface{}, 0, len(toolList))
+		for _, t := range toolList {
+			name := getToolName(t)
+			if planToolNames[name] {
+				continue // 動態工具已覆蓋，跳過同名靜態工具
+			}
+			// 改用 allow-list 檢查（與 IsToolAllowedInPlanMode 一致），
+			// 避免 model 睇到但 runtime block 嘅不一致導致死循環
+			if !IsToolAllowedInTasksMode(name) {
+				continue
+			}
+			if strings.HasPrefix(name, "browser_") {
+				continue // 瀏覽器工具在 Plan Mode 中不需要
+			}
+			filtered = append(filtered, t)
+		}
+		log.Printf("[TasksMode] Phase %s: 過濾後工具數 %d（原始 %d，移除 %d）",
+			phase, len(filtered), len(toolList), len(toolList)-len(filtered))
 
-                if apiType == "anthropic" {
-                        planTools = convertToolsToAnthropic(planTools)
-                }
-                filtered = append(filtered, planTools...)
-                return filtered
-        }
+		if apiType == "anthropic" {
+			planTools = convertToolsToAnthropic(planTools)
+		}
+		filtered = append(filtered, planTools...)
+		return filtered
+	}
 
-        // 获取动态工具（OpenAI 格式）
-        var dynamicTools []map[string]interface{}
-        if globalMCPClientManager != nil {
-                dynamicTools = append(dynamicTools, globalMCPClientManager.GetAllTools()...)
-        }
+	// 获取动态工具（OpenAI 格式）
+	var dynamicTools []map[string]interface{}
+	if globalMCPClientManager != nil {
+		dynamicTools = append(dynamicTools, globalMCPClientManager.GetAllTools()...)
+	}
 
-        // 如果是 Anthropic 格式，需要转换工具格式
-        if apiType == "anthropic" {
-                dynamicTools = convertToolsToAnthropic(dynamicTools)
-        }
+	// 如果是 Anthropic 格式，需要转换工具格式
+	if apiType == "anthropic" {
+		dynamicTools = convertToolsToAnthropic(dynamicTools)
+	}
 
-        // 添加动态工具
-        toolList = append(toolList, dynamicTools...)
+	// 添加动态工具
+	toolList = append(toolList, dynamicTools...)
 
-        return toolList
+	return toolList
 }
 
 // applyToolDistributionFilter 根據工具分發抽樣結果過濾工具列表。
 // 僅保留 sampledToolNames 中包含的工具。
 func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolNames []string) interface{} {
-        // 構建快速查找集合
-        allowed := make(map[string]bool, len(sampledToolNames))
-        for _, name := range sampledToolNames {
-                allowed[name] = true
-        }
+	// 構建快速查找集合
+	allowed := make(map[string]bool, len(sampledToolNames))
+	for _, name := range sampledToolNames {
+		allowed[name] = true
+	}
 
-        toolList, ok := tools.([]map[string]interface{})
-        if !ok {
-                return tools
-        }
+	toolList, ok := tools.([]map[string]interface{})
+	if !ok {
+		return tools
+	}
 
-        filtered := make([]map[string]interface{}, 0, len(toolList))
-        for _, tool := range toolList {
-                name := getToolName(tool)
-                if allowed[name] {
-                        filtered = append(filtered, tool)
-                }
-        }
+	filtered := make([]map[string]interface{}, 0, len(toolList))
+	for _, tool := range toolList {
+		name := getToolName(tool)
+		if allowed[name] {
+			filtered = append(filtered, tool)
+		}
+	}
 
-        // 至少保留核心工具（shell, SmartShell），避免工具集為空
-        coreTools := []string{"SmartShell", "Menu"}
-        hasCore := false
-        for _, name := range coreTools {
-                if allowed[name] {
-                        hasCore = true
-                        break
-                }
-        }
-        if !hasCore {
-                for _, tool := range toolList {
-                        name := getToolName(tool)
-                        for _, core := range coreTools {
-                                if name == core {
-                                        filtered = append(filtered, tool)
-                                        break
-                                }
-                        }
-                }
-        }
+	// 至少保留核心工具（shell, SmartShell），避免工具集為空
+	coreTools := []string{"SmartShell", "Menu"}
+	hasCore := false
+	for _, name := range coreTools {
+		if allowed[name] {
+			hasCore = true
+			break
+		}
+	}
+	if !hasCore {
+		for _, tool := range toolList {
+			name := getToolName(tool)
+			for _, core := range coreTools {
+				if name == core {
+					filtered = append(filtered, tool)
+					break
+				}
+			}
+		}
+	}
 
-        return filtered
+	return filtered
 }
 
 // ============================================================================
@@ -431,66 +431,66 @@ func applyToolDistributionFilter(apiType string, tools interface{}, sampledToolN
 //
 // 保留的工具：ReadFileLine, ReadFileRange, ReadFileLines, TextSearch, TextGrep,
 //
-//      MemoryRecall, MemoryList, 以及各 Phase 的動態工具
-//      ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行
+//	MemoryRecall, MemoryList, 以及各 Phase 的動態工具
+//	ExitPlanMode 由 IsToolAllowedInPlanMode 顯式放行
 func getBlockedToolsForPlanPhase(phase string) map[string]bool {
-        blocked := make(map[string]bool)
+	blocked := make(map[string]bool)
 
-        // ── 所有 Phase 禁止 ──
+	// ── 所有 Phase 禁止 ──
 
-        // 已在 Plan Mode 中，無需重複進入
-        blocked["EnterPlanMode"] = true
+	// 已在 Plan Mode 中，無需重複進入
+	blocked["EnterPlanMode"] = true
 
-        // Shell 類工具（Plan Mode 中使用 spawn 執行只讀探索任務）
-        blocked["SmartShell"] = true
-        blocked["TaskCheck"] = true
-        blocked["TaskWait"] = true
-        blocked["TaskTerminate"] = true
-        blocked["TaskList"] = true
-        blocked["TaskRemove"] = true
+	// Shell 類工具（Plan Mode 中使用 spawn 執行只讀探索任務）
+	blocked["SmartShell"] = true
+	blocked["TaskCheck"] = true
+	blocked["TaskWait"] = true
+	blocked["TaskTerminate"] = true
+	blocked["TaskList"] = true
+	blocked["TaskRemove"] = true
 
-        // 文件寫入工具（Plan Mode 僅允許通過 PlanWrite 寫計劃文件）
-        blocked["WriteFileLine"] = true
-        blocked["WriteFileLines"] = true
-        blocked["AppendToFile"] = true
-        blocked["WriteFileRange"] = true
-        blocked["TextReplace"] = true
-        blocked["TextTransform"] = true
+	// 文件寫入工具（Plan Mode 僅允許通過 PlanWrite 寫計劃文件）
+	blocked["WriteFileLine"] = true
+	blocked["WriteFileLines"] = true
+	blocked["AppendToFile"] = true
+	blocked["WriteFileRange"] = true
+	blocked["TextReplace"] = true
+	blocked["TextTransform"] = true
 
-        // 記憶寫入工具
-        blocked["MemorySave"] = true
-        blocked["MemoryForget"] = true
+	// 記憶寫入工具
+	blocked["MemorySave"] = true
+	blocked["MemoryForget"] = true
 
-        // 插件寫入工具（保留 PluginList / plugin_detail / plugin_apis 等只讀工具）
-        blocked["PluginCreate"] = true
-        blocked["PluginLoad"] = true
-        blocked["PluginCall"] = true
-        blocked["PluginUnload"] = true
-        blocked["PluginReload"] = true
-        blocked["PluginCompile"] = true
-        blocked["PluginDelete"] = true
+	// 插件寫入工具（保留 PluginList / plugin_detail / plugin_apis 等只讀工具）
+	blocked["PluginCreate"] = true
+	blocked["PluginLoad"] = true
+	blocked["PluginCall"] = true
+	blocked["PluginUnload"] = true
+	blocked["PluginReload"] = true
+	blocked["PluginCompile"] = true
+	blocked["PluginDelete"] = true
 
-        // 技能寫入工具（保留 SkillList / SkillGet / skill_stats 等只讀工具）
-        blocked["SkillCreate"] = true
-        blocked["SkillDelete"] = true
-        blocked["SkillLoad"] = true
-        blocked["SkillReload"] = true
-        blocked["SkillUpdate"] = true
-        blocked["SkillEvaluate"] = true
+	// 技能寫入工具（保留 SkillList / SkillGet / skill_stats 等只讀工具）
+	blocked["SkillCreate"] = true
+	blocked["SkillDelete"] = true
+	blocked["SkillLoad"] = true
+	blocked["SkillReload"] = true
+	blocked["SkillUpdate"] = true
+	blocked["SkillEvaluate"] = true
 
-        // SSH 寫入工具（保留 SSHList）
-        blocked["SSHConnect"] = true
-        blocked["SSHExec"] = true
-        blocked["SSHClose"] = true
+	// SSH 寫入工具（保留 SSHList）
+	blocked["SSHConnect"] = true
+	blocked["SSHExec"] = true
+	blocked["SSHClose"] = true
 
-        // Cron 寫入工具（保留 CronList / CronStatus）
-        blocked["CronAdd"] = true
-        blocked["CronRemove"] = true
+	// Cron 寫入工具（保留 CronList / CronStatus）
+	blocked["CronAdd"] = true
+	blocked["CronRemove"] = true
 
-        // 其他有副作用的工具
-        blocked["ConsolidateMemory"] = true
-        blocked["Opencli"] = true
-        blocked["SpawnCancel"] = true
+	// 其他有副作用的工具
+	blocked["ConsolidateMemory"] = true
+	blocked["Opencli"] = true
+	blocked["SpawnCancel"] = true
 
-        return blocked
+	return blocked
 }

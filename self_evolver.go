@@ -17,9 +17,9 @@ type SelfEvolver struct {
 	mu sync.Mutex
 
 	// 冷卻追蹤
-	lastPromptAnalysis      time.Time
-	lastToolAnalysis        time.Time
-	lastErrorAnalysis       time.Time
+	lastPromptAnalysis       time.Time
+	lastToolAnalysis         time.Time
+	lastErrorAnalysis        time.Time
 	lastCrossSessionAnalysis time.Time
 
 	// 冷卻間隔

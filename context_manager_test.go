@@ -19,8 +19,8 @@ func TestIsCJK(t *testing.T) {
 		{'日', true},
 		{'本', true},
 		{'語', true},
-		{'一', true},  // U+4E00
-		{'龥', true},  // U+9FA0 — CJK 主區邊界附近
+		{'一', true}, // U+4E00
+		{'龥', true}, // U+9FA0 — CJK 主區邊界附近
 		// 拉丁/數字
 		{'a', false},
 		{'Z', false},
@@ -29,7 +29,7 @@ func TestIsCJK(t *testing.T) {
 		// 符號
 		{' ', false},
 		{'.', false},
-		{'，', true}, // U+FF0C 全角逗号 — 在 Halfwidth/Fullwidth 範圍 (0xFF00-0xFFEF)
+		{'，', true},  // U+FF0C 全角逗号 — 在 Halfwidth/Fullwidth 範圍 (0xFF00-0xFFEF)
 		{'。', false}, // U+3002 — 不在任何 CJK 範圍內
 		// Extension A
 		{'㐀', true}, // U+3400
@@ -50,10 +50,10 @@ func TestIsCJK(t *testing.T) {
 
 func TestImprovedEstimateTokens(t *testing.T) {
 	tests := []struct {
-		name  string
-		text  string
-		minV  int // 最小預期值
-		maxV  int // 最大預期值
+		name string
+		text string
+		minV int // 最小預期值
+		maxV int // 最大預期值
 	}{
 		{"空字符串", "", 1, 1},
 		{"纯英文", "hello world this is a test", 5, 10},
