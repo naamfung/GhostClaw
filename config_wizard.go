@@ -310,12 +310,7 @@ func saveConfigWizardResult(config *Config) error {
 	}
 
 	// Fallback: 直接写入文件（向导在 ConfigManager 初始化之前调用的情况）
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	execDir := filepath.Dir(execPath)
-	configPath := filepath.Join(execDir, CONFIG_FILE)
+	configPath := filepath.Join(globalExecDir, CONFIG_FILE)
 
 	// 确保不包含 APIConfig 字段（结构体中已移除，但防止意外）
 	// 直接序列化即可

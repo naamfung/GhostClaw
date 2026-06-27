@@ -446,6 +446,33 @@ func runLogMode(ctx context.Context, session *GlobalSession) {
 	}
 }
 
+// getExecDir 返回程序自身所在的目录。
+// fallback 链：os.Executable() → os.Args[0] 解析 → 当前工作目录。
+func getExecDir() string {
+	if path, err := os.Executable(); err == nil {
+		dir := filepath.Dir(path)
+		if dir != "" && filepath.IsAbs(dir) {
+			return dir
+		}
+	}
+	if len(os.Args) > 0 && os.Args[0] != "" {
+		arg0 := os.Args[0]
+		if filepath.IsAbs(arg0) {
+			return filepath.Dir(arg0)
+		}
+		if abs, err := filepath.Abs(arg0); err == nil {
+			dir := filepath.Dir(abs)
+			if dir != "" {
+				return dir
+			}
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+	return "."
+}
+
 // isTerminal 检查文件是否为交互式终端
 func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
@@ -480,17 +507,12 @@ func main() {
 	}
 
 	// 初始化程序所在目录（必须在其他初始化之前）
-	execPath, err := os.Executable()
-	if err != nil {
-		log.Printf("Warning: cannot get executable path: %v", err)
-		execPath = "."
-	}
-	globalExecDir = filepath.Dir(execPath)
+	globalExecDir = getExecDir()
 
 	// 加载配置
-	globalConfigManager, err = NewConfigManager(globalExecDir)
-	if err != nil {
-		fmt.Printf("Warning: %v\n", err)
+	globalConfigManager, initErr := NewConfigManager(globalExecDir)
+	if initErr != nil {
+		fmt.Printf("Warning: %v\n", initErr)
 	}
 	config := globalConfigManager.GetConfig()
 
@@ -508,16 +530,14 @@ func main() {
 			os.Exit(0)
 		}
 		// 重新加载配置（向导已写入文件）
-		globalConfigManager, err = NewConfigManager(globalExecDir)
-		if err != nil {
-			log.Fatalf("Failed to reload config after wizard: %v", err)
+		globalConfigManager, initErr = NewConfigManager(globalExecDir)
+		if initErr != nil {
+			log.Fatalf("Failed to reload config after wizard: %v", initErr)
 		}
 		config = globalConfigManager.GetConfig()
 	}
 
 	// 从配置中同步全局变量（已通过 NewConfigManager 调用 syncGlobals 完成）
-	// 同时将部分值赋给包级变量以便旧代码使用（已在 syncGlobals 中完成）
-	// 这里再次显式赋值以保证与旧代码兼容
 	apiType = globalAPIConfig.APIType
 	baseURL = globalAPIConfig.BaseURL
 	apiKey = globalAPIConfig.APIKey
@@ -547,12 +567,10 @@ func main() {
 	setDefaultRole(config.DefaultRole)
 	globalAuthConfig = config.Auth
 	globalGroupChatConfig = config.GroupChatConfig
-	globalConfig = config // 保存完整配置对象
+	globalConfig = config
 
-	// 初始化 Prompt Cache（用於 Prompt Loop 檢測同 API 快取）
 	globalPromptCache = NewPromptCache(100, 5*time.Minute)
 
-	// 初始化安全配置
 	SetSecurityConfig(config.Security)
 	if config.Security.EnableSSRFProtection {
 		log.Println("SSRF protection is ENABLED.")
@@ -568,18 +586,16 @@ func main() {
 		fmt.Println("Browser user mode is ENABLED. Using existing browser session.")
 	}
 
-	// 初始化数据库（放在记忆目录中）
-	if err := InitDB(globalDataDir); err != nil {
-		log.Fatalf("Failed to init database: %v", err)
+	if dbErr := InitDB(globalDataDir); dbErr != nil {
+		log.Fatalf("Failed to init database: %v", dbErr)
 	}
 	log.Println("Database initialized.")
 
-	// 初始化插件管理器
 	pluginsDir := filepath.Join(globalDataDir, "plugins")
 	globalPluginManager = NewPluginManager(pluginsDir)
 	globalPluginManager.SetToolExecutor(callToolInternal)
-	if err := globalPluginManager.LoadPluginsFromDir(); err != nil {
-		log.Printf("Warning: failed to load plugins: %v", err)
+	if loadErr := globalPluginManager.LoadPluginsFromDir(); loadErr != nil {
+		log.Printf("Warning: failed to load plugins: %v", loadErr)
 	}
 	plugins := globalPluginManager.ListPlugins()
 	if len(plugins) > 0 {
@@ -596,64 +612,46 @@ func main() {
 		}
 	}()
 
-	// 初始化 CronManager
 	cronFilePath := filepath.Join(globalDataDir, "cron.toon")
-	globalCronManager, err = NewCronManager(cronFilePath, &config.CronConfig)
-	if err != nil {
-		log.Printf("Warning: failed to start cron manager: %v", err)
+	globalCronManager, cronErr := NewCronManager(cronFilePath, &config.CronConfig)
+	if cronErr != nil {
+		log.Printf("Warning: failed to start cron manager: %v", cronErr)
 	} else {
 		defer globalCronManager.Stop()
 		log.Println("Cron manager started.")
 	}
 
-	// 初始化统一记忆系统
-	globalUnifiedMemory, err = NewUnifiedMemory(globalDataDir)
-	if err != nil {
-		log.Printf("Warning: failed to start unified memory: %v", err)
+	globalUnifiedMemory, memErr := NewUnifiedMemory(globalDataDir)
+	if memErr != nil {
+		log.Printf("Warning: failed to start unified memory: %v", memErr)
 	} else {
 		log.Println("Unified memory system started.")
 	}
 
-	// 初始化任务进度追踪器
 	globalTaskTracker = NewTaskTracker()
 
-	// 初始化循环检测器
 	InitGlobalLoopDetector()
 	log.Println("Loop detector initialized.")
 
-	// 初始化循环检测配置优化器
 	InitLoopDetectionOptimizer()
 	log.Println("Loop detection optimizer initialized.")
 
-	// 初始化后台任务管理器
 	globalTaskManager = NewTaskManager()
 	globalTaskManager.SetWakeHandler(func(task *BackgroundTask) {
 		log.Printf("[TaskManager] Task %s wake up, status: %s", task.ID, task.Status)
-
 		task.mu.RLock()
 		output := truncateTaskOutput(task.Stdout.String())
 		_ = truncateTaskOutput(task.Stderr.String())
 		task.mu.RUnlock()
-
 		wakeMsg := GetTaskWakeMessage(task)
-
-		// 通知消息總線（sessionID 為空時使用 "default"）
 		sessionID := task.SessionID
 		if sessionID == "" {
 			sessionID = "default"
 		}
-		GetBus().NotifyDelayedTask(
-			task.ID,
-			task.Command,
-			string(task.Status),
-			output,
-			sessionID,
-		)
+		GetBus().NotifyDelayedTask(task.ID, task.Command, string(task.Status), output, sessionID)
 		log.Printf("[TaskManager] Wake notification sent for task %s (session: %s)", task.ID, sessionID)
-
 		session := GetGlobalSession()
 
-		// 将唤醒通知添加到输入消息列表中（自动增长，不会满）
 		session.inputMu.Lock()
 		session.InputMessages = append(session.InputMessages, wakeMsg)
 		session.inputMu.Unlock()
@@ -708,18 +706,18 @@ func main() {
 
 	// 初始化角色模板管理器
 	roleFilePath := filepath.Join(globalDataDir, "role.toon")
-	globalRoleManager, err = NewRoleManager(roleFilePath)
-	if err != nil {
-		log.Printf("Warning: failed to start role manager: %v", err)
+	globalRoleManager, roleErr := NewRoleManager(roleFilePath)
+	if roleErr != nil {
+		log.Printf("Warning: failed to start role manager: %v", roleErr)
 	} else {
 		log.Printf("Role manager started. %d roles available.", globalRoleManager.Count())
 	}
 
 	// 初始化演员管理器
 	actorFilePath := filepath.Join(globalDataDir, "actor.toon")
-	globalActorManager, err = NewActorManager(actorFilePath, config.DefaultRole)
-	if err != nil {
-		log.Printf("Warning: failed to start actor manager: %v", err)
+	globalActorManager, actorErr := NewActorManager(actorFilePath, config.DefaultRole)
+	if actorErr != nil {
+		log.Printf("Warning: failed to start actor manager: %v", actorErr)
 	} else {
 		log.Printf("Actor manager started. %d actors available.", len(globalActorManager.ListActors()))
 
@@ -736,9 +734,9 @@ func main() {
 
 	// 初始化 ProfileLoader
 	profilesDir := filepath.Join(globalDataDir, "profiles")
-	globalProfileLoader, err = NewProfileLoader(profilesDir)
-	if err != nil {
-		log.Printf("Warning: failed to start profile loader: %v", err)
+	globalProfileLoader, profileErr := NewProfileLoader(profilesDir)
+	if profileErr != nil {
+		log.Printf("Warning: failed to start profile loader: %v", profileErr)
 	} else {
 		defer globalProfileLoader.Stop()
 		log.Println("Profile loader started.")
@@ -746,26 +744,26 @@ func main() {
 
 	// 加载工具别名（tools.toon）
 	toolsAliasPath := filepath.Join(globalDataDir, "tools.toon")
-	globalToolsAliases, err = LoadToolsAliases(toolsAliasPath)
-	if err != nil {
-		log.Printf("Tools aliases not loaded: %v", err)
+	globalToolsAliases, toolsErr := LoadToolsAliases(toolsAliasPath)
+	if toolsErr != nil {
+		log.Printf("Tools aliases not loaded: %v", toolsErr)
 	} else {
 		log.Printf("Tools aliases loaded: %d entries", len(globalToolsAliases))
 	}
 
 	// 初始化技能管理器
 	skillsDir := filepath.Join(globalDataDir, "skills")
-	globalSkillManager, err = NewSkillManager(skillsDir)
-	if err != nil {
-		log.Printf("Warning: failed to start skill manager: %v", err)
+	globalSkillManager, skillErr := NewSkillManager(skillsDir)
+	if skillErr != nil {
+		log.Printf("Warning: failed to start skill manager: %v", skillErr)
 	} else {
 		log.Printf("Skill manager started. %d skills available.", globalSkillManager.Count())
 	}
 
 	// 初始化新的技能管理器 V2（分层加载 + SQLite 索引）
-	globalSkillManagerV2, err = NewSkillManagerV2(skillsDir, 100) // 缓存100个技能
-	if err != nil {
-		log.Printf("Warning: failed to start skill manager v2: %v", err)
+	globalSkillManagerV2, skillV2Err := NewSkillManagerV2(skillsDir, 100) // 缓存100个技能
+	if skillV2Err != nil {
+		log.Printf("Warning: failed to start skill manager v2: %v", skillV2Err)
 	} else {
 		// 获取统计信息
 		stats, _ := globalSkillManagerV2.EvolutionOptimizer().GetSkillStats()
@@ -1128,12 +1126,7 @@ func testPluginSystem() {
 	log.Println("[Test Plugin System] Starting...")
 
 	// 初始化程序所在目录
-	execPath, err := os.Executable()
-	if err != nil {
-		log.Printf("Warning: cannot get executable path: %v", err)
-		execPath = "."
-	}
-	globalExecDir = filepath.Dir(execPath)
+	globalExecDir = getExecDir()
 
 	// 切换到程序所在目录
 	// 保存启动时的原始工作目录（chdir 前），供 TextSearch 级联搜索使用

@@ -562,12 +562,7 @@ func (s *HTTPServer) deleteRole(w http.ResponseWriter, _ *http.Request, name str
 
 // saveRoleToFile 保存人格到文件
 func saveRoleToFile(role *Role) error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	execDir := filepath.Dir(execPath)
-	rolesDir := filepath.Join(execDir, "roles", "custom")
+	rolesDir := filepath.Join(globalExecDir, "roles", "custom")
 
 	// 确保目录存在
 	if err := os.MkdirAll(rolesDir, 0755); err != nil {
@@ -670,20 +665,14 @@ func saveRoleToFile(role *Role) error {
 
 // deleteRoleFile 删除人格文件
 func deleteRoleFile(name string) error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	execDir := filepath.Dir(execPath)
-
 	// 先检查 custom 目录
-	customPath := filepath.Join(execDir, "roles", "custom", name+".md")
+	customPath := filepath.Join(globalExecDir, "roles", "custom", name+".md")
 	if _, err := os.Stat(customPath); err == nil {
 		return os.Remove(customPath)
 	}
 
 	// 再检查 roles 根目录
-	rootPath := filepath.Join(execDir, "roles", name+".md")
+	rootPath := filepath.Join(globalExecDir, "roles", name+".md")
 	if _, err := os.Stat(rootPath); err == nil {
 		return os.Remove(rootPath)
 	}
@@ -998,12 +987,7 @@ func (s *HTTPServer) protectSkill(w http.ResponseWriter, r *http.Request, name s
 
 // saveSkillToFile 保存技能到文件
 func saveSkillToFile(skill *Skill) error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	execDir := filepath.Dir(execPath)
-	skillsDir := filepath.Join(execDir, "skills")
+	skillsDir := filepath.Join(globalDataDir, "skills")
 
 	// 确保目录存在
 	if err := os.MkdirAll(skillsDir, 0755); err != nil {

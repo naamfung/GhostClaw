@@ -268,11 +268,10 @@ func normalizeConfigForSave(config *Config) {
 	if config.DataDir == "" {
 		return
 	}
-	execPath, err := os.Executable()
-	if err != nil {
-		return
+	execDir := globalExecDir
+	if execDir == "" {
+		execDir = getExecDir()
 	}
-	execDir := filepath.Dir(execPath)
 
 	// 清理路径（解析 .. 和符号链接）
 	absDataDir, err := filepath.Abs(config.DataDir)

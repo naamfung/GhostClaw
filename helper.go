@@ -54,12 +54,7 @@ func resolveTempDir(subdir string) string {
 	base := globalDataDir
 	if base == "" {
 		// 极少数情况：globalDataDir 尚未初始化，使用 execDir/data 兜底
-		execPath, err := os.Executable()
-		if err == nil {
-			base = filepath.Join(filepath.Dir(execPath), "data")
-		} else {
-			base = filepath.Join(".", "data")
-		}
+		base = filepath.Join(getExecDir(), "data")
 	}
 	fallback := filepath.Join(base, "temp", subdir)
 	// 不在此处 MkdirAll，让调用方按需创建（保持函数纯粹、便于测试）
@@ -100,12 +95,7 @@ func maybeTriggerDataTempCleanup() {
 func cleanupDataTempDir() {
 	base := globalDataDir
 	if base == "" {
-		execPath, err := os.Executable()
-		if err == nil {
-			base = filepath.Join(filepath.Dir(execPath), "data")
-		} else {
-			base = filepath.Join(".", "data")
-		}
+		base = filepath.Join(getExecDir(), "data")
 	}
 	tempRoot := filepath.Join(base, "temp")
 
