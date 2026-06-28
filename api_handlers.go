@@ -1359,8 +1359,10 @@ func (s *HTTPServer) setDefaultActor(w http.ResponseWriter, r *http.Request, nam
 
 	// 同时更新默认人格
 	setDefaultRole(actor.Role)
-	if err := globalConfigManager.UpdateDefaultRole(getDefaultRole()); err != nil {
-		log.Printf("Warning: failed to save config: %v", err)
+	if globalConfigManager != nil {
+		if err := globalConfigManager.UpdateDefaultRole(getDefaultRole()); err != nil {
+			log.Printf("Warning: failed to save config: %v", err)
+		}
 	}
 
 	// 保存演员配置
