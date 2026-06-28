@@ -632,8 +632,10 @@ func HandleRoleCommand(args string, rm *RoleManager, am *ActorManager, stage *St
 			globalStage.SetUpdateSystemPrompt()
 		}
 
-		if err := globalConfigManager.UpdateDefaultRole(name); err != nil {
-			return fmt.Sprintf("⚠️ 设置成功但保存配置失败：%v", err)
+		if globalConfigManager != nil {
+			if err := globalConfigManager.UpdateDefaultRole(name); err != nil {
+				return fmt.Sprintf("⚠️ 设置成功但保存配置失败：%v", err)
+			}
 		}
 
 		return fmt.Sprintf("✅ **默认角色已设置**：%s %s\n\n所有新会话将默认使用此角色", role.Icon, role.DisplayName)
@@ -674,7 +676,10 @@ func HandleActorCommand(args string, am *ActorManager, rm *RoleManager, stage *S
 		}
 
 		role, _ := rm.GetRole(actor.Role)
-		model, _ := globalConfigManager.GetModel(actor.Model)
+		var model *ModelConfig
+		if globalConfigManager != nil {
+			model, _ = globalConfigManager.GetModel(actor.Model)
+		}
 
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("🎭 **当前演员：%s**\n\n", actor.Name))

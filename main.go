@@ -510,7 +510,8 @@ func main() {
 	globalExecDir = getExecDir()
 
 	// 加载配置
-	globalConfigManager, initErr := NewConfigManager(globalExecDir)
+	var initErr error
+	globalConfigManager, initErr = NewConfigManager(globalExecDir)
 	if initErr != nil {
 		fmt.Printf("Warning: %v\n", initErr)
 		// ConfigManager 初始化失败，使用默认配置
@@ -735,8 +736,10 @@ func main() {
 
 		// 如果 actor.toon 中有主模型名称引用，同步到 ConfigManager
 		if actorMainModel := globalActorManager.GetMainModelName(); actorMainModel != "" {
-			if _, exists := globalConfigManager.GetModel(actorMainModel); exists {
-				globalConfigManager.SetMainModel(actorMainModel)
+			if globalConfigManager != nil {
+				if _, exists := globalConfigManager.GetModel(actorMainModel); exists {
+					globalConfigManager.SetMainModel(actorMainModel)
+				}
 			}
 		}
 	}
