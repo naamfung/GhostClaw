@@ -538,7 +538,13 @@ func main() {
 		// 重新加载配置（向导已写入文件）
 		globalConfigManager, initErr = NewConfigManager(globalExecDir)
 		if initErr != nil {
-			log.Fatalf("Failed to reload config after wizard: %v", initErr)
+			fmt.Printf("Warning: failed to reload config after wizard: %v\n", initErr)
+			// 使用默认配置
+			globalConfigManager = &ConfigManager{
+				config: Config{
+					Models: make(map[string]*ModelConfig),
+				},
+			}
 		}
 		config = globalConfigManager.GetConfig()
 	}
