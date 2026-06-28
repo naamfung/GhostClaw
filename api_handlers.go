@@ -69,12 +69,32 @@ func (s *HTTPServer) configHandler(w http.ResponseWriter, r *http.Request) {
 
 // getConfig 返回当前配置（动态从主模型计算）
 func (s *HTTPServer) getConfig(w http.ResponseWriter, _ *http.Request) {
-	// 通过 ConfigManager 获取动态 APIConfig
-	apiCfg := globalConfigManager.GetAPIConfig()
-	needsSetup := apiCfg.APIKey == "" && apiCfg.APIType != "ollama"
+	var apiCfg APIConfig
+	var mainModelName string
+	var mainModelDesc string
 
-	mainModelName := globalConfigManager.GetMainModelName()
-	mainModelDesc := globalConfigManager.GetMainModelDescription()
+	if globalConfigManager != nil {
+		apiCfg = globalConfigManager.GetAPIConfig()
+		mainModelName = globalConfigManager.GetMainModelName()
+		mainModelDesc = globalConfigManager.GetMainModelDescription()
+	} else {
+		// ConfigManager 未初始化时的回退方案
+		apiCfg = APIConfig{
+			ModelBase: ModelBase{
+				APIType:                apiType,
+				BaseURL:                baseURL,
+				APIKey:                 apiKey,
+				Model:                  modelID,
+				Temperature:            temperature,
+				MaxTokens:              maxTokens,
+				Stream:                 stream,
+				Thinking:               thinking,
+				BlockDangerousCommands: BlockDangerousCommands,
+			},
+		}
+		mainModelName = modelID
+	}
+	needsSetup := apiCfg.APIKey == "" && apiCfg.APIType != "ollama"
 
 	// 构建配置响应
 	configData := map[string]interface{}{
