@@ -513,6 +513,12 @@ func main() {
 	globalConfigManager, initErr := NewConfigManager(globalExecDir)
 	if initErr != nil {
 		fmt.Printf("Warning: %v\n", initErr)
+		// ConfigManager 初始化失败，使用默认配置
+		globalConfigManager = &ConfigManager{
+			config: Config{
+				Models: make(map[string]*ModelConfig),
+			},
+		}
 	}
 	config := globalConfigManager.GetConfig()
 
