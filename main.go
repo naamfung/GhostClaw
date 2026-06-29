@@ -626,18 +626,20 @@ func main() {
 	}()
 
 	cronFilePath := filepath.Join(globalDataDir, "cron.toon")
-	globalCronManager, cronErr := NewCronManager(cronFilePath, &config.CronConfig)
+	cm, cronErr := NewCronManager(cronFilePath, &config.CronConfig)
 	if cronErr != nil {
 		log.Printf("Warning: failed to start cron manager: %v", cronErr)
 	} else {
+		globalCronManager = cm
 		defer globalCronManager.Stop()
 		log.Println("Cron manager started.")
 	}
 
-	globalUnifiedMemory, memErr := NewUnifiedMemory(globalDataDir)
+	um, memErr := NewUnifiedMemory(globalDataDir)
 	if memErr != nil {
 		log.Printf("Warning: failed to start unified memory: %v", memErr)
 	} else {
+		globalUnifiedMemory = um
 		log.Println("Unified memory system started.")
 	}
 
@@ -719,19 +721,21 @@ func main() {
 
 	// 初始化角色模板管理器
 	roleFilePath := filepath.Join(globalDataDir, "role.toon")
-	globalRoleManager, roleErr := NewRoleManager(roleFilePath)
+	rm, roleErr := NewRoleManager(roleFilePath)
 	if roleErr != nil {
 		log.Printf("Warning: failed to start role manager: %v", roleErr)
 	} else {
+		globalRoleManager = rm
 		log.Printf("Role manager started. %d roles available.", globalRoleManager.Count())
 	}
 
 	// 初始化演员管理器
 	actorFilePath := filepath.Join(globalDataDir, "actor.toon")
-	globalActorManager, actorErr := NewActorManager(actorFilePath, config.DefaultRole)
+	am, actorErr := NewActorManager(actorFilePath, config.DefaultRole)
 	if actorErr != nil {
 		log.Printf("Warning: failed to start actor manager: %v", actorErr)
 	} else {
+		globalActorManager = am
 		log.Printf("Actor manager started. %d actors available.", len(globalActorManager.ListActors()))
 
 		// 如果 actor.toon 中有主模型名称引用，同步到 ConfigManager
@@ -749,37 +753,41 @@ func main() {
 
 	// 初始化 ProfileLoader
 	profilesDir := filepath.Join(globalDataDir, "profiles")
-	globalProfileLoader, profileErr := NewProfileLoader(profilesDir)
+	pl, profileErr := NewProfileLoader(profilesDir)
 	if profileErr != nil {
 		log.Printf("Warning: failed to start profile loader: %v", profileErr)
 	} else {
+		globalProfileLoader = pl
 		defer globalProfileLoader.Stop()
 		log.Println("Profile loader started.")
 	}
 
 	// 加载工具别名（tools.toon）
 	toolsAliasPath := filepath.Join(globalDataDir, "tools.toon")
-	globalToolsAliases, toolsErr := LoadToolsAliases(toolsAliasPath)
+	tAliases, toolsErr := LoadToolsAliases(toolsAliasPath)
 	if toolsErr != nil {
 		log.Printf("Tools aliases not loaded: %v", toolsErr)
 	} else {
+		globalToolsAliases = tAliases
 		log.Printf("Tools aliases loaded: %d entries", len(globalToolsAliases))
 	}
 
 	// 初始化技能管理器
 	skillsDir := filepath.Join(globalDataDir, "skills")
-	globalSkillManager, skillErr := NewSkillManager(skillsDir)
+	sm, skillErr := NewSkillManager(skillsDir)
 	if skillErr != nil {
 		log.Printf("Warning: failed to start skill manager: %v", skillErr)
 	} else {
+		globalSkillManager = sm
 		log.Printf("Skill manager started. %d skills available.", globalSkillManager.Count())
 	}
 
 	// 初始化新的技能管理器 V2（分层加载 + SQLite 索引）
-	globalSkillManagerV2, skillV2Err := NewSkillManagerV2(skillsDir, 100) // 缓存100个技能
+	smV2, skillV2Err := NewSkillManagerV2(skillsDir, 100) // 缓存100个技能
 	if skillV2Err != nil {
 		log.Printf("Warning: failed to start skill manager v2: %v", skillV2Err)
 	} else {
+		globalSkillManagerV2 = smV2
 		// 获取统计信息
 		stats, _ := globalSkillManagerV2.EvolutionOptimizer().GetSkillStats()
 		log.Printf("Skill manager v2 started. Total skills: %d", stats["total_skills"])
