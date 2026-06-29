@@ -393,45 +393,45 @@
                                         <!-- 新增：Stream、Thinking、BlockDangerousCommands -->
                                         <div class="flex items-center space-x-3">
                                                 <Checkbox
-                                                        id="stream"
+                                                        aria-label="流式输出"
                                                         checked={editForm.Stream}
                                                         onCheckedChange={(checked) => (editForm.Stream = Boolean(checked))}
                                                         class="mt-0.5"
                                                 />
                                                 <div class="space-y-0.5">
-                                                        <label for="stream" class="cursor-pointer text-sm font-medium leading-none">
+                                                        <span class="text-sm font-medium leading-none">
                                                                 流式输出
-                                                        </label>
+                                                        </span>
                                                         <p class="text-xs text-muted-foreground">启用流式传输，逐字显示 AI 回复</p>
                                                 </div>
                                         </div>
 
                                         <div class="flex items-center space-x-3">
                                                 <Checkbox
-                                                        id="thinking"
+                                                        aria-label="思考模式"
                                                         checked={editForm.Thinking}
                                                         onCheckedChange={(checked) => (editForm.Thinking = Boolean(checked))}
                                                         class="mt-0.5"
                                                 />
                                                 <div class="space-y-0.5">
-                                                        <label for="thinking" class="cursor-pointer text-sm font-medium leading-none">
+                                                        <span class="text-sm font-medium leading-none">
                                                                 思考模式
-                                                        </label>
+                                                        </span>
                                                         <p class="text-xs text-muted-foreground">启用模型思考过程，模型会在回复前展示推理步骤</p>
                                                 </div>
                                         </div>
 
                                         <div class="flex items-center space-x-3">
                                                 <Checkbox
-                                                        id="block-dangerous"
+                                                        aria-label="阻止危险命令"
                                                         checked={editForm.BlockDangerousCommands}
                                                         onCheckedChange={(checked) => (editForm.BlockDangerousCommands = Boolean(checked))}
                                                         class="mt-0.5"
                                                 />
                                                 <div class="space-y-0.5">
-                                                        <label for="block-dangerous" class="cursor-pointer text-sm font-medium leading-none">
+                                                        <span class="text-sm font-medium leading-none">
                                                                 阻止危险命令
-                                                        </label>
+                                                        </span>
                                                         <p class="text-xs text-muted-foreground">阻止模型执行潜在危险的 Shell 命令</p>
                                                 </div>
                                         </div>
@@ -460,6 +460,8 @@
                         <div class="relative flex-1">
                                 <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
+                                        id="search-models"
+                                        name="search-models"
                                         type="text"
                                         placeholder="搜索模型..."
                                         class="pl-9"

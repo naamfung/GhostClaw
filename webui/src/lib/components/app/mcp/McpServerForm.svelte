@@ -63,14 +63,14 @@
 		{/if}
 
 		{#if !isWebSocket && onUseProxyChange}
-			<label
+			<div
 				class="mt-3 flex items-start gap-2"
 				class:cursor-pointer={mcpStore.isProxyAvailable}
 				class:opacity-80={!mcpStore.isProxyAvailable}
 			>
 				<Switch
+					aria-label="Use llama-server proxy"
 					class="mt-1"
-					id="use-proxy-{id}"
 					checked={useProxy}
 					disabled={!mcpStore.isProxyAvailable}
 					onCheckedChange={(checked) => onUseProxyChange?.(checked)}
@@ -90,7 +90,7 @@
 						>
 					{/if}
 				</span>
-			</label>
+			</div>
 		{/if}
 	</div>
 

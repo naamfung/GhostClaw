@@ -112,11 +112,11 @@
 <div class="mt-2 flex w-full max-w-[80%] items-center justify-between">
 	{#if editCtx.showSaveOnlyOption}
 		<div class="flex items-center gap-2">
-			<Switch id="save-only-switch" bind:checked={saveWithoutRegenerate} class="scale-75" />
+			<Switch aria-label="Update without re-sending" bind:checked={saveWithoutRegenerate} class="scale-75" />
 
-			<label for="save-only-switch" class="cursor-pointer text-xs text-muted-foreground">
+			<span class="text-xs text-muted-foreground">
 				Update without re-sending
-			</label>
+			</span>
 		</div>
 	{:else}
 		<div></div>
