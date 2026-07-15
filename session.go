@@ -583,7 +583,7 @@ func ProcessUserInput(session *GlobalSession, input string) {
 		if *idleResult == IdlePauseCheck {
 			session.GetTracker().PauseIdleCheck()
 		}
-		// InjectResume：任務完成檢查由現有嘅 AskModelTaskCompletion
+		// InjectResume：任務完成檢查由現有嘅 AnalyzeTaskCompletion
 		// 喺 RunPostLoop → MarkTaskCompleted 入面處理
 	}
 }

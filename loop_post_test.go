@@ -11,21 +11,24 @@ import (
 // ============================================================================
 // 對應 e5e.log bug：FeedbackCollector 同步 timeout 10s → done=true 延遲發送
 // → 前端長時間等完見到模型「無故終止」。
-// 修復：AskModelTaskCompletion 改為 go func() 異步，done=true 即時發出。
+// 修復：AnalyzeTaskCompletion 改為 go func() 異步，done=true 即時發出。
 
 // ============================================================================
 // FeedbackCollector 隔離測試
 // ============================================================================
 
-// Scenario: 模擬 API timeout → AskModelTaskCompletion 返回 false。
+// Scenario: 模擬 API timeout → AnalyzeTaskCompletion 返回 false。
 func TestFeedbackCollector_TimeoutReturnsFalse(t *testing.T) {
 	fc := NewFeedbackCollector(t.TempDir())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // 立即取消
 
-	result := fc.AskModelTaskCompletion(ctx,
-		"user query", "assistant response",
+	msgs := []Message{
+		{Role: "user", Content: "user query"},
+		{Role: "assistant", Content: "assistant response"},
+	}
+	result := fc.AnalyzeTaskCompletion(ctx, msgs,
 		TaskCompletionQuery{APIType: "openai", BaseURL: "https://api.example.com/v1", APIKey: "sk-test", ModelID: "model"})
 
 	if result {
@@ -37,9 +40,11 @@ func TestFeedbackCollector_TimeoutReturnsFalse(t *testing.T) {
 func TestFeedbackCollector_MissingAPIConfig(t *testing.T) {
 	fc := NewFeedbackCollector(t.TempDir())
 
-	result := fc.AskModelTaskCompletion(context.Background(),
-		"user query", "assistant response",
-		TaskCompletionQuery{})
+	msgs := []Message{
+		{Role: "user", Content: "user query"},
+		{Role: "assistant", Content: "assistant response"},
+	}
+	result := fc.AnalyzeTaskCompletion(context.Background(), msgs, TaskCompletionQuery{})
 
 	if result {
 		t.Error("missing API config should return false")
@@ -50,8 +55,11 @@ func TestFeedbackCollector_MissingAPIConfig(t *testing.T) {
 func TestFeedbackCollector_MissingAPIKey(t *testing.T) {
 	fc := NewFeedbackCollector(t.TempDir())
 
-	result := fc.AskModelTaskCompletion(context.Background(),
-		"user query", "assistant response",
+	msgs := []Message{
+		{Role: "user", Content: "user query"},
+		{Role: "assistant", Content: "assistant response"},
+	}
+	result := fc.AnalyzeTaskCompletion(context.Background(), msgs,
 		TaskCompletionQuery{ModelID: "model", BaseURL: "https://api.example.com/v1", APIKey: ""})
 
 	if result {

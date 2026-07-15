@@ -65,8 +65,8 @@ type FeedbackCollector struct {
 	// 隐式信号库
 	implicitSignals []ImplicitSignal
 
-	// AskModelTaskCompletion 冷却机制（防止短时间重复调用）
-	lastCompletionAskTime time.Time // 上次调用 AskModelTaskCompletion 的时间
+	// AnalyzeTaskCompletion 冷却机制（防止短时间重复调用）
+	lastCompletionAskTime time.Time // 上次调用 AnalyzeTaskCompletion 的时间
 	minAskInterval        time.Duration
 }
 
@@ -83,7 +83,7 @@ func NewFeedbackCollector(dataDir string) *FeedbackCollector {
 	fc := &FeedbackCollector{
 		dataDir:        dataDir,
 		feedbackFile:   filepath.Join(dataDir, "feedback.jsonl"),
-		minAskInterval: 30 * time.Second, // 两次 AskModelTaskCompletion 最小间隔
+		minAskInterval: 30 * time.Second, // 两次 AnalyzeTaskCompletion 最小间隔
 		implicitSignals: []ImplicitSignal{
 			// === 正向信号 ===
 			{
@@ -147,7 +147,7 @@ func NewFeedbackCollector(dataDir string) *FeedbackCollector {
 
 // ========== 冷却与过滤机制 ==========
 
-// CanAskCompletion 检查是否可以调用 AskModelTaskCompletion（冷却期内不允许）
+// CanAskCompletion 检查是否可以调用 AnalyzeTaskCompletion（冷却期内不允许）
 func (fc *FeedbackCollector) CanAskCompletion() bool {
 	fc.mu.RLock()
 	defer fc.mu.RUnlock()
@@ -157,7 +157,7 @@ func (fc *FeedbackCollector) CanAskCompletion() bool {
 	return time.Since(fc.lastCompletionAskTime) >= fc.minAskInterval
 }
 
-// RecordCompletionAsk 记录一次 AskModelTaskCompletion 调用时间
+// RecordCompletionAsk 记录一次 AnalyzeTaskCompletion 调用时间
 func (fc *FeedbackCollector) RecordCompletionAsk() {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
@@ -172,33 +172,32 @@ func IsWakeNotification(input string) bool {
 		strings.Contains(input, "Wake notification")
 }
 
-// ========== 任务完成判定（轻量模型调用） ==========
+// ========== 任务完成判定（完整消息链模型分析） ==========
 
-// AskModelTaskCompletion 私下询问模型用户任务是否已完成
-// 发送最小化请求：最后一条用户消息 + 模型回复 + 系统提示
-// 返回 true 表示任务已完成，false 表示未完成或调用失败
-func (fc *FeedbackCollector) AskModelTaskCompletion(ctx context.Context, lastUserMsg, lastAssistantMsg string, apiConfig TaskCompletionQuery) bool {
+// AnalyzeTaskCompletion 基于完整消息链询问模型用户任务是否已完成。
+// 取代旧版 AskModelTaskCompletion：不再只看最后两条消息，改为将完整对话历史
+// （含用户原始请求、助手多次回复、工具调用与结果）交给模型做全局判定，
+// 解决旧版「短视 + 结尾问号误判」问题。
+//
+// 因完整链分析成本较高（CPU/GPU），仅在模型自然停止工作后触发（loopExitedNaturally）。
+// 返回 true 表示任务已完成，false 表示未完成或调用失败。
+func (fc *FeedbackCollector) AnalyzeTaskCompletion(ctx context.Context, messages []Message, apiConfig TaskCompletionQuery) bool {
 	if apiConfig.ModelID == "" || apiConfig.APIKey == "" {
-		log.Printf("[FeedbackCollector] AskModelTaskCompletion skipped: missing API config")
+		log.Printf("[FeedbackCollector] AnalyzeTaskCompletion skipped: missing API config")
 		return false
 	}
 
-	// 截断过长的内容，避免浪费 token
-	if len(lastUserMsg) > 500 {
-		lastUserMsg = lastUserMsg[:500] + "..."
-	}
-	if len(lastAssistantMsg) > 500 {
-		lastAssistantMsg = lastAssistantMsg[:500] + "..."
+	// 构建完整对话历史日志，控制总长度以节省 token
+	conversationLog := buildConversationLog(messages, 8000)
+
+	promptMessages := []Message{
+		{Role: "system", Content: "你是一个任务完成度判定器。你将看到完整的对话历史（包括用户的原始请求、助手的多次回复、工具调用与结果）。请基于全局上下文判断用户的原始请求是否已被完整完成。\n\n规则：\n- 助手已给出最终结论/结果/方案，且没有遗留待办事项 → YES\n- 助手仍在调查、分析、执行中，或明确表示需要进一步操作才能完成 → NO\n- 助手已完成主要工作，结尾附带「建议性后续问题」（如「需要我顺便加测试吗？」「要不要也处理 X？」）→ YES（此类问号不意味着未完成，仅是锦上添花的提议）\n- 助手给出了结果但明确表示仍需测试/验证/后续步骤才能算完成 → NO\n- 助手只是反问澄清用户意图（如「你想用哪个方案？」）而未给出结果 → NO\n\n依据：结合完整对话历史判断，而非只看最后一条。只回答 YES 或 NO，不要输出任何其他内容。"},
+		{Role: "user", Content: fmt.Sprintf("完整对话历史：\n%s", conversationLog)},
 	}
 
-	messages := []Message{
-		{Role: "system", Content: "你是一个任务完成度判定器。根据用户请求和助手回复，判断用户的请求是否已被完整完成。\n\n规则：\n- 助手已给出最终结论或结果/方案，且没有遗留待办事项 → YES\n- 助手仍在调查、分析、执行中，或明确表示需要进一步操作 → NO\n- 助手给出了结果但提到需要测试/验证/后续步骤 → NO\n\n只回答 YES 或 NO，不要输出任何其他内容。"},
-		{Role: "user", Content: fmt.Sprintf("用户请求：\n%s\n\n助手回复：\n%s", lastUserMsg, lastAssistantMsg)},
-	}
-
-	resp, err := CallModelSync(ctx, messages, apiConfig.APIType, apiConfig.BaseURL, apiConfig.APIKey, apiConfig.ModelID, 0.0, 50, false, false)
+	resp, err := CallModelSync(ctx, promptMessages, apiConfig.APIType, apiConfig.BaseURL, apiConfig.APIKey, apiConfig.ModelID, 0.0, 50, false, false)
 	if err != nil {
-		log.Printf("[FeedbackCollector] AskModelTaskCompletion error: %v", err)
+		log.Printf("[FeedbackCollector] AnalyzeTaskCompletion error: %v", err)
 		return false
 	}
 
@@ -211,6 +210,69 @@ func (fc *FeedbackCollector) AskModelTaskCompletion(ctx context.Context, lastUse
 	log.Printf("[FeedbackCollector] Task completion check: %s (answer: %s)", map[bool]string{true: "YES", false: "NO"}[completed], answer)
 
 	return completed
+}
+
+// buildConversationLog 将完整消息链格式化为对话日志，控制总长度以节省 token。
+// 策略：永远保留第一条消息（任务原始请求）+ 尽量保留最近的若干条（最重要的结果），
+// 中间过长则从尾部往前截断。单条消息过长也截断。
+func buildConversationLog(messages []Message, maxChars int) string {
+	if len(messages) == 0 {
+		return "(empty)"
+	}
+	if maxChars <= 0 {
+		maxChars = 8000
+	}
+
+	fmtMsg := func(msg Message, idx int) string {
+		role := msg.Role
+		if role == "" {
+			role = "unknown"
+		}
+		content := ""
+		if c, ok := msg.Content.(string); ok && c != "" {
+			content = c
+		} else if msg.ToolCalls != nil {
+			content = fmt.Sprintf("[tool_calls: %v]", msg.ToolCalls)
+		} else {
+			content = "(empty)"
+		}
+		// 截断过长的单条消息
+		if len(content) > 600 {
+			content = content[:600] + "...(truncated)"
+		}
+		return fmt.Sprintf("[%d] %s: %s\n", idx, role, content)
+	}
+
+	// 消息很少 → 全部输出
+	if len(messages) <= 6 {
+		var b strings.Builder
+		for i, m := range messages {
+			b.WriteString(fmtMsg(m, i))
+		}
+		return b.String()
+	}
+
+	// 消息较多 → 保留首条（原始请求）+ 最近的若干条
+	first := fmtMsg(messages[0], 0)
+	separator := "...(中间消息省略)...\n"
+	var recent []string
+	used := len(first) + len(separator)
+	for i := len(messages) - 1; i >= 1; i-- {
+		line := fmtMsg(messages[i], i)
+		if used+len(line) > maxChars {
+			break
+		}
+		recent = append([]string{line}, recent...)
+		used += len(line)
+	}
+
+	var b strings.Builder
+	b.WriteString(first)
+	b.WriteString(separator)
+	for _, line := range recent {
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 // MarkTaskCompleted 标记一个任务已完成（由 AgentLoop 在模型确认后调用）
