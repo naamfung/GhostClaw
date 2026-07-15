@@ -3,224 +3,390 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 )
 
 // ============================================================
-// 分层工具管理系统（Tiered Tool Management）
+// Kap 容量级别工具管理系统（Kap-based Tool Management）
 // ============================================================
-// 问题背景：GhostClaw 当前每次 API 调用发送约 80 个工具定义，
-// 消耗 8K-16K token。对于低上下文窗口模型（4K-8K），这是致命的。
-// 本文件实现三级工具分层管理，根据模型上下文窗口大小动态选择
-// 合适数量和详细程度的工具集，确保小模型也能正常工作。
+// 问题背景：GhostClaw 当前注册约 100 个工具定义，消耗大量 token。
+// 对于低上下文窗口模型（4K-8K），全量工具定义会挤占可用空间。
+// 本文件实现 10 级 Kap 容量分层管理，根据模型上下文窗口大小
+// 动态选择合适数量和详细程度的工具集，确保小模型也能正常工作。
+//
+// 10 个 Kap 级别（以 2 倍递增的上下文容量命名）：
+//   4Kap → 8Kap → 16Kap → 32Kap → 64Kap → 128Kap → 256Kap → 512Kap → 1024Kap → 2048Kap
+//
+// 工具分配：每级工具 token 总量 <= 该级容量 × kapToolBudgetPercent（默认 10%）。
+// 按工具优先级排序后贪心累加，达到预算上限则跳过该工具继续尝试更小的。
+// Kap2048 为全量兜底（> 1M 上下文），不受预算限制。
+// 描述密度（PromptDensity）合并到 Kap 级别，由 Density() 方法自动衍生。
 // ============================================================
 
-// ToolTier 工具层级枚举
-type ToolTier int
+// ToolKap 工具容量级别枚举（10 级）
+type ToolKap int
 
 const (
-	// ToolTierSmall 精简层：~17 个最常用工具，通过 Menu 可加载更多
-	// 适用于 <4K 上下文窗口的超小模型
-	ToolTierSmall ToolTier = iota
-
-	// ToolTierCore 核心层：Small + Standard 工具（~56 个）
-	// 适用于 4K-8K 上下文窗口的小模型
-	ToolTierCore
-
-	// ToolTierExtended 扩展层：Core + Extended 工具
-	// 适用于 8K-32K 上下文窗口的中等模型
-	ToolTierExtended
-
-	// ToolTierExpert 专家层：全部工具（~96 个）
-	// 适用于 >=32K 上下文窗口的大模型
-	ToolTierExpert
+	// Kap4 4K 上下文：兜底最小集
+	Kap4 ToolKap = iota
+	// Kap8 8K
+	Kap8
+	// Kap16 16K
+	Kap16
+	// Kap32 32K
+	Kap32
+	// Kap64 64K
+	Kap64
+	// Kap128 128K
+	Kap128
+	// Kap256 256K
+	Kap256
+	// Kap512 512K
+	Kap512
+	// Kap1024 1024K (1M)
+	Kap1024
+	// Kap2048 2048K (2M+)：全量工具（兜底，不受预算限制）
+	Kap2048
 )
 
 // PromptDensity 提示密度枚举，控制工具描述的详细程度
+// 现由 ToolKap.Density() 衍生，不再独立计算
 type PromptDensity int
 
 const (
-	// PromptDensityFull 完整描述：返回原始描述内容
-	// 适用于 >=32K 上下文窗口
-	PromptDensityFull PromptDensity = iota
-
-	// PromptDensityStandard 标准描述：仅保留第一段
-	// 适用于 16K-32K 上下文窗口
-	PromptDensityStandard
-
-	// PromptDensityCompact 精简描述：仅保留第一句，最多 80 字符
-	// 适用于 8K-16K 上下文窗口
-	PromptDensityCompact
-
-	// PromptDensityMinimal 极简描述：仅保留工具名称
-	// 适用于 <8K 上下文窗口
-	PromptDensityMinimal
+	PromptDensityFull     PromptDensity = iota // 完整描述
+	PromptDensityStandard                      // 标准描述（第一段）
+	PromptDensityCompact                       // 精简描述（第一句，80字符）
+	PromptDensityMinimal                       // 极简描述（仅工具名）
 )
 
-// 上下文窗口阈值常量（单位：token）
+// Kap 容量阈值常量（单位：token）
+// 语义统一用 <=：contextWindow <= kapThresholdN → KapN
+// 例：contextWindow <= 16384 → Kap16；contextWindow > 1048576 → Kap2048
 const (
-	// tierThresholdSmall 小于此值使用精简层（仅最常用工具）
-	tierThresholdSmall = 4096
-
-	// tierThresholdCore 小于此值使用核心层
-	tierThresholdCore = 8192
-
-	// tierThresholdExtended 小于此值使用扩展层
-	tierThresholdExtended = 32768
-
-	// densityThresholdStandard 小于此值使用标准密度
-	densityThresholdStandard = 32768
-
-	// densityThresholdCompact 小于此值使用精简密度
-	densityThresholdCompact = 16384
-
-	// densityThresholdMinimal 小于此值使用极简密度
-	densityThresholdMinimal = 8192
-
-	// avgCharsPerToken 英文/代码平均每个 token 的字符数（估算值）
-	avgCharsPerToken = 4
-
-	// compactMaxChars 精简模式下描述的最大字符数
-	compactMaxChars = 80
-
-	// safetyBuffer 安全缓冲区 token 数（为历史消息和系统提示预留）
-	safetyBufferTokens = 512
-
-	// avgMessageTokens 单条消息平均 token 数（估算值）
-	avgMessageTokens = 200
+	kapThreshold4    = 4096    // Kap4:  contextWindow <= 4K
+	kapThreshold8    = 8192    // Kap8:  contextWindow <= 8K
+	kapThreshold16   = 16384   // Kap16: contextWindow <= 16K
+	kapThreshold32   = 32768   // Kap32: contextWindow <= 32K
+	kapThreshold64   = 65536   // Kap64: contextWindow <= 64K
+	kapThreshold128  = 131072  // Kap128: contextWindow <= 128K
+	kapThreshold256  = 262144  // Kap256: contextWindow <= 256K
+	kapThreshold512  = 524288  // Kap512: contextWindow <= 512K
+	kapThreshold1024 = 1048576 // Kap1024: contextWindow <= 1024K (1M)
+	// Kap2048: contextWindow > 1M（全量兜底）
 )
 
-// ToolTierManager 工具分层管理器
-// 根据模型上下文窗口大小，动态决定工具数量和描述详细程度
-type ToolTierManager struct {
-	// smallToolSet 精简层工具名称集合（仅最常用 ~17 个）
-	smallToolSet map[string]bool
-
-	// coreToolSet 核心层工具名称集合（Small + Standard ~56 个）
-	coreToolSet map[string]bool
-
-	// extendedToolSet 扩展层工具名称集合（Core + Extended）
-	extendedToolSet map[string]bool
-}
-
-// ── 全局單例 ToolTierManager（工具註冊表在啟動後不變，無需每次重建）──
-var (
-	globalTierManager     *ToolTierManager
-	globalTierManagerOnce sync.Once
+// 估算常量
+const (
+	avgCharsPerToken   = 4   // 英文/代码平均每 token 字符数
+	compactMaxChars    = 80  // 精简模式描述最大字符数
+	safetyBufferTokens = 512 // 安全缓冲 token 数
+	avgMessageTokens   = 200 // 单条消息平均 token 数
 )
 
-// getGlobalTierManager 返回全局單例 ToolTierManager
-// 工具註冊表在程序啟動後不會改變，因此 tier/density 分類只需計算一次。
-func getGlobalTierManager() *ToolTierManager {
-	globalTierManagerOnce.Do(func() {
-		mgr := &ToolTierManager{
-			smallToolSet:    make(map[string]bool),
-			coreToolSet:     make(map[string]bool),
-			extendedToolSet: make(map[string]bool),
-		}
-		for _, name := range GetSmallToolNames() {
-			mgr.smallToolSet[name] = true
-		}
-		for _, name := range GetCoreToolNames() {
-			mgr.coreToolSet[name] = true
-		}
-		for _, name := range GetCoreToolNames() {
-			mgr.extendedToolSet[name] = true
-		}
-		for _, name := range GetExtendedToolNames() {
-			mgr.extendedToolSet[name] = true
-		}
-		globalTierManager = mgr
-	})
-	return globalTierManager
+// kapToolBudgetPercent 控制每级工具 token 总量占该级上下文容量的百分比。
+// 默认 10.0（即 4K 窗口最多用 400 token 放工具），可全局配置覆盖。
+// Kap2048 不受此限制（全量工具）。
+var kapToolBudgetPercent = 10.0
+
+// ── Kap 优先级启发式映射表 ──
+// 将现有 4 桶（small/core/extended/expert）拆细到 9 级 Kap。
+// key 格式 "tier:category"，value 为默认 Kap 优先级（1-9，越小越优先）。
+var tierCategoryKapDefault = map[string]int{
+	// small 层 → 拆分到 4Kap/8Kap/16Kap（关键工具由 override 微调）
+	"small:core":   3, // 文件操作 → 16Kap（SmartShell/ReadFileLine 等由 override 调至 4Kap/8Kap）
+	"small:memory": 3, // 记忆工具 → 16Kap（MemoryRecall 由 override 调至 8Kap）
+	"small:web":    3, // BrowserSearch/Visit → 16Kap
+
+	// core 层 → 拆分到 32Kap/64Kap
+	"core:core":     4, // FileInfo/Todo*/Text*/SSH*/SchemeEval → 32Kap
+	"core:Spawn":    4, // Spawn* → 32Kap
+	"core:plan":     4, // Tasks/EnterPlanMode → 32Kap
+	"core:schedule": 5, // Cron* → 64Kap（CronAdd/CronList 由 override 调至 32Kap）
+	"core:skill":    5, // Skill* → 64Kap
+	"core:plugin":   5, // Plugin* → 64Kap
+
+	// extended 层 → 拆分到 128Kap/256Kap
+	"extended:plan":    6, // ExitPlanMode → 128Kap
+	"extended:profile": 7, // Profile*/ActorIdentity* → 256Kap
+
+	// expert 层 → 拆分到 512Kap/1024Kap
+	"expert:core": 8, // Task* → 512Kap
+	"expert:web":  8, // Browser* → 512Kap（较少用的由 override 调至 1024Kap）
 }
 
-// NewToolTierManager 创建工具分层管理器（保留舊接口，內部委托給全局單例）
-func NewToolTierManager() *ToolTierManager {
-	return getGlobalTierManager()
+// toolKapOverride 个别工具的 Kap 优先级覆盖（精细微调）
+var toolKapOverride = map[string]int{
+	// 4Kap：绝对最常用（2 个）
+	"SmartShell":   1,
+	"ReadFileLine": 1,
+	// 8Kap：基本文件写入 + 记忆（4 个）
+	"WriteFileLine": 2,
+	"MemoryRecall":  2,
+	"AppendToFile":  2,
+	"ReadFileLines": 2,
+	// 32Kap：高优先级 schedule 工具
+	"CronAdd":  4,
+	"CronList": 4,
+	// 128Kap：ProfileCheck 较常用
+	"ProfileCheck": 6,
+	// 1024Kap：较少使用的浏览器工具
+	"BrowserDoubleClick":       9,
+	"BrowserRightClick":        9,
+	"BrowserDrag":              9,
+	"BrowserWaitSmart":         9,
+	"BrowserGetCookies":        9,
+	"BrowserCookieSave":        9,
+	"BrowserCookieLoad":        9,
+	"BrowserUploadFile":        9,
+	"BrowserSelectOption":      9,
+	"BrowserElementScreenshot": 9,
+	"BrowserPdf":               9,
+	"BrowserPdfFromFile":        9,
+	"BrowserSetHeaders":        9,
+	"BrowserSetUserAgent":      9,
+	"BrowserEmulateDevice":     9,
+	"BrowserExtractImages":     9,
+	"BrowserExtractElements":   9,
 }
 
-// GetTierForContextWindow 根据上下文窗口大小确定工具层级
-// <4K → Small（仅最常用工具）
-// <8K → Core（Small + Standard）
-// <32K → Extended（Core + Extended）
-// >=32K → Expert（全部工具）
-func (m *ToolTierManager) GetTierForContextWindow(contextWindow int) ToolTier {
-	if contextWindow < tierThresholdSmall {
-		return ToolTierSmall
+// kapPriorityForTool 返回工具的 Kap 优先级（1-9）。
+// 数值越小 = 优先级越高 = 在更小的上下文窗口中即可使用。
+// 启发式：先查 toolKapOverride 精确覆盖，再按 tier:category 默认值，最后按 tier 兜底。
+func kapPriorityForTool(tier, category, name string) int {
+	if p, ok := toolKapOverride[name]; ok {
+		return p
 	}
-	if contextWindow < tierThresholdCore {
-		return ToolTierCore
+	key := tier + ":" + category
+	if p, ok := tierCategoryKapDefault[key]; ok {
+		return p
 	}
-	if contextWindow < tierThresholdExtended {
-		return ToolTierExtended
+	switch tier {
+	case "small":
+		return 3
+	case "core":
+		return 5
+	case "extended":
+		return 7
+	default:
+		return 9
 	}
-	return ToolTierExpert
 }
 
-// GetPromptDensity 根据上下文窗口大小确定提示密度
-// <8K → Minimal（仅工具名）
-// <16K → Compact（第一句，80字符）
-// <32K → Standard（第一段）
-// >=32K → Full（完整描述）
-func (m *ToolTierManager) GetPromptDensity(contextWindow int) PromptDensity {
-	if contextWindow < densityThresholdMinimal {
+// ── ToolKap 方法 ──
+
+// String 返回 Kap 级别的可读名称（如 "4Kap", "1024Kap", "2048Kap"）
+func (k ToolKap) String() string {
+	switch k {
+	case Kap4:
+		return "4Kap"
+	case Kap8:
+		return "8Kap"
+	case Kap16:
+		return "16Kap"
+	case Kap32:
+		return "32Kap"
+	case Kap64:
+		return "64Kap"
+	case Kap128:
+		return "128Kap"
+	case Kap256:
+		return "256Kap"
+	case Kap512:
+		return "512Kap"
+	case Kap1024:
+		return "1024Kap"
+	case Kap2048:
+		return "2048Kap"
+	default:
+		return "Unknown"
+	}
+}
+
+// Capacity 返回此 Kap 级别对应的上下文容量（单位：token）
+// 用于预算计算：budget = Capacity() × kapToolBudgetPercent / 100
+func (k ToolKap) Capacity() int {
+	switch k {
+	case Kap4:
+		return kapThreshold4
+	case Kap8:
+		return kapThreshold8
+	case Kap16:
+		return kapThreshold16
+	case Kap32:
+		return kapThreshold32
+	case Kap64:
+		return kapThreshold64
+	case Kap128:
+		return kapThreshold128
+	case Kap256:
+		return kapThreshold256
+	case Kap512:
+		return kapThreshold512
+	case Kap1024:
+		return kapThreshold1024
+	case Kap2048:
+		return 2097152 // 2M（标称值，实际全量不受预算限制）
+	default:
+		return kapThreshold1024
+	}
+}
+
+// Density 返回此 Kap 级别对应的提示密度
+// 低 Kap → Minimal/Compact（省 token）；高 Kap → Standard/Full（完整描述）
+func (k ToolKap) Density() PromptDensity {
+	switch k {
+	case Kap4, Kap8:
 		return PromptDensityMinimal
-	}
-	if contextWindow < densityThresholdCompact {
+	case Kap16, Kap32:
 		return PromptDensityCompact
-	}
-	if contextWindow < densityThresholdStandard {
+	case Kap64, Kap128:
 		return PromptDensityStandard
+	default: // Kap256, Kap512, Kap1024, Kap2048
+		return PromptDensityFull
 	}
-	return PromptDensityFull
 }
 
-// GetFilteredTools 根据层级、密度和角色权限过滤工具列表
-// 返回经过层级筛选、描述裁剪和角色权限检查后的工具列表
-func (m *ToolTierManager) GetFilteredTools(
+// IsFullTools 是否包含全部工具（仅 Kap2048，全量兜底）
+func (k ToolKap) IsFullTools() bool {
+	return k == Kap2048
+}
+
+// ToolKapManager 工具容量级别管理器
+// 根据上下文窗口大小确定 Kap 级别，并按 Kap 优先级过滤工具
+type ToolKapManager struct {
+	// toolKapPriority 缓存：工具名 → Kap 优先级（启动时从 registry 计算一次）
+	toolKapPriority map[string]int
+}
+
+// ── 全局單例 ToolKapManager ──
+var (
+	globalKapManager     *ToolKapManager
+	globalKapManagerOnce sync.Once
+)
+
+// getGlobalKapManager 返回全局單例 ToolKapManager
+func getGlobalKapManager() *ToolKapManager {
+	globalKapManagerOnce.Do(func() {
+		mgr := &ToolKapManager{
+			toolKapPriority: make(map[string]int, len(toolRegistry)),
+		}
+		for _, td := range toolRegistry {
+			mgr.toolKapPriority[td.Name] = kapPriorityForTool(td.Tier, td.Category, td.Name)
+		}
+		globalKapManager = mgr
+	})
+	return globalKapManager
+}
+
+// NewToolKapManager 创建工具 Kap 管理器（委托给全局单例）
+func NewToolKapManager() *ToolKapManager {
+	return getGlobalKapManager()
+}
+
+// GetKapForContextWindow 根据上下文窗口大小确定 Kap 级别
+// 语义统一用 <=：contextWindow <= kapThresholdN → KapN
+// Kap2048 为兜底：contextWindow > 1M 时使用全量工具
+func (m *ToolKapManager) GetKapForContextWindow(contextWindow int) ToolKap {
+	switch {
+	case contextWindow <= kapThreshold4:
+		return Kap4
+	case contextWindow <= kapThreshold8:
+		return Kap8
+	case contextWindow <= kapThreshold16:
+		return Kap16
+	case contextWindow <= kapThreshold32:
+		return Kap32
+	case contextWindow <= kapThreshold64:
+		return Kap64
+	case contextWindow <= kapThreshold128:
+		return Kap128
+	case contextWindow <= kapThreshold256:
+		return Kap256
+	case contextWindow <= kapThreshold512:
+		return Kap512
+	case contextWindow <= kapThreshold1024:
+		return Kap1024
+	default:
+		return Kap2048
+	}
+}
+
+// GetFilteredTools 根据 Kap 级别和角色权限过滤工具列表
+// 自动分配算法：
+//   - Kap2048（全量）：仅做角色权限检查，返回全部工具
+//   - 其他级别：按优先级排序 → 裁剪描述 → 贪心累加 token
+//     预算 = Capacity() × kapToolBudgetPercent / 100
+//     超预算的工具跳过（continue），继续尝试后续更小的工具以最大化预算利用率
+func (m *ToolKapManager) GetFilteredTools(
 	allTools []map[string]interface{},
-	tier ToolTier,
-	density PromptDensity,
+	kap ToolKap,
 	role *Role,
 ) []map[string]interface{} {
-	filtered := make([]map[string]interface{}, 0, len(allTools))
+	// Kap2048：全量工具，仅角色权限检查
+	if kap.IsFullTools() {
+		filtered := make([]map[string]interface{}, 0, len(allTools))
+		for _, tool := range allTools {
+			name := getToolName(tool)
+			if name == "" {
+				continue
+			}
+			if role != nil && !role.IsToolAllowed(name) {
+				continue
+			}
+			filtered = append(filtered, tool)
+		}
+		return filtered
+	}
 
+	// 预算控制：该级容量 × 百分比
+	budgetTokens := int(float64(kap.Capacity()) * kapToolBudgetPercent / 100)
+	if budgetTokens < 1 {
+		budgetTokens = 1
+	}
+
+	density := kap.Density()
+
+	// 按优先级排序（priority 小的先选）
+	type toolWithPriority struct {
+		tool     map[string]interface{}
+		priority int
+	}
+	queue := make([]toolWithPriority, 0, len(allTools))
 	for _, tool := range allTools {
-		// 获取工具名称
 		name := getToolName(tool)
 		if name == "" {
-			// 无法识别名称的工具，跳过
 			continue
 		}
-
-		// 根据层级判断是否包含此工具
-		switch tier {
-		case ToolTierSmall:
-			if !m.smallToolSet[name] {
-				continue
-			}
-		case ToolTierCore:
-			if !m.coreToolSet[name] {
-				continue
-			}
-		case ToolTierExtended:
-			if !m.extendedToolSet[name] {
-				continue
-			}
-		case ToolTierExpert:
-			// 专家层包含所有工具，不需要层级过滤
-		}
-
-		// 角色权限检查：如果角色不允许此工具，跳过
 		if role != nil && !role.IsToolAllowed(name) {
 			continue
 		}
+		p, ok := m.toolKapPriority[name]
+		if !ok {
+			p = 9 // 未注册工具默认最低优先级
+		}
+		queue = append(queue, toolWithPriority{tool: tool, priority: p})
+	}
+	sort.SliceStable(queue, func(i, j int) bool {
+		return queue[i].priority < queue[j].priority
+	})
 
-		// 根据密度裁剪工具描述
-		trimmed := m.trimToolByDensity(tool, density)
+	// 贪心选择：按优先级顺序累加 token，超预算则跳过继续尝试
+	filtered := make([]map[string]interface{}, 0, len(queue))
+	usedTokens := 0
+	for _, item := range queue {
+		trimmed := m.trimToolByDensity(item.tool, density)
+		toolTokens := estimateToolChars(trimmed) / avgCharsPerToken
+		if toolTokens < 1 {
+			toolTokens = 1
+		}
+		if usedTokens+toolTokens > budgetTokens {
+			continue // 超预算，跳过此工具，尝试后续更小的
+		}
 		filtered = append(filtered, trimmed)
+		usedTokens += toolTokens
 	}
 
 	return filtered
@@ -229,7 +395,7 @@ func (m *ToolTierManager) GetFilteredTools(
 // trimToolByDensity 根据提示密度裁剪工具描述
 // 優化：density == Full 時直接返回原始工具（零拷貝），避免不必要的 deepCopy
 // 只有需要修改描述時才做深拷貝
-func (m *ToolTierManager) trimToolByDensity(
+func (m *ToolKapManager) trimToolByDensity(
 	tool map[string]interface{},
 	density PromptDensity,
 ) map[string]interface{} {
@@ -293,7 +459,7 @@ func (m *ToolTierManager) trimToolByDensity(
 // EstimateToolTokens 估算工具定义列表的 token 消耗
 // 使用简单估算：字符数 / 平均每个 token 的字符数
 // 这是近似值，实际 token 数取决于模型的分词器
-func (m *ToolTierManager) EstimateToolTokens(tools []map[string]interface{}) int {
+func (m *ToolKapManager) EstimateToolTokens(tools []map[string]interface{}) int {
 	if len(tools) == 0 {
 		return 0
 	}
@@ -356,7 +522,7 @@ func estimateValueChars(val interface{}) int {
 // GetMaxHistoryMessages 动态计算最大历史消息数
 // 根据上下文窗口、系统提示 token 和工具 token，计算还能容纳多少条历史消息
 // 公式：(contextWindow - systemPromptTokens - toolTokens - safetyBuffer) / avgMessageTokens
-func (m *ToolTierManager) GetMaxHistoryMessages(contextWindow int, systemPromptTokens int, toolTokens int) int {
+func (m *ToolKapManager) GetMaxHistoryMessages(contextWindow int, systemPromptTokens int, toolTokens int) int {
 	available := contextWindow - systemPromptTokens - toolTokens - safetyBufferTokens
 	if available <= 0 {
 		// 没有剩余空间，至少保留 1 条历史消息
@@ -371,29 +537,90 @@ func (m *ToolTierManager) GetMaxHistoryMessages(contextWindow int, systemPromptT
 }
 
 // ============================================================
-// 核心工具名称列表
+// Kap 工具名称查询
 // ============================================================
 
-// GetSmallToolNames 返回精简层工具名称列表
-func GetSmallToolNames() []string {
-	return GetSmallToolNamesFromRegistry()
+// GetKapToolNames 返回指定 Kap 级别可用的工具名称列表
+// 与 GetFilteredTools 同样的预算贪心逻辑：按优先级排序 → 贪心累加 token → 超预算跳过。
+// Kap2048 返回全量工具名称。
+func GetKapToolNames(kap ToolKap) []string {
+	// Kap2048：全量
+	if kap.IsFullTools() {
+		names := make([]string, 0, len(toolRegistry))
+		for _, td := range toolRegistry {
+			names = append(names, td.Name)
+		}
+		return names
+	}
+
+	budgetTokens := int(float64(kap.Capacity()) * kapToolBudgetPercent / 100)
+	if budgetTokens < 1 {
+		budgetTokens = 1
+	}
+	density := kap.Density()
+
+	// 按优先级排序（stable 保证同优先级按注册顺序）
+	sorted := make([]*ToolDef, len(toolRegistry))
+	copy(sorted, toolRegistry)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		pi := kapPriorityForTool(sorted[i].Tier, sorted[i].Category, sorted[i].Name)
+		pj := kapPriorityForTool(sorted[j].Tier, sorted[j].Category, sorted[j].Name)
+		return pi < pj
+	})
+
+	names := make([]string, 0, len(sorted))
+	usedTokens := 0
+	for _, td := range sorted {
+		tokens := estimateToolDefTokens(td, density)
+		if tokens < 1 {
+			tokens = 1
+		}
+		if usedTokens+tokens > budgetTokens {
+			continue
+		}
+		names = append(names, td.Name)
+		usedTokens += tokens
+	}
+	return names
 }
 
-// GetCoreToolNames 返回核心层工具名称列表（含 Small + Standard）
+// GetCoreToolNames 返回 Kap64 级别可用的工具名称列表（兼容旧接口）
+// 用于工具预算保护逻辑：Kap64 = 64K 上下文预算下的工具集
 func GetCoreToolNames() []string {
-	return GetCoreToolNamesFromRegistry()
+	return GetKapToolNames(Kap64)
 }
 
-// ============================================================
-// 扩展工具名称列表（在核心工具基础上追加）
-// ============================================================
+// estimateToolDefTokens 估算 ToolDef 在指定密度下的 token 消耗
+// 用于 GetKapToolNames 的预算控制（不需要构建完整 map，性能优于 estimateToolChars）
+func estimateToolDefTokens(td *ToolDef, density PromptDensity) int {
+	// 参数 schema 的固定开销估算（平均 ~200 字符 / 4 = 50 token）
+	const paramsTokens = 50
 
-// GetExtendedToolNames 返回扩展层额外追加的工具名称列表
-// 这些工具在核心工具之上提供文件编辑、文本操作、记忆管理、
-// 定时任务、技能管理、插件和配置文件检查等扩展能力
-// 注意：此列表不包含核心工具名称，仅包含增量部分
-func GetExtendedToolNames() []string {
-	return GetExtendedToolNamesFromRegistry()
+	var descChars int
+	switch density {
+	case PromptDensityMinimal:
+		// 极简：仅工具名
+		descChars = len(td.Name)
+	case PromptDensityCompact:
+		// 精简：截断到 80 字符
+		desc := td.Description
+		if len(desc) > compactMaxChars {
+			desc = desc[:compactMaxChars]
+		}
+		descChars = len(td.Name) + len(desc)
+	case PromptDensityStandard:
+		// 标准：第一段（\n\n 分隔）
+		desc := td.Description
+		if idx := strings.Index(desc, "\n\n"); idx > 0 {
+			desc = desc[:idx]
+		}
+		descChars = len(td.Name) + len(desc)
+	default:
+		// 完整：全描述
+		descChars = len(td.Name) + len(td.Description)
+	}
+
+	return descChars/avgCharsPerToken + paramsTokens
 }
 
 // ============================================================
@@ -864,9 +1091,9 @@ func getFilteredAnthropicTools(modelCtx int, role *Role) []map[string]interface{
 // getFilteredToolsUnified 統一的工具過濾函數
 // 根據 API 類型自動選擇對應格式的數據源，消除 OpenAI/Anthropic 重複邏輯
 func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[string]interface{} {
-	manager := NewToolTierManager()
-	tier := manager.GetTierForContextWindow(modelCtx)
-	density := manager.GetPromptDensity(modelCtx)
+	manager := NewToolKapManager()
+	kap := manager.GetKapForContextWindow(modelCtx)
+	density := kap.Density()
 
 	// 從註冊中心獲取對應格式的所有工具
 	var allTools []map[string]interface{}
@@ -876,12 +1103,12 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 		allTools = getOpenAIToolsFromRegistry()
 	}
 
-	// 獲取經過層級篩選、密度裁剪和角色權限檢查的工具列表
-	filtered := manager.GetFilteredTools(allTools, tier, density, role)
+	// 獲取經過 Kap 篩選、密度裁剪和角色權限檢查的工具列表
+	filtered := manager.GetFilteredTools(allTools, kap, role)
 
-	// Expert 以外嘅層級：追加通過 menu 工具加載的額外工具
-	// Small 層尤其依賴 Menu 來按需加載更多工具
-	if tier != ToolTierExpert {
+	// Kap1024（全量）以外嘅級別：追加通過 menu 工具加載的額外工具
+	// 低 Kap 層尤其依賴 Menu 來按需加載更多工具
+	if !kap.IsFullTools() {
 		loaded := GetLoadedToolNames()
 		existingNames := make(map[string]bool, len(filtered))
 		for _, t := range filtered {
@@ -913,8 +1140,8 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 	menuTool = manager.trimToolByDensity(menuTool, density)
 	filtered = append(filtered, menuTool)
 
-	// 核心層且工具 token 超出預算 50% 時，合併瀏覽器工具
-	if tier == ToolTierCore {
+	// 低 Kap 級別且工具 token 超出預算 50% 時，合併瀏覽器工具
+	if kap <= Kap64 {
 		estimatedTokens := manager.EstimateToolTokens(filtered)
 		budget := modelCtx / 2
 		if estimatedTokens > budget {
@@ -930,7 +1157,7 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 	const maxToolTokens = 3000
 	estimatedTokens := manager.EstimateToolTokens(filtered)
 	if estimatedTokens > maxToolTokens {
-		// 標記核心工具，保護它們不被移除
+		// 標記核心工具（Kap64 級別），保護它們不被移除
 		coreNames := make(map[string]bool)
 		for _, name := range GetCoreToolNames() {
 			coreNames[name] = true
@@ -965,7 +1192,7 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 				}
 			}
 		}
-		log.Printf("[ToolTier] Tool budget: %d tools (%d tokens) trimmed to %d tools (budget %d tokens)",
+		log.Printf("[ToolKap] Tool budget: %d tools (%d tokens) trimmed to %d tools (budget %d tokens)",
 			len(filtered), estimatedTokens, len(result), maxToolTokens)
 		filtered = result
 	}
@@ -977,7 +1204,7 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 // 用于极小上下文窗口场景下进一步减少 token 消耗
 func replaceBrowserWithConsolidated(
 	tools []map[string]interface{},
-	manager *ToolTierManager,
+	manager *ToolKapManager,
 	density PromptDensity,
 	role *Role,
 	apiType string,
@@ -1013,7 +1240,7 @@ func replaceBrowserWithConsolidated(
 // replaceBrowserWithConsolidatedAnthropic 保留旧接口兼容
 func replaceBrowserWithConsolidatedAnthropic(
 	tools []map[string]interface{},
-	manager *ToolTierManager,
+	manager *ToolKapManager,
 	density PromptDensity,
 	role *Role,
 ) []map[string]interface{} {
@@ -1023,20 +1250,6 @@ func replaceBrowserWithConsolidatedAnthropic(
 // ============================================================
 // 调试与信息函数
 // ============================================================
-
-// String 返回 ToolTier 的可读字符串表示
-func (t ToolTier) String() string {
-	switch t {
-	case ToolTierCore:
-		return "Core"
-	case ToolTierExtended:
-		return "Extended"
-	case ToolTierExpert:
-		return "Expert"
-	default:
-		return "Unknown"
-	}
-}
 
 // String 返回 PromptDensity 的可读字符串表示
 func (d PromptDensity) String() string {
@@ -1054,24 +1267,15 @@ func (d PromptDensity) String() string {
 	}
 }
 
-// GetTierInfo 返回工具层级的详细调试信息
-// 包括层级名称、工具数量、提示密度、预估 token 消耗等
-func (m *ToolTierManager) GetTierInfo(contextWindow int, allTools []map[string]interface{}) string {
-	tier := m.GetTierForContextWindow(contextWindow)
-	density := m.GetPromptDensity(contextWindow)
-
-	var toolCount int
-	switch tier {
-	case ToolTierCore:
-		toolCount = len(GetCoreToolNames())
-	case ToolTierExtended:
-		toolCount = len(GetCoreToolNames()) + len(GetExtendedToolNames())
-	case ToolTierExpert:
-		toolCount = len(allTools)
-	}
+// GetKapInfo 返回工具 Kap 级别的详细调试信息
+// 包括 Kap 级别名称、工具数量、提示密度等
+func (m *ToolKapManager) GetKapInfo(contextWindow int, allTools []map[string]interface{}) string {
+	kap := m.GetKapForContextWindow(contextWindow)
+	density := kap.Density()
+	toolCount := len(GetKapToolNames(kap))
 
 	return fmt.Sprintf(
-		"[ToolTier] contextWindow=%d tier=%s density=%s estimatedTools=%d",
-		contextWindow, tier, density, toolCount,
+		"[ToolKap] contextWindow=%d kap=%s density=%s estimatedTools=%d",
+		contextWindow, kap, density, toolCount,
 	)
 }
