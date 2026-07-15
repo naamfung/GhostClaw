@@ -19,7 +19,7 @@ import (
 // 10 个 Kap 级别（以 2 倍递增的上下文容量命名）：
 //   4Kap → 8Kap → 16Kap → 32Kap → 64Kap → 128Kap → 256Kap → 512Kap → 1024Kap → 2048Kap
 //
-// 工具分配：每级工具 token 总量 <= 该级容量 × kapToolBudgetPercent（默认 10%）。
+// 工具分配：每级工具 token 总量 <= 该级容量 × kapToolBudgetPercent（默认 1%）。
 // 按工具优先级排序后贪心累加，达到预算上限则跳过该工具继续尝试更小的。
 // Kap2048 为全量兜底（> 1M 上下文），不受预算限制。
 // 描述密度（PromptDensity）合并到 Kap 级别，由 Density() 方法自动衍生。
@@ -87,9 +87,9 @@ const (
 )
 
 // kapToolBudgetPercent 控制每级工具 token 总量占该级上下文容量的百分比。
-// 默认 10.0（即 4K 窗口最多用 400 token 放工具），可全局配置覆盖。
+// 默认 1.0（即 128K 窗口最多用 1310 token 放工具），可全局配置覆盖。
 // Kap2048 不受此限制（全量工具）。
-var kapToolBudgetPercent = 10.0
+var kapToolBudgetPercent = 1.0
 
 // ── Kap 优先级启发式映射表 ──
 // 将现有 4 桶（small/core/extended/expert）拆细到 9 级 Kap。
@@ -1150,11 +1150,14 @@ func getFilteredToolsUnified(modelCtx int, role *Role, apiType string) []map[str
 	}
 
 	// ── 全局工具預算限制 ──────────────────────────────────────
-	// 無論 context window 多大，工具定義的 token 數不超過硬上限。
+	// 工具定義的 token 數不超過上下文容量的 1%（kapToolBudgetPercent / 100）。
 	// 原因：大量工具定義（如 100 個工具 = 61KB）會導致第三方代理
 	// 服務器處理延遲顯著增加（實測 75KB tools TTFB=5s vs 11KB tools TTFB=2.6s）。
-	// 3000 tokens ≈ 12KB JSON，足以包含核心工具（~15-20 個）的完整描述。
-	const maxToolTokens = 3000
+	// 128K 窗口 → 1310 tokens ≈ 5KB JSON，含核心工具的精簡描述。
+	maxToolTokens := int(float64(modelCtx) * kapToolBudgetPercent / 100)
+	if maxToolTokens < 1 {
+		maxToolTokens = 1
+	}
 	estimatedTokens := manager.EstimateToolTokens(filtered)
 	if estimatedTokens > maxToolTokens {
 		// 標記核心工具（Kap64 級別），保護它們不被移除
