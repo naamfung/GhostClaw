@@ -189,6 +189,11 @@ func buildResilientHTTPClient(responseHeaderTimeout time.Duration) *http.Client 
 			}).DialContext,
 			TLSHandshakeTimeout:   30 * time.Second,
 			ResponseHeaderTimeout: responseHeaderTimeout,
+			// 補上 IdleConnTimeout / MaxIdleConns，與全局 httpClient 一致，
+			// 避免 retry 時創建的新 client 累積 stale connection。
+			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 2,
 		},
 	}
 }
