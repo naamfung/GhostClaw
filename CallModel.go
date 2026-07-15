@@ -183,7 +183,7 @@ var httpClient = &http.Client{
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		TLSHandshakeTimeout:   30 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Minute, // 10 分鐘，對齊 resilience MaxTimeoutSeconds 默認值
 		IdleConnTimeout:       30 * time.Second, // 縮短 idle connection lifetime，避免 stale connection
 	},
 }

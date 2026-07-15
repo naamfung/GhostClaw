@@ -40,7 +40,11 @@ func resilientDo(
 	currentBaseURL := baseURL
 	currentAPIKey := apiKey
 	currentProviderName := initialProviderName
-	currentTimeout := 60 * time.Second // 初始 ResponseHeaderTimeout
+	// 初始 ResponseHeaderTimeout：10 分鐘，與 MaxTimeoutSeconds 默認值一致。
+	// 原因：本地推理代理（如 vLLM/Ollama）在並發或長 prompt 下 TTFB 可能數十秒，
+	// 60s 初始值會觸發「假超時」，再經 1.5x 放寬到 90s/135s/... 才能成功，
+	// 浪費 retry 往返時間。直接用 10 分鐘避免無謂 retry。
+	currentTimeout := time.Duration(resilience.MaxTimeoutSeconds) * time.Second
 
 	consecutiveTimeouts := 0
 	attempt := 0
@@ -126,8 +130,8 @@ func resilientDo(
 					currentAPIKey = active.APIKey
 					currentProviderName = active.Name
 					// 切換 provider 後重置超時、退避和重試計數
-					currentTimeout = 60 * time.Second
-					consecutiveTimeouts = 0
+				currentTimeout = time.Duration(resilience.MaxTimeoutSeconds) * time.Second
+				consecutiveTimeouts = 0
 					attempt = 0
 					currentBackoff = time.Duration(resilience.InitialBackoffSeconds) * time.Second
 					continue // 立即用新 provider 重試
