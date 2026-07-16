@@ -2550,8 +2550,8 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 			if totalReqs > 0 {
 				hitRate = float64(hits) / float64(totalReqs) * 100
 			}
-			log.Printf("[PromptCache] Cache HIT for %d messages | entries: %d | hit/total: %d/%d (%.1f%%)",
-				len(messages), entries, hits, totalReqs, hitRate)
+			log.Printf("[PromptCache] Cache HIT for %d messages (loop_hits: %d) | entries: %d | hit/total: %d/%d (%.1f%%)",
+				len(messages), cached.HitCount, entries, hits, totalReqs, hitRate)
 			// ── Prompt Loop 偵測：相同提示被重複發送 ─────────
 			// 如果同一消息序列被發送超過 3 次，可能是模型陷入死循環
 			if cached.HitCount >= 3 {
