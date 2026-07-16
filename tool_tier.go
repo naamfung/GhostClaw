@@ -115,6 +115,9 @@ var tierCategoryKapDefault = map[string]int{
 	// expert 层 → 拆分到 512Kap/1024Kap
 	"expert:core": 8, // Task* → 512Kap
 	"expert:web":  8, // Browser* → 512Kap（较少用的由 override 调至 1024Kap）
+
+	// 兜底補丁：補齊 tier:category 未顯式列出的組合，避免落入 switch(tier) 兜底
+	"core:misc": 4, // SchemeEval → 32Kap（與 core:core 一致）
 }
 
 // toolKapOverride 个别工具的 Kap 优先级覆盖（精细微调）
@@ -170,6 +173,8 @@ func kapPriorityForTool(tier, category, name string) int {
 		return 5
 	case "extended":
 		return 7
+	case "expert":
+		return 8
 	default:
 		return 9
 	}
