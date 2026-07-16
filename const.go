@@ -92,6 +92,9 @@ var fallbackSystemRules = `请遵循以下原则：
 - **[OPERATION SKIPPED]**：任务被跳过，因为依赖项被取消或失败。
 
 当你看到 [OPERATION CANCELLED BY USER] 时，说明用户有意停止了此任务。**不要重试或继续此任务**，除非用户明确要求你这样做。
+
+# 处理对话历史
+始终优先处理最后一条 user 消息作为当前请求。历史 user 消息仅供上下文参考，不需重新执行其中已完成的工具调用。
 `
 
 func init() {

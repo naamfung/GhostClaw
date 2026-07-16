@@ -328,12 +328,39 @@ func applyReplacements(text string) string {
 }
 
 // 生成系统提示（仅作为 fallback 使用，不包含时间以最大化缓存命中）
+// 全局缓存：session 启动时计算一次，整个 session 内不变（跨日才重建）
+// 避免每步重新构建 system prompt 导致缓存失效
+var (
+	cachedSystemPrompt     string
+	cachedSystemPromptDate string
+	systemPromptCacheMu    sync.RWMutex
+)
+
 func generateSystemPrompt(apiType string) string {
+	today := time.Now().Format("2006-01-02 Monday")
+
+	systemPromptCacheMu.RLock()
+	if cachedSystemPrompt != "" && cachedSystemPromptDate == today {
+		p := cachedSystemPrompt
+		systemPromptCacheMu.RUnlock()
+		return p
+	}
+	systemPromptCacheMu.RUnlock()
+
+	// 首次构建或跨日重建
 	toolOrFunction := "tool"
 	if apiType == "openai" {
 		toolOrFunction = "function"
 	}
-	return strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
+	prompt := strings.ReplaceAll(SYSTEM_PROMPT, "{{tool_or_function}}", toolOrFunction)
+	prompt += fmt.Sprintf("\n\n[Runtime Context]\nCurrent Date: %s\n", today)
+
+	systemPromptCacheMu.Lock()
+	cachedSystemPrompt = prompt
+	cachedSystemPromptDate = today
+	systemPromptCacheMu.Unlock()
+
+	return prompt
 }
 
 // extractSystemPrompt 从 messages 中提取系统提示词
@@ -1395,9 +1422,9 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 	}
 	t4 := time.Now()
 
-	filteredMessages = injectRuntimeContext(filteredMessages)
-	filteredMessages = markHistoricalUserMessages(filteredMessages)
-	filteredMessages = markLatestUserRequest(filteredMessages)
+	// 方案 C：不再修改消息链，保持前缀缓存稳定
+	// - 移除 injectRuntimeContext（时间已挪到 system prompt 末尾，见 generateSystemPrompt）
+	// - 移除 markHistoricalUserMessages / markLatestUserRequest（破坏前缀缓存，改由 system prompt 通用指引替代）
 	t5 := time.Now()
 
 	// ── StableTools + Plan Mode: 注入 [SYSTEM_PLAN_MODE] message ──
