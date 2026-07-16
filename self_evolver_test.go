@@ -170,65 +170,23 @@ func TestExtractErrorChainsUnfinished(t *testing.T) {
 // ============================================================
 func TestCanRunCooldown(t *testing.T) {
 	se := &SelfEvolver{
-		minPromptInterval: 100 * time.Millisecond,
-		minToolInterval:   100 * time.Millisecond,
+		minSessionInterval: 100 * time.Millisecond,
 	}
 
 	// 第一次應該可以
-	if !se.canRun("prompt") {
-		t.Error("first prompt run should be allowed")
+	if !se.canRun("session") {
+		t.Error("first session run should be allowed")
 	}
 	// 即刻第二次應該被拒絕
-	if se.canRun("prompt") {
-		t.Error("second prompt run within cooldown should be denied")
-	}
-
-	// 第一次 tool 應該可以
-	if !se.canRun("tool") {
-		t.Error("first tool run should be allowed")
-	}
-	// 第二次 tool 應該被拒絕
-	if se.canRun("tool") {
-		t.Error("second tool run within cooldown should be denied")
+	if se.canRun("session") {
+		t.Error("second session run within cooldown should be denied")
 	}
 
 	// 等冷卻過咗
 	time.Sleep(150 * time.Millisecond)
 
-	if !se.canRun("prompt") {
-		t.Error("prompt run after cooldown should be allowed")
-	}
-}
-
-// ============================================================
-// TestCanRunDifferentDimensions — 唔同維度唔互相影響
-// ============================================================
-func TestCanRunDifferentDimensions(t *testing.T) {
-	se := &SelfEvolver{
-		minPromptInterval: 1 * time.Hour,
-		minToolInterval:   1 * time.Hour,
-	}
-
-	// prompt 用咗唔影響 tool
-	if !se.canRun("prompt") {
-		t.Error("prompt should be allowed")
-	}
-	if !se.canRun("tool") {
-		t.Error("tool should be allowed independently")
-	}
-	if !se.canRun("error") {
-		t.Error("error should be allowed independently")
-	}
-	if !se.canRun("cross") {
-		t.Error("cross should be allowed independently")
-	}
-
-	// 用過之後各自應該被拒絕
-	if se.canRun("prompt") {
-		t.Error("prompt should be denied after use")
-	}
-	if se.canRun("tool") {
-		t.Error("tool should be denied after use")
+	if !se.canRun("session") {
+		t.Error("session run after cooldown should be allowed")
 	}
 }
 
@@ -434,9 +392,9 @@ func TestCountToolCalls(t *testing.T) {
 }
 
 // ============================================================
-// TestAnalyzePromptEffectivenessIntegration — 完整流程（DB）
+// TestAnalyzeSessionIntegration — 綜合分析完整流程（DB，合併原 4 個獨立測試）
 // ============================================================
-func TestAnalyzePromptEffectivenessIntegration(t *testing.T) {
+func TestAnalyzeSessionIntegration(t *testing.T) {
 	_, mgr, _ := setupEvolverTestDB(t)
 
 	// 設置 UnifiedMemory（避免 nil pointer）
@@ -449,37 +407,38 @@ func TestAnalyzePromptEffectivenessIntegration(t *testing.T) {
 		globalUnifiedMemory = oldMem
 	})
 
-	// 寫入含 system prompt 嘅完整消息鏈
+	// 寫入含 system prompt + tool + error 嘅完整消息鏈（覆蓋 4 個維度）
 	now := time.Now().Unix()
 	messages := []Message{
 		{Role: "system", Content: "You are a helpful coding assistant. Always check syntax before running code.", Timestamp: now},
 		{Role: "user", Content: "Write a Go HTTP server", Timestamp: now + 1},
 		{Role: "assistant", Content: "Here's the server code...", Timestamp: now + 2},
-		{Role: "tool", Content: "go build: success", ToolCallID: "call_1", Timestamp: now + 3},
-		{Role: "assistant", Content: "The server compiled successfully.", Timestamp: now + 4},
+		{Role: "tool", Content: "error: permission denied", ToolCallID: "call_1", Timestamp: now + 3},
+		{Role: "tool", Content: "chmod 755 success", ToolCallID: "call_1", Timestamp: now + 4},
+		{Role: "tool", Content: "go build: success", ToolCallID: "call_2", Timestamp: now + 5},
+		{Role: "assistant", Content: "The server compiled successfully.", Timestamp: now + 6},
 	}
 
-	mgr.SaveSession("evolver_prompt_test", "Prompt Test", "helper", "default", 10, 50, 60, 1, messages)
+	mgr.SaveSession("session_integration_test", "Integration Test", "helper", "default", 10, 50, 60, 1, messages)
 
 	se := &SelfEvolver{
-		minPromptInterval: 0, // 禁用冷卻
-		minToolInterval:   0,
-		minErrorInterval:  0,
-		minCrossInterval:  0,
-		sessionsAnalyzed:  make(map[string]bool),
+		minSessionInterval:           0, // 禁用冷卻
+		sessionsAnalyzed:             make(map[string]bool),
+		minToolCallsForAnalysis:      2, // 低閾值以觸發工具分析
+		minSessionsForCrossAnalysis:  999, // 高閾值以跳過跨 session（單 session 測試）
 	}
 
-	// 調用分析（唔會 panic，LLM 調用會失敗因為冇真實 API，但流程應該完整）
-	se.AnalyzePromptEffectiveness(t.Context(), "evolver_prompt_test")
+	// 調用綜合分析（唔會 panic，LLM 調用會失敗因為冇真實 API，但流程應該完整）
+	se.AnalyzeSession(t.Context(), "session_integration_test")
 
 	// markSessionAnalyzed 只喺 LLM 成功後先調用，測試環境 LLM 會失敗所以唔會標記
 	// 只需確認冇 panic
 }
 
 // ============================================================
-// TestAnalyzePromptEffectivenessInsufficientData — 數據不足
+// TestAnalyzeSessionInsufficientData — 數據不足
 // ============================================================
-func TestAnalyzePromptEffectivenessInsufficientData(t *testing.T) {
+func TestAnalyzeSessionInsufficientData(t *testing.T) {
 	_, mgr, _ := setupEvolverTestDB(t)
 
 	oldMem := globalUnifiedMemory
@@ -500,248 +459,12 @@ func TestAnalyzePromptEffectivenessInsufficientData(t *testing.T) {
 	mgr.SaveSession("short_test", "Short", "", "", 0, 0, 0, 0, messages)
 
 	se := &SelfEvolver{
-		minPromptInterval: 0,
-		minToolInterval:   0,
-		minErrorInterval:  0,
-		minCrossInterval:  0,
-		sessionsAnalyzed:  make(map[string]bool),
+		minSessionInterval: 0,
+		sessionsAnalyzed:   make(map[string]bool),
 	}
 
 	// 應該因為數據不足而跳過
-	se.AnalyzePromptEffectiveness(t.Context(), "short_test")
-}
-
-// ============================================================
-// TestAnalyzeToolPatternsIntegration — 完整工具分析流程
-// ============================================================
-func TestAnalyzeToolPatternsIntegration(t *testing.T) {
-	_, mgr, _ := setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	now := time.Now().Unix()
-	// 寫入 >= 10 條 tool 消息（觸發工具分析閾值）
-	var messages []Message
-	messages = append(messages, Message{Role: "user", Content: "Do a complex task", Timestamp: now})
-	for i := 0; i < 12; i++ {
-		messages = append(messages, Message{
-			Role: "tool", Content: fmt.Sprintf("tool result %d", i),
-			ToolCallID: fmt.Sprintf("call_%d", i), Timestamp: now + int64(i+1),
-		})
-	}
-	messages = append(messages, Message{Role: "assistant", Content: "Task done", Timestamp: now + 13})
-
-	mgr.SaveSession("tool_analysis_test", "Tool Test", "helper", "default", 0, 0, 0, 0, messages)
-
-	se := &SelfEvolver{
-		minPromptInterval:           0,
-		minToolInterval:             0,
-		minErrorInterval:            0,
-		minCrossInterval:            0,
-		sessionsAnalyzed:            make(map[string]bool),
-		minToolCallsForAnalysis:     10,
-		minSessionsForCrossAnalysis: 5,
-	}
-
-	se.AnalyzeToolPatterns(t.Context(), "tool_analysis_test")
-
-	// markSessionAnalyzed 只喺 LLM 成功後先調用，測試環境 LLM 會失敗所以唔會標記
-	// 只需確認冇 panic
-}
-
-// ============================================================
-// TestAnalyzeToolPatternsBelowThreshold — 工具數不足
-// ============================================================
-func TestAnalyzeToolPatternsBelowThreshold(t *testing.T) {
-	_, mgr, _ := setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	now := time.Now().Unix()
-	// 只有 3 條 tool 消息（少過 10 條閾值）
-	messages := []Message{
-		{Role: "user", Content: "Task", Timestamp: now},
-		{Role: "tool", Content: "result 1", ToolCallID: "c1", Timestamp: now + 1},
-		{Role: "tool", Content: "result 2", ToolCallID: "c2", Timestamp: now + 2},
-		{Role: "tool", Content: "result 3", ToolCallID: "c3", Timestamp: now + 3},
-		{Role: "assistant", Content: "Done", Timestamp: now + 4},
-	}
-	mgr.SaveSession("below_threshold_test", "Below", "", "", 0, 0, 0, 0, messages)
-
-	se := &SelfEvolver{
-		minPromptInterval:       0,
-		minToolInterval:         0,
-		minErrorInterval:        0,
-		minCrossInterval:        0,
-		sessionsAnalyzed:        make(map[string]bool),
-		minToolCallsForAnalysis: 10,
-	}
-
-	se.AnalyzeToolPatterns(t.Context(), "below_threshold_test")
-
-	// 少過閾值，markSessionAnalyzed 未被調用 → 唔 panic
-}
-
-// ============================================================
-// TestAnalyzeErrorRecoveryIntegration — 錯誤恢復分析
-// ============================================================
-func TestAnalyzeErrorRecoveryIntegration(t *testing.T) {
-	_, mgr, _ := setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	now := time.Now().Unix()
-	messages := []Message{
-		{Role: "user", Content: "Fix the deployment", Timestamp: now},
-		{Role: "assistant", Content: "Running deploy...", Timestamp: now + 1},
-		{Role: "tool", Content: "error: permission denied", ToolCallID: "c1", Timestamp: now + 2},
-		{Role: "tool", Content: "chmod 755 success", ToolCallID: "c1", Timestamp: now + 3},
-		{Role: "tool", Content: "deploy success", ToolCallID: "c2", Timestamp: now + 4},
-		{Role: "assistant", Content: "Deployment fixed!", Timestamp: now + 5},
-	}
-	mgr.SaveSession("error_test", "Error Test", "helper", "default", 0, 0, 0, 0, messages)
-
-	se := &SelfEvolver{
-		minPromptInterval: 0,
-		minToolInterval:   0,
-		minErrorInterval:  0,
-		minCrossInterval:  0,
-		sessionsAnalyzed:  make(map[string]bool),
-	}
-
-	se.AnalyzeErrorRecovery(t.Context(), "error_test")
-
-	// markSessionAnalyzed 只喺 LLM 成功後先調用，測試環境 LLM 會失敗所以唔會標記
-	// 只需確認冇 panic
-}
-
-// ============================================================
-// TestAnalyzeErrorRecoveryNoErrors — 冇錯誤時跳過
-// ============================================================
-func TestAnalyzeErrorRecoveryNoErrors(t *testing.T) {
-	_, mgr, _ := setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	now := time.Now().Unix()
-	// 全部成功，冇錯誤
-	messages := []Message{
-		{Role: "user", Content: "Simple task", Timestamp: now},
-		{Role: "tool", Content: "success", ToolCallID: "c1", Timestamp: now + 1},
-		{Role: "tool", Content: "success", ToolCallID: "c2", Timestamp: now + 2},
-		{Role: "assistant", Content: "All done", Timestamp: now + 3},
-	}
-	mgr.SaveSession("no_error_test", "No Error", "", "", 0, 0, 0, 0, messages)
-
-	se := &SelfEvolver{
-		minPromptInterval: 0,
-		minToolInterval:   0,
-		minErrorInterval:  0,
-		minCrossInterval:  0,
-		sessionsAnalyzed:  make(map[string]bool),
-	}
-
-	se.AnalyzeErrorRecovery(t.Context(), "no_error_test")
-
-	// 冇錯誤 → extractErrorChains 返空 → 提前返回 → 唔 panic
-}
-
-// ============================================================
-// TestSynthesizeCrossSessionIntegration — 跨 session 匯總
-// ============================================================
-func TestSynthesizeCrossSessionIntegration(t *testing.T) {
-	_, mgr, _ := setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	now := time.Now().Unix()
-	// 創建 5 個 sessions（滿足閾值）
-	for i := 0; i < 6; i++ {
-		messages := []Message{
-			{Role: "user", Content: fmt.Sprintf("Task %d: Write code", i), Timestamp: now + int64(i*10)},
-			{Role: "assistant", Content: fmt.Sprintf("Result %d", i), Timestamp: now + int64(i*10) + 1},
-			{Role: "tool", Content: fmt.Sprintf("tool output %d", i), ToolCallID: fmt.Sprintf("c%d", i), Timestamp: now + int64(i*10) + 2},
-		}
-		mgr.SaveSession(fmt.Sprintf("cross_session_%d", i), fmt.Sprintf("Session %d", i), "helper", "default", 0, 0, 0, 0, messages)
-		time.Sleep(5 * time.Millisecond) // 確保 updated_at 有差異
-	}
-
-	se := &SelfEvolver{
-		minPromptInterval:           0,
-		minToolInterval:             0,
-		minErrorInterval:            0,
-		minCrossInterval:            0,
-		sessionsAnalyzed:            make(map[string]bool),
-		analyzedSessionCount:        6, // 手動設為 >= 5
-		minSessionsForCrossAnalysis: 5,
-	}
-
-	se.SynthesizeCrossSession(t.Context())
-	// 唔會 panic，LLM 調用會失敗但流程完整
-}
-
-// ============================================================
-// TestSynthesizeCrossSessionBelowThreshold — session 數不足
-// ============================================================
-func TestSynthesizeCrossSessionBelowThreshold(t *testing.T) {
-	_, _, _ = setupEvolverTestDB(t)
-
-	oldMem := globalUnifiedMemory
-	tmpDir := t.TempDir()
-	var errUM error
-	globalUnifiedMemory, errUM = NewUnifiedMemory(tmpDir)
-	_ = errUM
-	t.Cleanup(func() {
-		globalUnifiedMemory = oldMem
-	})
-
-	se := &SelfEvolver{
-		minPromptInterval:           0,
-		minToolInterval:             0,
-		minErrorInterval:            0,
-		minCrossInterval:            0,
-		sessionsAnalyzed:            make(map[string]bool),
-		analyzedSessionCount:        2, // 少過 5
-		minSessionsForCrossAnalysis: 5,
-	}
-
-	se.SynthesizeCrossSession(t.Context())
-	// 應該因為 session 數不足而跳過
+	se.AnalyzeSession(t.Context(), "short_test")
 }
 
 // ============================================================
@@ -825,23 +548,23 @@ func TestLoadMultiSessionMessagesEmpty(t *testing.T) {
 // ============================================================
 func TestSelfEvolverCooldownPersistence(t *testing.T) {
 	se := &SelfEvolver{
-		minPromptInterval: 200 * time.Millisecond,
+		minSessionInterval: 200 * time.Millisecond,
 	}
 
-	// 第一次 prompt
-	if !se.canRun("prompt") {
+	// 第一次 session
+	if !se.canRun("session") {
 		t.Error("first call should be allowed")
 	}
 
 	// 等 100ms（未夠冷卻）
 	time.Sleep(100 * time.Millisecond)
-	if se.canRun("prompt") {
+	if se.canRun("session") {
 		t.Error("should still be in cooldown after 100ms")
 	}
 
 	// 等夠 200ms
 	time.Sleep(150 * time.Millisecond)
-	if !se.canRun("prompt") {
+	if !se.canRun("session") {
 		t.Error("should be allowed after cooldown period")
 	}
 }
@@ -863,18 +586,12 @@ func TestSelfEvolverNilGlobals(t *testing.T) {
 	})
 
 	se := &SelfEvolver{
-		minPromptInterval: 0,
-		minToolInterval:   0,
-		minErrorInterval:  0,
-		minCrossInterval:  0,
-		sessionsAnalyzed:  make(map[string]bool),
+		minSessionInterval: 0,
+		sessionsAnalyzed:   make(map[string]bool),
 	}
 
 	// 全部應該安全返回，唔 panic（public methods 檢查 nil global）
-	se.AnalyzePromptEffectiveness(t.Context(), "test")
-	se.AnalyzeToolPatterns(t.Context(), "test")
-	se.AnalyzeErrorRecovery(t.Context(), "test")
-	se.SynthesizeCrossSession(t.Context())
+	se.AnalyzeSession(t.Context(), "test")
 }
 
 // ============================================================

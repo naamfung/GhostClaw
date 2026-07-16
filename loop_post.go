@@ -27,13 +27,16 @@ import (
 // 行為類似隊列：goroutine 都立即啟動，但只有一個能執行 LLM 調用，其餘在 semaphore 上排隊。
 var postLoopLLMSem = make(chan struct{}, 1)
 
-// runPostLoopLLM 在後台串行執行 LLM 調用。
+// runPostLoopLLM 在後台串行執行 LLM 調用，每個調用有獨立的 ctx deadline。
+// timeout 控制單個 post-loop 任務的最大執行時間，避免 resilience 無限 retry 佔用隊列。
 // 所有 goroutine 都立即啟動（不阻塞 RunPostLoop），但 LLM 調用會排隊執行。
-func runPostLoopLLM(fn func()) {
+func runPostLoopLLM(timeout time.Duration, fn func(context.Context)) {
 	go func() {
-		postLoopLLMSem <- struct{}{}         // acquire（排隊等待）
-		defer func() { <-postLoopLLMSem }()  // release
-		fn()
+		postLoopLLMSem <- struct{}{}        // acquire（排隊等待）
+		defer func() { <-postLoopLLMSem }() // release
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		fn(ctx)
 	}()
 }
 
@@ -92,19 +95,17 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 					ModelID: effectiveModelID,
 				}
 				globalFeedbackCollector.RecordCompletionAsk()
-			// 使用獨立 goroutine 異步執行完整消息鏈分析（成本較高，
-			// 僅在模型自然停止工作後觸發），避免 block done=true 發送，
-			// 導致前端長時間等待後模型看似「無故終止」。
-			// 通過 postLoopLLMSem 串行化，避免與其他 post-loop LLM 調用同時壓垮本地 API 代理。
-			runPostLoopLLM(func() {
-				askCtx, askCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				defer askCancel()
-				completed := globalFeedbackCollector.AnalyzeTaskCompletion(askCtx, messages, apiConfig)
-				if completed {
-					globalFeedbackCollector.MarkTaskCompleted(lastUserMsg, lastAssistantMsg)
-					log.Printf("[FeedbackCollector] Task marked as completed (implicit, no user prompt)")
-				}
-			})
+				// 使用獨立 goroutine 異步執行完整消息鏈分析（成本較高，
+				// 僅在模型自然停止工作後觸發），避免 block done=true 發送，
+				// 導致前端長時間等待後模型看似「無故終止」。
+				// 通過 postLoopLLMSem 串行化，避免與其他 post-loop LLM 調用同時壓垮本地 API 代理。
+				runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
+					completed := globalFeedbackCollector.AnalyzeTaskCompletion(ctx, messages, apiConfig)
+					if completed {
+						globalFeedbackCollector.MarkTaskCompleted(lastUserMsg, lastAssistantMsg)
+						log.Printf("[FeedbackCollector] Task marked as completed (implicit, no user prompt)")
+					}
+				})
 			}
 		}
 	}
@@ -139,27 +140,26 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 	if globalSelfLearner != nil {
 		taskDesc := getCurrentTaskDescriptionFromMessages(messages)
 		sessionID := GetGlobalSession().ID
-		runPostLoopLLM(func() {
-			globalSelfLearner.Reflect(context.Background(), taskDesc, sessionID)
+		runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
+			globalSelfLearner.Reflect(ctx, taskDesc, sessionID)
 		})
 	}
 
-	// ====== 自進化引擎（跨會話分析） ======
+	// ====== 自進化引擎（綜合會話分析，原 4 次合併為 1 次） ======
 	if globalSelfEvolver != nil && ch.GetSessionID() != "" {
 		sessionID := ch.GetSessionID()
-		runPostLoopLLM(func() { globalSelfEvolver.AnalyzePromptEffectiveness(context.Background(), sessionID) })
-		runPostLoopLLM(func() { globalSelfEvolver.AnalyzeToolPatterns(context.Background(), sessionID) })
-		runPostLoopLLM(func() { globalSelfEvolver.AnalyzeErrorRecovery(context.Background(), sessionID) })
-		runPostLoopLLM(func() { globalSelfEvolver.SynthesizeCrossSession(context.Background()) })
+		runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
+			globalSelfEvolver.AnalyzeSession(ctx, sessionID)
+		})
 	}
 
 	// ====== 記憶整合 ======
 	if globalMemoryConsolidator != nil {
-		runPostLoopLLM(func() {
+		runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
 			sessionKey := "default"
 			if should, _ := globalMemoryConsolidator.ShouldConsolidate(sessionKey); should {
 				log.Println("[MemoryConsolidator] Triggering automatic consolidation...")
-				if err := globalMemoryConsolidator.MaybeConsolidate(context.Background(), sessionKey); err != nil {
+				if err := globalMemoryConsolidator.MaybeConsolidate(ctx, sessionKey); err != nil {
 					log.Printf("[MemoryConsolidator] Consolidation failed: %v", err)
 				}
 			}
@@ -178,7 +178,7 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 
 	// ====== 策略優化 ======
 	if globalStrategyOptimizer != nil && iteration%10 == 0 {
-		runPostLoopLLM(func() {
+		runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
 			if result, err := globalStrategyOptimizer.Optimize(); err == nil && result != nil {
 				log.Printf("[StrategyOptimizer] Optimization completed with score: %.2f", result.ImprovementScore)
 			}
@@ -187,7 +187,7 @@ func RunPostLoop(ch Channel, messages []Message, iteration int,
 
 	// ====== 記憶重構 ======
 	if globalMemoryRefactorManager != nil && iteration%20 == 0 {
-		runPostLoopLLM(func() {
+		runPostLoopLLM(10*time.Minute, func(ctx context.Context) {
 			if result, err := globalMemoryRefactorManager.Refactor(); err == nil && result != nil {
 				log.Printf("[MemoryRefactorManager] Refactoring completed with score: %.2f", result.ImprovementScore)
 			}

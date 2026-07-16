@@ -17,213 +17,74 @@ type SelfEvolver struct {
 	mu sync.Mutex
 
 	// 冷卻追蹤
-	lastPromptAnalysis       time.Time
-	lastToolAnalysis         time.Time
-	lastErrorAnalysis        time.Time
-	lastCrossSessionAnalysis time.Time
+	lastSessionAnalysis time.Time
 
 	// 冷卻間隔
-	minPromptInterval time.Duration // 30 min
-	minToolInterval   time.Duration // 20 min
-	minErrorInterval  time.Duration // 15 min
-	minCrossInterval  time.Duration // 60 min
+	minSessionInterval time.Duration // 30 min
 
 	// 跨 session 追蹤
 	sessionsAnalyzed     map[string]bool
 	analyzedSessionCount int
 
 	// 觸發閾值
-	minSessionsForCrossAnalysis int // >= 5 個 session 先做跨 session 匯總
-	minToolCallsForAnalysis     int // >= 10 個 tool call 先做工具鏈分析
+	minSessionsForCrossAnalysis int // >= 5 個 session 才加入跨 session 部分
+	minToolCallsForAnalysis     int // >= 10 個 tool call 才做工具鏈分析
 }
 
 var globalSelfEvolver = &SelfEvolver{
-	minPromptInterval:           30 * time.Minute,
-	minToolInterval:             20 * time.Minute,
-	minErrorInterval:            15 * time.Minute,
-	minCrossInterval:            60 * time.Minute,
+	minSessionInterval:           30 * time.Minute,
 	sessionsAnalyzed:            make(map[string]bool),
 	minSessionsForCrossAnalysis: 5,
 	minToolCallsForAnalysis:     10,
 }
 
 // ============================================================
-// AnalyzePromptEffectiveness — 分析 system prompt 對行為嘅影響
+// AnalyzeSession — 綜合分析單個 session（合併原 4 個獨立分析）
 // ============================================================
-func (se *SelfEvolver) AnalyzePromptEffectiveness(ctx context.Context, sessionID string) {
-	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("prompt") {
+// 將 prompt 效能、工具模式、錯誤恢復、跨 session 策略合併為 1 次 LLM 調用，
+// 減少 75% post-loop LLM 往返時間。
+func (se *SelfEvolver) AnalyzeSession(ctx context.Context, sessionID string) {
+	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("session") {
 		return
 	}
 
 	// 加載完整消息鏈（含 system prompt）
 	messages := se.loadFullMessageChain(sessionID)
 	if len(messages) < 4 {
-		return // 太少數據
+		return
 	}
 
-	// 搵出 system prompt 同後續行為
 	systemMsgs, userMsgs, assistantMsgs, toolMsgs := se.categorizeMessages(messages)
 	if len(systemMsgs) == 0 || len(userMsgs) == 0 {
 		return
 	}
 
-	prompt := se.buildPromptAnalysisPrompt(systemMsgs, userMsgs, assistantMsgs, toolMsgs)
-	if prompt == "" {
-		return
-	}
-
-	messages = []Message{
-		{Role: "system", Content: promptAnalysisSystemPrompt},
-		{Role: "user", Content: prompt},
-	}
-	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
-	if err != nil {
-		log.Printf("[SelfEvolver] PromptAnalysis LLM call failed: %v", err)
-		return
-	}
-	content, ok := resp.Content.(string)
-	if !ok || content == "" {
-		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
-			content = rc
-		}
-	}
-	if content == "" {
-		log.Printf("[SelfEvolver] PromptAnalysis empty response content")
-		return
-	}
-
-	se.processAnalysisResult(content, "prompt_insight")
-	se.markSessionAnalyzed(sessionID)
-}
-
-// ============================================================
-// AnalyzeToolPatterns — 分析工具調用鏈條
-// ============================================================
-func (se *SelfEvolver) AnalyzeToolPatterns(ctx context.Context, sessionID string) {
-	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("tool") {
-		return
-	}
-
-	messages := se.loadFullMessageChain(sessionID)
-	_, _, _, toolMsgs := se.categorizeMessages(messages)
-
 	toolCallCount := se.countToolCalls(toolMsgs)
-	if toolCallCount < se.minToolCallsForAnalysis {
-		return
-	}
-
-	prompt := se.buildToolPatternPrompt(toolMsgs, toolCallCount)
-	if prompt == "" {
-		return
-	}
-
-	messages = []Message{
-		{Role: "system", Content: toolAnalysisSystemPrompt},
-		{Role: "user", Content: prompt},
-	}
-	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
-	if err != nil {
-		log.Printf("[SelfEvolver] ToolAnalysis LLM call failed: %v", err)
-		return
-	}
-	content, ok := resp.Content.(string)
-	if !ok || content == "" {
-		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
-			content = rc
-		}
-	}
-	if content == "" {
-		log.Printf("[SelfEvolver] ToolAnalysis empty response content")
-		return
-	}
-
-	se.processAnalysisResult(content, "tool_pattern")
-	se.markSessionAnalyzed(sessionID)
-}
-
-// ============================================================
-// AnalyzeErrorRecovery — 分析錯誤恢復模式
-// ============================================================
-func (se *SelfEvolver) AnalyzeErrorRecovery(ctx context.Context, sessionID string) {
-	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("error") {
-		return
-	}
-
-	messages := se.loadFullMessageChain(sessionID)
-	_, _, _, toolMsgs := se.categorizeMessages(messages)
-
 	errorChains := se.extractErrorChains(toolMsgs)
-	if len(errorChains) == 0 {
-		return
-	}
 
-	prompt := se.buildErrorRecoveryPrompt(errorChains)
-	if prompt == "" {
-		return
-	}
-
-	messages = []Message{
-		{Role: "system", Content: errorAnalysisSystemPrompt},
-		{Role: "user", Content: prompt},
-	}
-	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
-	if err != nil {
-		log.Printf("[SelfEvolver] ErrorAnalysis LLM call failed: %v", err)
-		return
-	}
-	content, ok := resp.Content.(string)
-	if !ok || content == "" {
-		if rc, ok2 := resp.ReasoningContent.(string); ok2 && rc != "" {
-			content = rc
-		}
-	}
-	if content == "" {
-		log.Printf("[SelfEvolver] ErrorAnalysis empty response content")
-		return
-	}
-
-	se.processAnalysisResult(content, "error_recovery")
-	se.markSessionAnalyzed(sessionID)
-}
-
-// ============================================================
-// SynthesizeCrossSession — 跨 session 匯總，歸納通用策略
-// ============================================================
-func (se *SelfEvolver) SynthesizeCrossSession(ctx context.Context) {
-	if globalSessionPersist == nil || globalUnifiedMemory == nil || !se.canRun("cross") {
-		return
-	}
-
+	// 跨 session 摘要（僅當已分析 >= 5 個 session 時加入）
+	var crossSessionMsgs []Message
 	se.mu.Lock()
 	count := se.analyzedSessionCount
 	se.mu.Unlock()
-
-	if count < se.minSessionsForCrossAnalysis {
-		return
+	if count >= se.minSessionsForCrossAnalysis {
+		crossSessionMsgs = se.loadMultiSessionMessages(5)
 	}
 
-	// 加載多個 session 嘅 messages
-	allMessages := se.loadMultiSessionMessages(5)
-	if len(allMessages) == 0 {
-		return
-	}
-
-	prompt := se.buildCrossSessionPrompt(allMessages)
+	// 構建綜合 prompt
+	prompt := se.buildComprehensivePrompt(systemMsgs, userMsgs, assistantMsgs, toolMsgs, toolCallCount, errorChains, crossSessionMsgs)
 	if prompt == "" {
 		return
 	}
 
-	messages := []Message{
-		{Role: "system", Content: crossSessionSystemPrompt},
+	messages = []Message{
+		{Role: "system", Content: comprehensiveAnalysisSystemPrompt},
 		{Role: "user", Content: prompt},
 	}
 	useAPIType, useBaseURL, useAPIKey, useModelID, _, _, _, _ := getEffectiveAPIConfig()
-	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 300, false, false)
+	resp, err := CallModelSync(ctx, messages, useAPIType, useBaseURL, useAPIKey, useModelID, 0, 800, false, false)
 	if err != nil {
-		log.Printf("[SelfEvolver] CrossSession LLM call failed: %v", err)
+		log.Printf("[SelfEvolver] AnalyzeSession LLM call failed: %v", err)
 		return
 	}
 	content, ok := resp.Content.(string)
@@ -233,11 +94,108 @@ func (se *SelfEvolver) SynthesizeCrossSession(ctx context.Context) {
 		}
 	}
 	if content == "" {
-		log.Printf("[SelfEvolver] CrossSession empty response content")
+		log.Printf("[SelfEvolver] AnalyzeSession empty response content")
 		return
 	}
 
-	se.processAnalysisResult(content, "cross_strategy")
+	// 按 section 分別存入對應 prefix
+	se.processComprehensiveResult(content)
+	se.markSessionAnalyzed(sessionID)
+}
+
+// buildComprehensivePrompt 構建綜合分析 prompt，合併 4 個維度的數據
+func (se *SelfEvolver) buildComprehensivePrompt(
+	systemMsgs, userMsgs, assistantMsgs, toolMsgs []Message,
+	toolCallCount int,
+	errorChains [][]Message,
+	crossSessionMsgs []Message,
+) string {
+	var sb strings.Builder
+
+	// 1. Prompt 效能分析數據
+	sb.WriteString("# Section 1: Prompt 效能分析\n")
+	sb.WriteString(se.buildPromptAnalysisPrompt(systemMsgs, userMsgs, assistantMsgs, toolMsgs))
+
+	// 2. 工具模式分析數據（僅當工具調用足夠時）
+	if toolCallCount >= se.minToolCallsForAnalysis {
+		sb.WriteString("\n# Section 2: 工具使用模式\n")
+		sb.WriteString(se.buildToolPatternPrompt(toolMsgs, toolCallCount))
+	}
+
+	// 3. 錯誤恢復分析數據（僅當有錯誤鏈時）
+	if len(errorChains) > 0 {
+		sb.WriteString("\n# Section 3: 錯誤恢復模式\n")
+		sb.WriteString(se.buildErrorRecoveryPrompt(errorChains))
+	}
+
+	// 4. 跨 session 策略數據（僅當有跨 session 消息時）
+	if len(crossSessionMsgs) > 0 {
+		sb.WriteString("\n# Section 4: 跨會話策略\n")
+		sb.WriteString(se.buildCrossSessionPrompt(crossSessionMsgs))
+	}
+
+	return sb.String()
+}
+
+// processComprehensiveResult 按 section 分別存入對應 prefix
+func (se *SelfEvolver) processComprehensiveResult(result string) {
+	if globalUnifiedMemory == nil {
+		return
+	}
+
+	// section header → prefix 映射
+	sectionPrefix := map[string]string{
+		"### PromptSuggestions": "prompt_insight",
+		"### ToolPatterns":     "tool_pattern",
+		"### ErrorRecovery":    "error_recovery",
+		"### CrossSession":     "cross_strategy",
+	}
+
+	savedByPrefix := map[string]int{}
+	lines := strings.Split(result, "\n")
+	currentPrefix := ""
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// 檢查是否是 section header
+		if prefix, ok := sectionPrefix[trimmed]; ok {
+			currentPrefix = prefix
+			continue
+		}
+		// 其他 ### header 重置
+		if strings.HasPrefix(trimmed, "###") {
+			currentPrefix = ""
+			continue
+		}
+
+		if currentPrefix == "" || !strings.HasPrefix(trimmed, "- ") {
+			continue
+		}
+
+		entry := strings.TrimPrefix(trimmed, "- ")
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key == "" || value == "" {
+			continue
+		}
+
+		memKey := fmt.Sprintf("%s_%s", currentPrefix, key)
+		if err := globalUnifiedMemory.SaveEntry(MemoryCategoryExperience, memKey, value, nil, MemoryScopeUser); err != nil {
+			continue
+		}
+		savedByPrefix[currentPrefix]++
+	}
+
+	for prefix, count := range savedByPrefix {
+		if count > 0 {
+			log.Printf("[SelfEvolver] Saved %d insights (prefix=%s)", count, prefix)
+		}
+	}
 }
 
 // ============================================================
@@ -251,26 +209,11 @@ func (se *SelfEvolver) canRun(dimension string) bool {
 
 	now := time.Now()
 	switch dimension {
-	case "prompt":
-		if now.Sub(se.lastPromptAnalysis) < se.minPromptInterval {
+	case "session":
+		if now.Sub(se.lastSessionAnalysis) < se.minSessionInterval {
 			return false
 		}
-		se.lastPromptAnalysis = now
-	case "tool":
-		if now.Sub(se.lastToolAnalysis) < se.minToolInterval {
-			return false
-		}
-		se.lastToolAnalysis = now
-	case "error":
-		if now.Sub(se.lastErrorAnalysis) < se.minErrorInterval {
-			return false
-		}
-		se.lastErrorAnalysis = now
-	case "cross":
-		if now.Sub(se.lastCrossSessionAnalysis) < se.minCrossInterval {
-			return false
-		}
-		se.lastCrossSessionAnalysis = now
+		se.lastSessionAnalysis = now
 	}
 	return true
 }
@@ -574,42 +517,23 @@ func (se *SelfEvolver) processAnalysisResult(result string, prefix string) {
 }
 
 // ============================================================
-// 系統提示（每個維度獨立，確保 LLM 專注分析）
+// 系統提示（綜合分析，一次調用覆蓋 4 個維度）
 // ============================================================
 
-var promptAnalysisSystemPrompt = `你是一個 Prompt 效能分析器。根據系統提示詞和後續的助理行為，分析系統提示詞的優缺點。
+var comprehensiveAnalysisSystemPrompt = `你是一個綜合會話分析器。根據完整消息鏈，從 4 個維度分析並輸出改進建議。
 
-只輸出有價值的改進建議，嚴格按以下格式：
+嚴格按以下格式輸出 4 個 section（每條必須是 "- key: value" 格式）：
 
 ### PromptSuggestions
 - 改進點簡述: 具體改進建議（一行）
-- 改進點簡述: 具體改進建議（一行）
 
-每條必須是 "- key: value" 格式。如果沒有值得記錄的建議，輸出 "### PromptSuggestions" 並留空。`
-
-var toolAnalysisSystemPrompt = `你是一個工具使用模式分析器。根據工具調用歷史，識別低效模式、冗餘調用、可優化序列。
-
-只輸出有價值的模式發現，嚴格按以下格式：
-
-### Patterns
+### ToolPatterns
 - 模式簡述: 具體發現和優化建議（一行）
 
-每條必須是 "- key: value" 格式。如果沒有值得記錄的模式，輸出 "### Patterns" 並留空。`
-
-var errorAnalysisSystemPrompt = `你是一個錯誤恢復模式分析器。根據工具錯誤鏈（error → retry → result），提取成功的恢復策略。
-
-只輸出有價值的恢復模式，嚴格按以下格式：
-
-### Patterns
+### ErrorRecovery
 - 恢復策略簡述: 具體策略描述（一行）
 
-每條必須是 "- key: value" 格式。如果沒有值得記錄的策略，輸出 "### Patterns" 並留空。`
-
-var crossSessionSystemPrompt = `你是一個跨任務策略分析器。根據多個會話的用戶請求和助理回應，歸納通用策略和行為模式。
-
-只輸出有長期價值的通用策略，嚴格按以下格式：
-
-### Strategies
+### CrossSession
 - 策略簡述: 具體策略描述（一行）
 
-每條必須是 "- key: value" 格式。不要記錄一次性事務信息。如果沒有值得記錄的策略，輸出 "### Strategies" 並留空。`
+如果某個 section 沒有值得記錄的內容，輸出 section header 後留空。不要記錄一次性事務信息。`

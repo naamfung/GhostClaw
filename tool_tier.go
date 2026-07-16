@@ -87,9 +87,9 @@ const (
 )
 
 // kapToolBudgetPercent 控制每级工具 token 总量占该级上下文容量的百分比。
-// 默认 1.0（即 128K 窗口最多用 1310 token 放工具），可全局配置覆盖。
+// 默认 2.0（即 128K 窗口最多用 2621 token 放工具），可全局配置覆盖。
 // Kap2048 不受此限制（全量工具）。
-var kapToolBudgetPercent = 1.0
+var kapToolBudgetPercent = 2.0
 
 // ── Kap 优先级启发式映射表 ──
 // 将现有 4 桶（small/core/extended/expert）拆细到 9 级 Kap。
