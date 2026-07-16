@@ -2562,16 +2562,8 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 				close(errCh)
 				return errCh, fmt.Errorf("prompt loop detected: same prompt sent %d times", cached.HitCount)
 			}
-		} else {
-			hits, misses, entries := globalPromptCache.Counts()
-			totalReqs := hits + misses
-			missRate := float64(0)
-			if totalReqs > 0 {
-				missRate = float64(misses) / float64(totalReqs) * 100
-			}
-			log.Printf("[PromptCache] Cache MISS for %d messages | entries: %d | miss/total: %d/%d (%.1f%%)",
-				len(messages), entries, misses, totalReqs, missRate)
 		}
+		// MISS 不打印日志：hit/total 已能反映 miss 比例（miss = total - hit）
 		// 存儲本次請求的消息到緩存（異步，不阻塞）
 		// 優化：直接使用已計算的 tokenCount，避免第二次 estimateMessagesTokens
 		go func(msgs []Message, tokCount int) {
