@@ -183,6 +183,14 @@ func (pc *PromptCache) Stats() map[string]interface{} {
 	}
 }
 
+// Counts returns cumulative hit/miss counts and current entry count.
+// Lightweight alternative to Stats() for hot-path logging (no map allocation).
+func (pc *PromptCache) Counts() (hits, misses, entries int) {
+	pc.mu.RLock()
+	defer pc.mu.RUnlock()
+	return pc.hitCount, pc.missCount, len(pc.entries)
+}
+
 // EvictExpired removes all entries past the TTL. Safe to call concurrently.
 func (pc *PromptCache) EvictExpired() {
 	pc.mu.Lock()

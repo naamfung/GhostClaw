@@ -2544,8 +2544,14 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 
 	if globalPromptCache != nil {
 		if cached, found := globalPromptCache.Lookup(messages); found {
-			log.Printf("[PromptCache] Cache HIT for %d messages (hit_count: %d)",
-				len(messages), cached.HitCount)
+			hits, misses, entries := globalPromptCache.Counts()
+			totalReqs := hits + misses
+			hitRate := float64(0)
+			if totalReqs > 0 {
+				hitRate = float64(hits) / float64(totalReqs) * 100
+			}
+			log.Printf("[PromptCache] Cache HIT for %d messages | entries: %d | hit/total: %d/%d (%.1f%%)",
+				len(messages), entries, hits, totalReqs, hitRate)
 			// ── Prompt Loop 偵測：相同提示被重複發送 ─────────
 			// 如果同一消息序列被發送超過 3 次，可能是模型陷入死循環
 			if cached.HitCount >= 3 {
@@ -2557,7 +2563,14 @@ func CallModel(ctx context.Context, messages []Message, apiType, baseURL, apiKey
 				return errCh, fmt.Errorf("prompt loop detected: same prompt sent %d times", cached.HitCount)
 			}
 		} else {
-			log.Printf("[PromptCache] Cache MISS for %d messages", len(messages))
+			hits, misses, entries := globalPromptCache.Counts()
+			totalReqs := hits + misses
+			missRate := float64(0)
+			if totalReqs > 0 {
+				missRate = float64(misses) / float64(totalReqs) * 100
+			}
+			log.Printf("[PromptCache] Cache MISS for %d messages | entries: %d | miss/total: %d/%d (%.1f%%)",
+				len(messages), entries, misses, totalReqs, missRate)
 		}
 		// 存儲本次請求的消息到緩存（異步，不阻塞）
 		// 優化：直接使用已計算的 tokenCount，避免第二次 estimateMessagesTokens
