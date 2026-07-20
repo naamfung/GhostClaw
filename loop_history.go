@@ -23,6 +23,28 @@ import (
 // Returns the (possibly modified) messages slice.
 // Function signature is unchanged for backward compatibility.
 func RunHistoryCompression(messages []Message, effectiveModelID string, compressor *ContextCompressor) []Message {
+	// 空消息或 nil compressor：无操作直接返回（避免 nil 指针 panic）
+	if len(messages) == 0 || compressor == nil {
+		return messages
+	}
+	originalLen := len(messages)
+	// defer：压缩完成后统一处理版本递增 + 卡死检测
+	defer func() {
+		finalLen := len(messages)
+		if finalLen < originalLen {
+			// 历史被压缩，递增版本号让 PrefixShape 感知
+			IncrementLogRewriteVersion()
+			compressor.consecutiveCompacts++
+			if compressor.consecutiveCompacts >= 2 {
+				compressor.compactStuck = true
+				log.Printf("[AgentLoop] compactStuck set: consecutive compacts=%d (system+1turn may exceed window)", compressor.consecutiveCompacts)
+			}
+		} else {
+			// 没有压缩，重置计数
+			compressor.consecutiveCompacts = 0
+		}
+	}()
+
 	modelCtxWindow := GetModelContextLengthSafe(effectiveModelID)
 	adaptiveMaxHistory := MaxHistoryMessages
 	if modelCtxWindow > 0 {
@@ -41,12 +63,72 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 			}
 		} else {
 			totalTokens := compressor.estimateMessagesTokenCount(messages)
-			threshold := float64(modelCtxWindow) * globalCompressionThreshold
-			if float64(totalTokens) <= threshold {
+			// ── softCompactNoticed 模式（参考 DeepSeek-Reasonix compact.go）──
+			// 分三段处理，保护前缀缓存：
+			//   [0, soft):        正常区间，重置 latch
+			//   [soft, snip):     发一次 notice，不压缩（避免破坏 prefix）
+			//   [snip, compact):  轻量裁剪旧工具结果（不调用 LLM）
+			//   [compact, ∞):     真正压缩
+			softRatio := 0.5
+			snipRatio := 0.6
+			compactRatio := globalCompressionThreshold // 默认 0.8
+			// 防止 soft/snip 高于 compact 导致逻辑混乱
+			if softRatio >= compactRatio {
+				softRatio = compactRatio * 0.625
+			}
+			if snipRatio >= compactRatio {
+				snipRatio = compactRatio * 0.75
+			}
+
+			softThreshold := int(float64(modelCtxWindow) * softRatio)
+			snipThreshold := int(float64(modelCtxWindow) * snipRatio)
+			compactThreshold := int(float64(modelCtxWindow) * compactRatio)
+
+			// 压缩卡死保护：小窗口下 system+1 turn 已超过 compact 阈值，暂停自动压缩
+			if compressor.compactStuck {
+				if totalTokens < softThreshold {
+					compressor.compactStuck = false
+					compressor.consecutiveCompacts = 0
+					log.Printf("[AgentLoop] compactStuck cleared: %d tokens < soft %d", totalTokens, softThreshold)
+				} else {
+					log.Printf("[AgentLoop] compactStuck active: skip auto-compaction (%d tokens, window=%d)", totalTokens, modelCtxWindow)
+					return messages
+				}
+			}
+
+			// [0, soft)：正常区间，重置 latch
+			if totalTokens < softThreshold {
+				compressor.softCompactNoticed = false
+				compressor.consecutiveCompacts = 0
 				return messages
 			}
-			log.Printf("[AgentLoop] Token trigger: %d tokens > %.0f threshold (window=%d, threshold=%.2f)",
-				totalTokens, threshold, modelCtxWindow, globalCompressionThreshold)
+
+			// [soft, snip)：只发一次 notice，保护 prefix
+			if totalTokens < snipThreshold {
+				if !compressor.softCompactNoticed {
+					compressor.softCompactNoticed = true
+					log.Printf("[AgentLoop] Context growing: %d/%d tokens (%.0f%%), preserving cache-stable prefix until %.0f%%",
+						totalTokens, modelCtxWindow, float64(totalTokens)/float64(modelCtxWindow)*100, compactRatio*100)
+				}
+				return messages
+			}
+
+			// [snip, compact)：轻量裁剪旧工具结果，不调 LLM
+			if totalTokens < compactThreshold {
+				// 仅当未在 LLM 调用中时执行
+				if !compressor.inLLMCall.Load() {
+					saved := lightSnipOldToolResults(messages, compressor)
+					if saved > 0 {
+						log.Printf("[AgentLoop] Light snip: trimmed %d old tool results (tokens %d, under compact threshold %d)",
+							saved, totalTokens, compactThreshold)
+					}
+				}
+				return messages
+			}
+
+			// [compact, ∞)：真正压缩
+			log.Printf("[AgentLoop] Token trigger: %d tokens >= compact threshold %d (window=%d, ratio=%.2f)",
+				totalTokens, compactThreshold, modelCtxWindow, compactRatio)
 		}
 	default: // "message" — 現有邏輯
 		if len(messages) <= adaptiveMaxHistory {
@@ -120,6 +202,54 @@ func RunHistoryCompression(messages []Message, effectiveModelID string, compress
 	// ======================================================================
 	log.Printf("[AgentLoop] All LLM phases exhausted, falling back to divider")
 	return runDividerFallback(fullMessages, messages, adaptiveMaxHistory, hasSystem, ctx, compressor)
+}
+
+// lightSnipOldToolResults 轻量裁剪旧工具结果（不调 LLM）
+// 仅截断超过 maxOldToolResultLength 的旧 tool result content，保留最近 N 条完整
+// 返回被裁剪的消息数（供日志输出）
+// 注意：本函数修改消息内容，调用后需递增 LogRewriteVersion
+func lightSnipOldToolResults(messages []Message, compressor *ContextCompressor) int {
+	if len(messages) == 0 || compressor == nil {
+		return 0
+	}
+	maxLen := compressor.maxOldToolResultLength
+	if maxLen <= 0 {
+		maxLen = 200
+	}
+	preserveRecent := compressor.preserveRecentToolResults
+	if preserveRecent <= 0 {
+		preserveRecent = 10
+	}
+
+	// 找到所有 tool 消息的索引
+	var toolIdxs []int
+	for i, m := range messages {
+		if m.Role == "tool" {
+			toolIdxs = append(toolIdxs, i)
+		}
+	}
+	if len(toolIdxs) <= preserveRecent {
+		return 0 // 全部在保护范围内
+	}
+
+	// 仅裁剪 preserveRecent 之前的 tool 消息
+	snipCount := 0
+	for i := 0; i < len(toolIdxs)-preserveRecent; i++ {
+		idx := toolIdxs[i]
+		content, ok := messages[idx].Content.(string)
+		if !ok || len(content) <= maxLen {
+			continue
+		}
+		// 截断并加省略标记
+		messages[idx].Content = content[:maxLen] + "\n...[snipped by lightSnip]"
+		snipCount++
+	}
+
+	if snipCount > 0 {
+		// 历史被修改，递增版本号
+		IncrementLogRewriteVersion()
+	}
+	return snipCount
 }
 
 // runDividerFallback implements the legacy truncation + divider logic as last resort.

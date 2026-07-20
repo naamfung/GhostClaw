@@ -1411,6 +1411,8 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 
 	// 从 messages 中提取系统提示词
 	systemPromptFromMessages, filteredMessages := extractSystemPrompt(messages)
+	// NormalizeSession：会话级归一化（补全缺失字段，不修改已有历史）
+	filteredMessages = NormalizeSession(filteredMessages)
 	t3 := time.Now()
 
 	// 确定最终使用的系统提示词（不含时间，最大化缓存命中率）
@@ -1454,6 +1456,9 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 		tools := getToolsAsAnthropicBlocks(apiType, role, getModelContextLength(modelID))
 		t7 := time.Now()
 
+		// PrefixShape 诊断：捕获 system + tools 哈希并对比上次
+		globalPrefixShapeTracker.CaptureAndCompare(finalSystemPrompt, tools, len(filteredMessages))
+
 		// Build system blocks; add cache_control only when PromptCache enabled
 		systemBlock := anthropicContentBlock{
 			Type: "text", Text: finalSystemPrompt,
@@ -1488,9 +1493,12 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 	case "ollama":
 		baseURL = OLLAMA_BASE_URL
 		ollamaMessages := convertToOllamaFormat(filteredMessages)
+		ollamaTools := getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))
+		// PrefixShape 诊断
+		globalPrefixShapeTracker.CaptureAndCompare(finalSystemPrompt, ollamaTools, len(filteredMessages))
 		req := ollamaRequest{
 			Model: modelID, Messages: mapSliceToInterfaceSlice(ollamaMessages),
-			Tools:  toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+			Tools:  toolsToInterfaceSlice(ollamaTools),
 			Stream: stream, System: finalSystemPrompt, Temperature: temperature,
 		}
 		reqBody, _ = json.Marshal(req)
@@ -1513,9 +1521,12 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 			})
 		}
 
+		openaiTools := getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))
+		// PrefixShape 诊断
+		globalPrefixShapeTracker.CaptureAndCompare(finalSystemPrompt, openaiTools, len(filteredMessages))
 		req := openaiRequest{
 			Model: modelID, Messages: openaiMessages,
-			Tools:       toolsToInterfaceSlice(getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))),
+			Tools:       toolsToInterfaceSlice(openaiTools),
 			Temperature: temperature, Stream: stream,
 		}
 		if maxTokens > 0 {

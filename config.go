@@ -175,6 +175,8 @@ type ToolsConfig struct {
 	EscalationThreshold       int              `toon:"EscalationThreshold,omitempty" json:"EscalationThreshold,omitempty"`             // 工具連續失敗升級閾值，預設 3，範圍 1-5
 	EnableParallelTools       bool             `toon:"EnableParallelTools" json:"EnableParallelTools"`                                 // 啟用並行工具調用（部分 provider 唔支援，預設關閉）
 	DeferExtendedTools        bool             `toon:"DeferExtendedTools" json:"DeferExtendedTools"`                                   // 延遲加載非核心工具（Extended/Expert tier 只顯示名稱，通過 Menu 按需加載完整 schema）
+	CoordinatorEnabled        bool             `toon:"CoordinatorEnabled" json:"CoordinatorEnabled"`                                   // 啟用 Planner+Executor 雙模型模式（planner 只讀工具，executor 全工具，各自 session 前綴獨立）
+	CoordinatorPlannerModel   string           `toon:"CoordinatorPlannerModel,omitempty" json:"CoordinatorPlannerModel,omitempty"`     // Planner 使用的模型 ID（空=使用當前模型）
 }
 
 // ProfileConfig 个人资料配置

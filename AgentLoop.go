@@ -375,6 +375,18 @@ func AgentLoop(ctx context.Context, ch Channel, messages []Message, apiType, bas
 	// ========== Phase 1: Pre-loop 設置 ==========
 	messages, config := RunPreLoopSetup(ctx, messages, apiType, baseURL, apiKey, modelID, temperature, maxTokens)
 
+	// ========== Phase 1.5: Coordinator Planner 階段 ==========
+	// 啟用 Coordinator 雙模型模式時：planner 先產出計劃，注入到 executor 的 user 消息
+	// planner 與 executor 各自維護獨立 session，前綴緩存互不干擾
+	if IsCoordinatorEnabled() {
+		if config.IsNewSession {
+			ResetPlannerSession()
+		}
+		if plan, ok := RunPlannerPhase(ctx, messages, config); ok {
+			messages = InjectPlanIntoMessages(messages, plan)
+		}
+	}
+
 	// 建立排程器並註冊任務
 	sched := NewScheduler()
 	registerLoopTasks(sched)

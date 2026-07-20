@@ -55,6 +55,13 @@ type ContextCompressor struct {
 	compressionCooldownDuration time.Duration // 压缩失败冷却期（默认 600s）
 	// Recursive compression guard
 	inLLMCall atomic.Bool // 防止 LLM 摘要調用觸發遞迴壓縮
+	// softCompactNoticed latch（参考 DeepSeek-Reasonix compact.go）
+	// 当 token 在 [soft, snip) 区间时，只发一次 notice 不压缩，保护前缀缓存
+	// token 降到 soft 以下时自动重置
+	softCompactNoticed bool
+	// 连续压缩计数（防止小窗口压缩死循环）
+	consecutiveCompacts int
+	compactStuck        bool
 }
 
 // NewContextCompressor 创建新的上下文压缩器
