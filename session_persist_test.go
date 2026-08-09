@@ -39,6 +39,7 @@ func setupSessionTestDB(t *testing.T) (*gorm.DB, *SessionPersistManager, string)
 	globalDB = db
 	t.Cleanup(func() {
 		globalDB = oldDB
+		closeTestDB(t, db) // 跨平台：Windows 上必须显式关闭才能释放文件句柄
 	})
 
 	mgr := NewSessionPersistManager()

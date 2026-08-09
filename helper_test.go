@@ -3,31 +3,40 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // TestResolveTempDir_FallbackWhenDataDirSet 验证当 globalDataDir 已设置且系统 temp
-// 不可写时（通过注入不存在的根），会回退到 <dataDir>/temp/<subdir>。
+// 可写时，返回系统 temp 路径。
+//
+// 跨平台适配：os.TempDir() 在 Unix 读 TMPDIR、Windows 读 TMP/TEMP，
+// 因此同时设置三者，保证在两个平台行为一致。
 func TestResolveTempDir_FallbackWhenDataDirSet(t *testing.T) {
 	// 保存并恢复全局状态
 	origDataDir := globalDataDir
+	origTmp := os.Getenv("TMP")
+	origTemp := os.Getenv("TEMP")
 	origTmpDir := os.Getenv("TMPDIR")
 	defer func() {
 		globalDataDir = origDataDir
+		os.Setenv("TMP", origTmp)
+		os.Setenv("TEMP", origTemp)
 		os.Setenv("TMPDIR", origTmpDir)
 	}()
 
 	tmpRoot := t.TempDir()
-	// 将 TMPDIR 指向一个只读子目录的父目录，使 isDirWritable 失败
-	// 这里采用更直接的办法：将 TMPDIR 指向一个不存在的路径（深层），isDirWritable 会尝试
-	// MkdirAll 整条路径。若路径中含有不可创建的组件（例如权限受限），则失败。
-	// 在测试环境下 t.TempDir() 是可写的，因此此用例验证正常路径返回系统 temp。
+	// 将系统临时目录指向可写的 tmpRoot（Windows: TMP/TEMP；Unix: TMPDIR）
+	os.Setenv("TMP", tmpRoot)
+	os.Setenv("TEMP", tmpRoot)
 	os.Setenv("TMPDIR", tmpRoot)
 	globalDataDir = t.TempDir()
 
 	got := resolveTempDir("tool_results_cache")
-	wantSysTmp := filepath.Join(tmpRoot, "ghostclaw-tool_results_cache")
+	wantSysTmp := filepath.Join(os.TempDir(), "ghostclaw-tool_results_cache")
 	if got != wantSysTmp {
 		t.Errorf("resolveTempDir with writable sys tmp: got %q, want %q", got, wantSysTmp)
 	}
@@ -36,15 +45,30 @@ func TestResolveTempDir_FallbackWhenDataDirSet(t *testing.T) {
 // TestResolveTempDir_FallbackToDataDir 验证当系统 temp 不可写时回退到 dataDir/temp/<subdir>。
 func TestResolveTempDir_FallbackToDataDir(t *testing.T) {
 	origDataDir := globalDataDir
-	defer func() { globalDataDir = origDataDir }()
+	origTmp := os.Getenv("TMP")
+	origTemp := os.Getenv("TEMP")
+	origTmpDir := os.Getenv("TMPDIR")
+	defer func() {
+		globalDataDir = origDataDir
+		os.Setenv("TMP", origTmp)
+		os.Setenv("TEMP", origTemp)
+		os.Setenv("TMPDIR", origTmpDir)
+	}()
 
 	dataDir := t.TempDir()
 	globalDataDir = dataDir
 
-	// 通过设置 TMPDIR 为一个不存在的、不可创建的路径触发回退
-	// 注意：在 Unix 上 /proc/... 这种路径通常 MkdirAll 会失败
-	os.Setenv("TMPDIR", "/proc/cannot-create-xyz-123")
-	defer os.Setenv("TMPDIR", "")
+	// 将系统临时目录指向一个「已存在的文件」路径。
+	// os.MkdirAll 对已存在的文件路径必然失败（Unix 与 Windows 行为一致，
+	// 返回 ENOTDIR 类错误），从而跨平台触发 resolveTempDir 的回退逻辑——
+	// 不依赖 /proc 等 Unix 专属路径。
+	blockFile := filepath.Join(dataDir, "blocked_path_file")
+	if err := os.WriteFile(blockFile, []byte("x"), 0644); err != nil {
+		t.Fatalf("create block file: %v", err)
+	}
+	os.Setenv("TMP", blockFile)
+	os.Setenv("TEMP", blockFile)
+	os.Setenv("TMPDIR", blockFile)
 
 	got := resolveTempDir("tool_results_cache")
 	want := filepath.Join(dataDir, "temp", "tool_results_cache")
@@ -187,5 +211,41 @@ func TestCleanupDataTempDir_RemovesEmptyDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(emptySub); !os.IsNotExist(err) {
 		t.Errorf("empty subdirectory should be removed, got err=%v", err)
+	}
+}
+
+// closeTestDB 关闭 GORM/SQLite 连接，并在 Windows 上等待文件句柄完全释放。
+//
+// 跨平台适配：Unix 允许删除仍被打开的数据库文件，Windows 则要求所有句柄
+// 释放后才能删除（否则 t.TempDir() 的 RemoveAll 清理会报
+// "being used by another process"）。SQLite 的 WAL/shm 文件句柄释放
+// 是异步的，因此在 Windows 上需要重试等待。
+func closeTestDB(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	if db == nil {
+		return
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Logf("closeTestDB: db.DB() error: %v", err)
+		return
+	}
+	if sqlDB == nil {
+		return
+	}
+	// 显式关闭连接池。此操作会关闭所有空闲连接；活跃连接也随 Close 关闭。
+	if err := sqlDB.Close(); err != nil {
+		t.Logf("closeTestDB: sqlDB.Close() error: %v", err)
+	}
+	// Windows 上 WAL/shm 句柄释放有延迟，等待重试（最多约 2s）
+	if runtime.GOOS == "windows" {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			// 尝试打开并立即关闭，确保没有残留句柄；真正的验证是
+			// t.TempDir() 的 RemoveAll 清理，这里主动释放后稍作让步。
+			// 无需额外 IO，直接给 OS 一点时间完成句柄释放。
+			time.Sleep(50 * time.Millisecond)
+			break
+		}
 	}
 }

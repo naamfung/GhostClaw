@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -96,9 +97,22 @@ func RunPreLoopSetup(ctx context.Context, messages []Message, apiType, baseURL, 
 
 		fencedBlock := BuildMemoryContextBlock(memoryContext)
 		if fencedBlock != "" && latestUserIdx >= 0 {
-			insertIdx := latestUserIdx
-			memMsg := Message{Role: "system", Content: fencedBlock}
-			messages = append(messages[:insertIdx], append([]Message{memMsg}, messages[insertIdx:]...)...)
+			// 前缀缓存友好（inx 字节级前缀缓存移植）：
+			// - 幂等注入：若最新 user 前已存在内容相同的 [MEMORY_CONTEXT] 消息，不重复插入
+			// - 内容变化（记忆更新）时原地替换旧条目，而不是继续累积
+			// 避免多轮工具循环中同一记忆块被逐轮重复插入导致请求体无限膨胀。
+			if idx := lastMemoryContextBefore(messages, latestUserIdx); idx >= 0 {
+				if existing, ok := messages[idx].Content.(string); ok && existing == fencedBlock {
+					// 内容相同：不重复注入，保持消息序列字节不变
+				} else {
+					// 记忆更新：原地替换
+					messages[idx].Content = fencedBlock
+				}
+			} else {
+				insertIdx := latestUserIdx
+				memMsg := Message{Role: "system", Content: fencedBlock}
+				messages = append(messages[:insertIdx], append([]Message{memMsg}, messages[insertIdx:]...)...)
+			}
 		}
 	}
 
@@ -295,4 +309,23 @@ func hasRecentWorkToolCalls(messages []Message) bool {
 		}
 	}
 	return false
+}
+
+// lastMemoryContextBefore 在 messages[0:limit] 範圍內向前查找最后一條
+// [MEMORY_CONTEXT] system 消息（位於最新 user 消息之前）。
+// 未找到返回 -1。
+func lastMemoryContextBefore(messages []Message, limit int) int {
+	searchEnd := limit
+	if searchEnd > len(messages) {
+		searchEnd = len(messages)
+	}
+	for i := searchEnd - 1; i >= 0; i-- {
+		if messages[i].Role != "system" {
+			continue
+		}
+		if content, ok := messages[i].Content.(string); ok && strings.HasPrefix(content, "[MEMORY_CONTEXT]") {
+			return i
+		}
+	}
+	return -1
 }

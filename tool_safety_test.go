@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -873,9 +874,22 @@ func TestNormalizeFilePath_Relative(t *testing.T) {
 }
 
 func TestNormalizeFilePath_Absolute(t *testing.T) {
-	result := normalizeFilePath("/tmp/foo/bar")
-	if result != "/tmp/foo/bar" {
-		t.Errorf("normalizeFilePath(/tmp/foo/bar) = %q, want %q", result, "/tmp/foo/bar")
+	// 跨平台适配：normalizeFilePath 使用 filepath.Abs，在 Windows 上
+	// "/tmp/foo/bar" 会被规范化为当前盘的绝对路径（如 D:\tmp\foo\bar），
+	// 这是正确的 Windows 路径语义；Unix 上保持原样。
+	if runtime.GOOS == "windows" {
+		result := normalizeFilePath("/tmp/foo/bar")
+		if !filepath.IsAbs(result) {
+			t.Errorf("normalizeFilePath(/tmp/foo/bar) = %q, should be absolute on Windows", result)
+		}
+		if strings.Contains(result, "..") {
+			t.Errorf("normalizeFilePath should not contain .. : %q", result)
+		}
+	} else {
+		result := normalizeFilePath("/tmp/foo/bar")
+		if result != "/tmp/foo/bar" {
+			t.Errorf("normalizeFilePath(/tmp/foo/bar) = %q, want %q", result, "/tmp/foo/bar")
+		}
 	}
 }
 

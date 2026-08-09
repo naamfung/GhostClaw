@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -581,7 +582,15 @@ func (c *MCPClient) GetToolDefinitions() []map[string]interface{} {
 	}
 
 	var definitions []map[string]interface{}
-	for name, tool := range c.tools {
+	// map 遍历顺序不稳定会破坏工具集字节稳定性（provider prompt cache 前缀 miss）。
+	// 按工具名排序，保证同一工具集的序列化字节逐轮一致。
+	names := make([]string, 0, len(c.tools))
+	for name := range c.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		tool := c.tools[name]
 		def := map[string]interface{}{
 			"type": "function",
 			"function": map[string]interface{}{
@@ -725,8 +734,14 @@ func (m *MCPClientManager) GetAllTools() []map[string]interface{} {
 	defer m.mu.RUnlock()
 
 	var tools []map[string]interface{}
-	for _, client := range m.clients {
-		tools = append(tools, client.GetToolDefinitions()...)
+	// 按客户端名排序遍历，避免 map 顺序随机破坏工具集字节稳定性
+	clientNames := make([]string, 0, len(m.clients))
+	for name := range m.clients {
+		clientNames = append(clientNames, name)
+	}
+	sort.Strings(clientNames)
+	for _, name := range clientNames {
+		tools = append(tools, m.clients[name].GetToolDefinitions()...)
 	}
 	return tools
 }

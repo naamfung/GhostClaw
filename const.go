@@ -35,8 +35,8 @@ const (
 
 // 默認 Prompt 快取配置常量
 const (
-	DefaultPromptCacheEnabled     = false // 默認關閉 Prompt 快取（保留原始行為）
-	DefaultPromptCacheStableTools = false // 默認關閉穩定工具集（保留原始行為）
+	DefaultPromptCacheEnabled     = true // 默認開啟 Prompt 快取（inx 字节级前缀缓存移植：Anthropic 发 cache_control，DeepSeek 靠自动前缀缓存）
+	DefaultPromptCacheStableTools = true // 默認開啟穩定工具集（工具顺序/schema 恒定，保证前缀字节稳定）
 )
 
 // 内部系统标记常量（仅由程序注入，不在用户输入中出现）

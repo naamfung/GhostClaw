@@ -29,6 +29,10 @@ func setupTestDB(t *testing.T) (*gorm.DB, string) {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
+	// 跨平台：Windows 上必须显式关闭 SQLite 连接才能释放文件句柄，
+	// 否则 t.TempDir() 清理会报 "being used by another process"。
+	t.Cleanup(func() { closeTestDB(t, db) })
+
 	return db, tmpDir
 }
 

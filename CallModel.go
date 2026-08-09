@@ -70,11 +70,21 @@ type ollamaRequest struct {
 }
 
 // openaiMessage OpenAI/DeepSeek 格式嘅單條 message。
-// 用 struct 而唔係 map[string]interface{} 確保 JSON key order 確定（role → content），
+// 用 struct 而唔係 map[string]interface{} 確保 JSON key order 確定，
 // 令 DeepSeek KV Cache 嘅 byte-level prefix 一致。
+// 字段必須完整保留 convertToOpenAIFormat 產生的 tool_call_id / tool_calls /
+// reasoning_content / thinking_signature——丟失任一都會導致：
+//   - tool 消息無法關聯（模型重算工具上下文）
+//   - 歷史工具調用記錄缺失（每次請求都像第一次）
+//   - DeepSeek 多輪 thinking 連續性中斷
 type openaiMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
+	Role             string        `json:"role"`
+	Content          interface{}   `json:"content"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+	ToolCalls        []interface{} `json:"tool_calls,omitempty"`
+	ToolCallsRaw     interface{}   `json:"-"` // 未知类型的 tool_calls 回退存储（不序列化）
+	ReasoningContent interface{}   `json:"reasoning_content,omitempty"`
+	ThinkingSignature string       `json:"thinking_signature,omitempty"`
 }
 
 // rateLimiter 基于令牌桶算法的速率限制器
@@ -710,6 +720,39 @@ func convertToOllamaFormat(messages []Message) []map[string]interface{} {
 		ollamaMessages = append(ollamaMessages, ollamaMsg)
 	}
 	return ollamaMessages
+}
+
+// markLastMessageCacheControl 给 anthropicMessages 的最后一条消息的最后一个
+// content block 添加 cache_control: ephemeral 断点。
+// 仅在 content 为数组格式时生效；跳过 tool_use/tool_result/thinking block
+// （Anthropic 禁止在这些 block 上加 cache_control 断点）。幂等，不改变消息语义。
+func markLastMessageCacheControl(msgs []map[string]interface{}) {
+	if len(msgs) == 0 {
+		return
+	}
+	lastMsg := msgs[len(msgs)-1]
+	content, ok := lastMsg["content"]
+	if !ok {
+		return
+	}
+	switch c := content.(type) {
+	case []map[string]interface{}:
+		for i := len(c) - 1; i >= 0; i-- {
+			if t, _ := c[i]["type"].(string); t != "tool_use" && t != "tool_result" && t != "thinking" {
+				c[i]["cache_control"] = map[string]interface{}{"type": "ephemeral"}
+				return
+			}
+		}
+	case []interface{}:
+		for i := len(c) - 1; i >= 0; i-- {
+			if blk, ok := c[i].(map[string]interface{}); ok {
+				if t, _ := blk["type"].(string); t != "tool_use" && t != "tool_result" && t != "thinking" {
+					blk["cache_control"] = map[string]interface{}{"type": "ephemeral"}
+					return
+				}
+			}
+		}
+	}
 }
 
 // 转换为OpenAI格式
@@ -1473,6 +1516,14 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 			tools[len(tools)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
 		}
 
+		// inx 会话断点移植：最后一条消息的最后一个 content block 加 cache_control，
+		// 使缓存随对话增长逐步累积（每轮只处理新增尾部）。仅在 content 为数组格式时
+		// 添加，且跳过 tool_use/tool_result block（Anthropic 不允许在其上加断点）。
+		// 断点总数 ≤3（system + last tool + last message），符合 Anthropic 上限。
+		if globalPromptCacheConfig.Enabled && len(anthropicMessages) > 0 {
+			markLastMessageCacheControl(anthropicMessages)
+		}
+
 		req := anthropicRequest{
 			Model: modelID, System: systemBlocks,
 			Messages: mapSliceToInterfaceSlice(anthropicMessages), Tools: tools,
@@ -1515,10 +1566,41 @@ func prepareRequestData(messages []Message, apiType, baseURL, modelID string, te
 		})
 		for _, m := range convertToOpenAIFormat(filteredMessages) {
 			role, _ := m["role"].(string)
-			openaiMessages = append(openaiMessages, openaiMessage{
+			msg := openaiMessage{
 				Role:    role,
 				Content: m["content"],
-			})
+			}
+			// 完整保留 tool_call_id / tool_calls / reasoning / thinking_signature，
+			// 缺一都會破壞 DeepSeek 多輪工具上下文與 KV cache 前綴命中
+			if v, ok := m["tool_call_id"].(string); ok && v != "" {
+				msg.ToolCallID = v
+			}
+			if v, ok := m["tool_calls"]; ok && v != nil {
+				switch tcs := v.(type) {
+				case []interface{}:
+					msg.ToolCalls = tcs
+				case []map[string]interface{}:
+					// convertToOpenAIFormat default 分支会透传原始 []map，
+					// 统一归一化为 []interface{} 供 JSON 序列化
+					iface := make([]interface{}, len(tcs))
+					for i, tc := range tcs {
+						iface[i] = tc
+					}
+					msg.ToolCalls = iface
+				default:
+					// 未知类型：回退直接赋值（保持行为），并记录以便排查
+					log.Printf("[prefix-cache] tool_calls type %T not normalized, passing through", v)
+					msg.ToolCalls = nil
+					msg.ToolCallsRaw = v
+				}
+			}
+			if v, ok := m["reasoning_content"]; ok && v != nil {
+				msg.ReasoningContent = v
+			}
+			if v, ok := m["thinking_signature"].(string); ok && v != "" {
+				msg.ThinkingSignature = v
+			}
+			openaiMessages = append(openaiMessages, msg)
 		}
 
 		openaiTools := getFilteredToolsWithContext(apiType, role, getModelContextLength(modelID))

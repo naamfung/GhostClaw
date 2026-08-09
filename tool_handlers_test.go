@@ -1646,31 +1646,31 @@ func TestEscalation_ThresholdReached(t *testing.T) {
 
 // Scenario: Config 前後端默認值一致。
 // 確保前端 settings-config.ts 嘅 defaults 同後端 const.go 一致。
+// inx 字节级前缀缓存移植后默认开启。
 func TestConfig_PromptCacheDefaultsMatch(t *testing.T) {
 	cm := setupTestConfigManager(t)
 	cfg := cm.GetConfig()
 
-	// 前端默認值：promptCacheEnabled=false, promptCacheStableTools=false
-	// 後端默認值：DefaultPromptCacheEnabled=false, DefaultPromptCacheStableTools=false
-	if cfg.PromptCache.Enabled != false {
-		t.Error("backend PromptCache.Enabled should default to false (matching frontend)")
+	// 後端默認值：DefaultPromptCacheEnabled=true, DefaultPromptCacheStableTools=true
+	if cfg.PromptCache.Enabled != true {
+		t.Error("backend PromptCache.Enabled should default to true")
 	}
-	if cfg.PromptCache.StableTools != false {
-		t.Error("backend PromptCache.StableTools should default to false (matching frontend)")
+	if cfg.PromptCache.StableTools != true {
+		t.Error("backend PromptCache.StableTools should default to true")
 	}
 }
 
 // Scenario: 後端 Config 經過 createDefaultConfig → syncGlobals → GET 返回正確值。
 // 呢個係 BDD integration test：確保新用戶首次啟動時前後端一致。
-func TestConfig_FreshStartup_PromptCacheOff(t *testing.T) {
+func TestConfig_FreshStartup_PromptCacheOn(t *testing.T) {
 	cm := setupTestConfigManager(t)
 	cm.syncGlobals()
 
-	// 新用戶冇任何配置 → 所有優化默認關閉
-	if globalPromptCacheConfig.Enabled {
-		t.Error("fresh startup: PromptCache.Enabled should be false")
+	// 新用戶冇任何配置 → 優化默認開啟（inx 前缀缓存移植）
+	if !globalPromptCacheConfig.Enabled {
+		t.Error("fresh startup: PromptCache.Enabled should be true")
 	}
-	if globalPromptCacheConfig.StableTools {
-		t.Error("fresh startup: PromptCache.StableTools should be false")
+	if !globalPromptCacheConfig.StableTools {
+		t.Error("fresh startup: PromptCache.StableTools should be true")
 	}
 }

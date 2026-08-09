@@ -406,16 +406,17 @@ func (cc *ContextCompressor) applySlidingWindow(messages []Message, classificati
 		constraintsNote = sb.String()
 	}
 
-	// Insert constraints note after head system messages
-	if constraintsNote != "" {
+	// 注入位置移到 kept 之后（尾部），保持 head system 前缀字节不变。
+	// inx 前缀稳定性原则：任何新注入内容都应出现在尾部（append-only），
+	// 让 provider prompt cache 对 head + 之前消息持续命中。
+	result = append(result, kept...)
+	if constraintsNote != "" && !hasConstraintsNote(result, constraintsNote) {
 		result = append(result, Message{
 			Role:      "system",
 			Content:   constraintsNote,
 			Timestamp: time.Now().Unix(),
 		})
 	}
-
-	result = append(result, kept...)
 
 	// Ensure at least one user message exists
 	hasUser := false
@@ -441,6 +442,19 @@ func (cc *ContextCompressor) applySlidingWindow(messages []Message, classificati
 	}
 
 	return result
+}
+
+// hasConstraintsNote 检查 result 中是否已存在内容相同的 [SESSION_CONSTRAINTS]
+// system 消息，避免多轮压缩后在尾部重复累积同一条约束注入。
+func hasConstraintsNote(result []Message, note string) bool {
+	for _, msg := range result {
+		if msg.Role == "system" {
+			if content, ok := msg.Content.(string); ok && content == note {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GenerateSummary generates a structured summary from an arbitrary list of messages.
@@ -1483,8 +1497,9 @@ func (cc *ContextCompressor) renderStructuredSummary(s *structuredSummary) strin
 		"如摘要内容与最新用户消息冲突, 以最新用户消息为准.)\n\n")
 
 	sb.WriteString("=== 已压缩的对话历史摘要（非当前任务） ===\n")
-	sb.WriteString(fmt.Sprintf("摘要版本: v%d | 压缩时间: %s\n",
-		s.Version, time.Now().Format("2006-01-02 15:04:05")))
+	// 注意：不在此处写入绝对时间戳——时间戳放在摘要末尾，
+	// 保持摘要块前缀（标签+版本+已累积的旧内容）字节稳定，
+	// 使 provider prompt cache 对压缩后的 head+summary 持续命中。
 
 	if cc.focusTopic != "" {
 		sb.WriteString(fmt.Sprintf("历史焦点主题: %s（可能已被最新消息取代）\n", cc.focusTopic))
@@ -1563,6 +1578,9 @@ func (cc *ContextCompressor) renderStructuredSummary(s *structuredSummary) strin
 		sb.WriteString(fmt.Sprintf("- 注意: 历史焦点主题 %s 可能已被最新消息取代\n", cc.focusTopic))
 	}
 	sb.WriteString("=== 历史摘要结束, 请关注最新用户消息 ===\n")
+	// 版本与压缩时间放在末尾：前缀保持稳定，只有这一行随每次压缩变化
+	sb.WriteString(fmt.Sprintf("[摘要版本: v%d | 压缩时间: %s]\n",
+		s.Version, time.Now().Format("2006-01-02 15:04:05")))
 	sb.WriteString("[/MEMORY_CONTEXT]")
 
 	return sb.String()

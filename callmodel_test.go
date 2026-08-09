@@ -2696,3 +2696,66 @@ func itoa(n int) string {
 	}
 	return s
 }
+
+// ============================================================================
+// inx 会话断点移植 — TestMarkLastMessageCacheControl
+// ============================================================================
+
+func TestMarkLastMessageCacheControl(t *testing.T) {
+	t.Run("数组 content 最后 block 加断点", func(t *testing.T) {
+		msgs := []map[string]interface{}{
+			{"role": "user", "content": "hello"},
+			{
+				"role": "assistant",
+				"content": []map[string]interface{}{
+					{"type": "text", "text": "let me check"},
+				},
+			},
+		}
+		markLastMessageCacheControl(msgs)
+		last := msgs[1]["content"].([]map[string]interface{})
+		cc, ok := last[0]["cache_control"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected cache_control on last content block")
+		}
+		if cc["type"] != "ephemeral" {
+			t.Errorf("cache_control.type = %v, want ephemeral", cc["type"])
+		}
+	})
+
+	t.Run("跳过 tool_use/tool_result block", func(t *testing.T) {
+		msgs := []map[string]interface{}{
+			{
+				"role": "assistant",
+				"content": []map[string]interface{}{
+					{"type": "tool_use", "id": "t1", "name": "read", "input": map[string]interface{}{}},
+					{"type": "text", "text": "done"},
+				},
+			},
+		}
+		markLastMessageCacheControl(msgs)
+		last := msgs[0]["content"].([]map[string]interface{})
+		// 最后一个非 tool block（text "done"）应加断点
+		if _, ok := last[0]["cache_control"]; ok {
+			t.Error("tool_use block must NOT get cache_control")
+		}
+		if _, ok := last[1]["cache_control"]; !ok {
+			t.Error("text block after tool_use should get cache_control")
+		}
+	})
+
+	t.Run("string content 不加断点（保持字节）", func(t *testing.T) {
+		msgs := []map[string]interface{}{
+			{"role": "user", "content": "plain string"},
+		}
+		markLastMessageCacheControl(msgs)
+		if _, ok := msgs[0]["content"].(string); !ok {
+			t.Errorf("content should remain string, got %T", msgs[0]["content"])
+		}
+	})
+
+	t.Run("空消息列表不 panic", func(t *testing.T) {
+		markLastMessageCacheControl(nil)
+		markLastMessageCacheControl([]map[string]interface{}{})
+	})
+}

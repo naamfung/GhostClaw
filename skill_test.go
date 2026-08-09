@@ -23,7 +23,9 @@ func setupTestSkillManagerV2(t *testing.T) (*SkillManagerV2, func()) {
 	}
 
 	cleanup := func() {
-		// RebuildIndex won't find any files in empty dir, so DB is clean
+		// 跨平台：Windows 上必须关闭 SQLite 连接才能释放 .skills_meta.db 句柄，
+		// 否则 t.TempDir() 清理会报 "being used by another process"
+		_ = sm.Close()
 	}
 	return sm, cleanup
 }
